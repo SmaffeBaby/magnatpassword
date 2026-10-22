@@ -1,0 +1,15 @@
+node_modules
+.nuxt
+.nuxt-dev
+.output
+.git
+.idea
+.env
+.env.*
+supabase
+backups
+
+artifacts/
+
+.local
+tests

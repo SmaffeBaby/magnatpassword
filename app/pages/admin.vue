@@ -1,0 +1,53 @@
+<script setup lang="ts">
+const auth = useAuthStore(), vault = useVaultStore(), route = useRoute()
+const identity = ref<{ id: string; email?: string } | null>(null), checking = ref(true), accessError = ref('')
+const overview = ref<{ vaults: number; totalUsers: number; users: { id: string; email?: string; createdAt: string; lastSignIn?: string }[] } | null>(null)
+const section = computed(() => ['categories', 'credentials', 'users', 'security'].includes(String(route.query.section)) ? String(route.query.section) : 'overview')
+const titles: Record<string, string> = { overview: 'Обзор хранилища', categories: 'Категории', credentials: 'Пароли', users: 'Пользователи', security: 'Безопасность' }
+const navigation = computed(() => [{ label: 'Хранилище', icon: 'i-lucide-panels-top-left', defaultOpen: true, children: [
+  { label: 'Обзор', icon: 'i-lucide-chart-no-axes-combined', to: '/admin', active: section.value === 'overview' },
+  { label: 'Категории', icon: 'i-lucide-folders', to: '/admin?section=categories', active: section.value === 'categories' },
+  { label: 'Пароли', icon: 'i-lucide-key-round', to: '/admin?section=credentials', active: section.value === 'credentials' }
+] }, { label: 'Управление', icon: 'i-lucide-settings-2', defaultOpen: true, children: [
+  { label: 'Пользователи', icon: 'i-lucide-users', to: '/admin?section=users', active: section.value === 'users' },
+  { label: 'Безопасность', icon: 'i-lucide-shield-check', to: '/admin?section=security', active: section.value === 'security' }
+] }])
+async function adminFetch<T>(url: string): Promise<T> {
+  const { $supabase } = useNuxtApp(); const { data } = await $supabase.auth.getSession()
+  if (!data.session) throw new Error('Войдите в аккаунт администратора')
+  return $fetch<T>(url, { headers: { Authorization: `Bearer ${data.session.access_token}` } }) as Promise<T>
+}
+async function restore() {
+  if (auth.checking) return
+  checking.value = true; accessError.value = ''; identity.value = null
+  if (!auth.user) { checking.value = false; return }
+  try { identity.value = await adminFetch('/api/admin/me'); overview.value = await adminFetch('/api/admin/overview') }
+  catch { accessError.value = 'Нет доступа к панели или сервис недоступен. Войдите под администратором и повторите.' }
+  finally { checking.value = false }
+}
+watch(() => [auth.checking, auth.user?.id], restore, { immediate: true })
+useHead({ title: () => `${titles[section.value]} · Magnat Admin` })
+const date = (value?: string) => value ? new Date(value).toLocaleDateString('ru-RU') : 'Ещё не входил'
+</script>
+<template>
+  <AuthGate admin>
+    <div v-if="checking" class="gate"><UIcon name="i-lucide-loader-circle" class="size-6 animate-spin" />Проверяем доступ…</div>
+    <div v-else-if="!identity" class="gate"><UCard class="max-w-md"><h1 class="text-xl font-semibold">Панель управления</h1><p class="my-5 text-sm text-slate-500">{{ accessError }}</p><div class="flex gap-2"><UButton to="/" color="neutral" variant="outline" label="В хранилище" /><UButton label="Повторить" @click="restore" /><UButton color="neutral" variant="ghost" label="Выйти" @click="auth.logout()" /></div></UCard></div>
+    <UDashboardGroup v-else>
+      <UDashboardSidebar id="magnat-admin" collapsible class="bg-slate-50/70" :ui="{ footer: 'border-t border-default' }">
+        <template #header="{ collapsed }"><NuxtLink to="/admin" class="flex items-center gap-2 px-1 py-3 font-semibold tracking-tight text-slate-900"><span class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-sky-500 text-sm text-white">M</span><span v-if="!collapsed">Magnat <span class="font-normal text-slate-400">/ admin</span></span></NuxtLink></template>
+        <template #default="{ collapsed }"><p v-if="!collapsed" class="mb-2 mt-4 px-3 text-[11px] font-medium uppercase tracking-wider text-slate-400">Управление сайтом</p><UNavigationMenu :collapsed="collapsed" :items="navigation" orientation="vertical" tooltip /></template>
+        <template #footer="{ collapsed }"><div class="w-full space-y-2 py-2"><p v-if="!collapsed" class="truncate px-2 text-xs text-slate-500">{{ identity.email }}</p><UButton :label="collapsed ? undefined : 'Выйти'" icon="i-lucide-log-out" aria-label="Выйти" color="neutral" variant="ghost" block @click="auth.logout()" /></div></template>
+      </UDashboardSidebar>
+      <UDashboardPanel :id="section">
+        <template #header><UDashboardNavbar :title="titles[section]"><template #leading><UDashboardSidebarCollapse /></template><template #right><UButton to="/" icon="i-lucide-external-link" label="Открыть сайт" color="neutral" variant="outline" size="sm" /></template></UDashboardNavbar></template>
+        <template #body>
+          <template v-if="section === 'overview'"><div class="admin-intro"><span class="eyebrow">MAGNAT PASSWORD / ADMIN</span><h1>Всё под контролем.</h1><p>Состояние сервиса и управление вашим хранилищем.</p></div><div class="grid gap-5 md:grid-cols-3"><UCard><p class="text-sm text-slate-500">Пользователей</p><p class="mt-3 text-3xl font-semibold">{{ overview?.totalUsers ?? '—' }}</p></UCard><UCard><p class="text-sm text-slate-500">Зашифрованных хранилищ</p><p class="mt-3 text-3xl font-semibold">{{ overview?.vaults ?? '—' }}</p></UCard><UCard><p class="text-sm text-slate-500">Шифрование</p><p class="mt-3 text-2xl font-semibold text-emerald-600">AES-256-GCM</p></UCard></div><UCard class="mt-6"><div class="flex items-start gap-4"><UIcon name="i-lucide-shield-check" class="size-8 shrink-0 text-sky-500" /><div><h2 class="font-semibold">Личные данные остаются личными</h2><p class="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Администратор видит список аккаунтов и общую статистику. Содержимое хранилищ пользователей зашифровано их мастер-паролями. В разделах «Категории» и «Пароли» вы управляете только своими записями.</p><UButton class="mt-5" to="/admin?section=credentials" label="Мои пароли" icon="i-lucide-arrow-right" variant="soft" /></div></div></UCard></template>
+          <AuthGate v-else-if="section === 'categories' || section === 'credentials'"><VaultWorkspace embedded :mode="section" /></AuthGate>
+          <template v-else-if="section === 'users'"><UCard><template #header><div class="flex items-center justify-between"><h2 class="font-semibold">Аккаунты сервиса</h2><UButton color="neutral" variant="outline" label="Обновить" icon="i-lucide-refresh-cw" :loading="checking" @click="restore" /></div></template><div class="overflow-x-auto"><table class="admin-table"><thead><tr><th>Email</th><th>Дата регистрации</th><th>Последний вход</th></tr></thead><tbody><tr v-for="user in overview?.users" :key="user.id"><td>{{ user.email }}</td><td>{{ date(user.createdAt) }}</td><td>{{ date(user.lastSignIn) }}</td></tr></tbody></table></div><p class="mt-4 text-xs text-slate-400">Показаны первые 1000 аккаунтов. Пароли и содержимое хранилищ недоступны администратору.</p></UCard></template>
+          <template v-else-if="section === 'security'"><UCard><template #header><h2 class="font-semibold">Защита хранилища</h2></template><dl class="security-list"><div><dt>Шифрование данных</dt><dd>AES-256-GCM в браузере</dd></div><div><dt>Получение ключа</dt><dd>PBKDF2 · SHA-256 · 600 000 итераций</dd></div><div><dt>Ключ и мастер-пароль</dt><dd>Не передаются на сервер</dd></div><div><dt>Изоляция пользователей</dt><dd>PostgreSQL Row Level Security</dd></div><div><dt>Автоблокировка</dt><dd>Через 5 минут бездействия</dd></div><div><dt>Хранилище файлов</dt><dd>Приватный bucket vault-files, зарезервирован для вложений</dd></div></dl><UAlert class="mt-6" color="warning" variant="soft" title="Сохраните мастер-пароль" description="Сброс пароля аккаунта не восстанавливает мастер-пароль и не расшифровывает записи." /><div class="mt-6 flex flex-wrap gap-3"><UButton :disabled="!vault.exists" label="Скачать зашифрованную копию" icon="i-lucide-download" @click="vault.exportEncrypted()" /><UButton color="neutral" variant="outline" :disabled="!vault.unlocked" label="Заблокировать хранилище" icon="i-lucide-lock-keyhole" @click="vault.lock()" /></div><p class="mt-3 text-xs text-slate-400">Резервная копия содержит шифротекст, соль и параметры шифрования. Для расшифровки нужны мастер-пароль и ID владельца. Открыть или создать хранилище можно в разделе «Пароли».</p><UAlert v-if="vault.error" class="mt-3" color="error" :description="vault.error" /></UCard></template>
+        </template>
+      </UDashboardPanel>
+    </UDashboardGroup>
+  </AuthGate>
+</template>

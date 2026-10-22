@@ -1,0 +1,40 @@
+name: magnat-password
+include:
+  - path:
+      - ./supabase/docker-compose.yml
+      - ./supabase/docker-compose.kong.yml
+      - ./supabase/docker-compose.local.yml
+    env_file: ./supabase/.env
+services:
+  migrate:
+    image: supabase/postgres:17.6.1.136
+    restart: 'no'
+    env_file: ./supabase/.env
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGDATABASE: postgres
+    entrypoint: ['/bin/sh', '-c']
+    command: ['export PGPASSWORD="$$POSTGRES_PASSWORD"; exec psql -v ON_ERROR_STOP=1 -f /migrations/001_vault.sql']
+    volumes:
+      - ./supabase/migrations:/migrations:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NUXT_SUPABASE_URL: http://api-gw:8000
+      NITRO_HOST: 0.0.0.0
+      NITRO_PORT: 3000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      api-gw:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:3003:3000'

@@ -1,0 +1,49 @@
+{
+  "name": "magnat-password",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev --host 0.0.0.0 --port 3003",
+    "dev:local": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "NITRO_HOST=0.0.0.0 NITRO_PORT=3003 nuxt preview",
+    "postinstall": "nuxt prepare",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "typecheck": "nuxt typecheck",
+    "test": "node --test tests/*.test.mjs",
+    "admin:create": "node --env-file=.env scripts/create-admin.mjs"
+  },
+  "dependencies": {
+    "@nuxt/content": "3.16.2",
+    "@nuxt/ui": "4.11.3",
+    "@nuxtjs/i18n": "10.6.0",
+    "@pinia/nuxt": "1.0.3",
+    "@supabase/supabase-js": "2.117.3",
+    "fast-xml-parser": "5.11.2",
+    "nodemailer": "10.1.1",
+    "nuxt": "4.6.1",
+    "nuxt-security": "2.6.0",
+    "pinia": "4.1.0",
+    "vue": "3.5.44",
+    "vue-router": "5.4.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "4.6.7"
+  },
+  "engines": {
+    "node": "^24.15.0"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "1.2.144",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "^24.0.0",
+    "@types/nodemailer": "8.0.2",
+    "esbuild": "0.28.2",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3",
+    "vite": "8.3.4",
+    "vue-tsc": "3.3.13"
+  }
+}
