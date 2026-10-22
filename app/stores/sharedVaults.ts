@@ -1,0 +1,55 @@
+import { defineStore } from 'pinia'
+import type { SharedVault } from '~~/shared/types/sharing'
+import type { VaultData } from '~~/shared/types/vault'
+export const useSharedVaultsStore = defineStore('shared-vaults', () => {
+  const groups = ref<SharedVault[]>([]), loading = ref(false), busy = ref(false), error = ref('')
+  let generation = 0
+  const message = (e: any) => e?.data?.message || e?.data?.statusMessage || e?.message || 'Общие хранилища недоступны'
+  async function fetchGroups(attempt: number) {
+    const rows = await sharedRequest<SharedVault[]>('/api/shared-vaults')
+    if (attempt !== generation || !useVaultStore().unlocked) return false
+    groups.value = rows; return true
+  }
+  async function refresh() {
+    if (loading.value || busy.value || !useVaultStore().unlocked) return
+    const attempt = generation; loading.value = true
+    try { if (await fetchGroups(attempt)) error.value = '' }
+    catch (e) { if (attempt === generation) error.value = message(e) }
+    finally { if (attempt === generation) loading.value = false }
+  }
+  async function mutate<T>(action: () => Promise<T>): Promise<T | null> {
+    if (busy.value || loading.value || !useVaultStore().unlocked) return null
+    const attempt = generation; busy.value = true; error.value = ''
+    try {
+      const result = await action()
+      if (!await fetchGroups(attempt)) return null
+      return result
+    } catch (e: any) {
+      if (attempt === generation) {
+        error.value = message(e)
+        if ([403, 409].includes(e?.statusCode ?? e?.status)) { try { await fetchGroups(attempt) } catch {} }
+      }
+      return null
+    } finally { if (attempt === generation) busy.value = false }
+  }
+  async function create(name: string): Promise<string | null> {
+    const result = await mutate(() => sharedRequest<{ id: string }>('/api/shared-vaults', { method: 'POST', body: { name: name.trim() } }))
+    return result?.id ?? null
+  }
+  function find(id: string) {
+    const group = groups.value.find(g => g.id === id)
+    if (!group) throw new Error('Нет доступа к хранилищу')
+    return group
+  }
+  async function save(id: string, data: VaultData): Promise<boolean> {
+    return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}`, { method: 'PUT', body: { revision: find(id).revision, data } }))
+  }
+  async function invite(id: string, email: string): Promise<boolean> {
+    return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}/members`, { method: 'POST', body: { revision: find(id).revision, email: email.trim() } }))
+  }
+  async function revoke(id: string, userId: string): Promise<boolean> {
+    return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}/members`, { method: 'DELETE', body: { revision: find(id).revision, userId } }))
+  }
+  function lock() { generation++; groups.value = []; busy.value = false; loading.value = false; error.value = '' }
+  return { groups, loading, busy, error, refresh, create, save, invite, revoke, lock }
+})

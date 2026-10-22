@@ -1,0 +1,29 @@
+<script setup lang="ts">
+const selection = defineModel<string>({ default: 'all' })
+const { shared, auth, open, managedId, managed, isOwner, label, name, email, removing, select, manage, create, invite, revoke } = useVaultSwitcher(selection)
+</script>
+<template>
+  <button class="workspace-switch" @click="open = true"><span class="workspace-avatar"><UIcon :name="selection === 'personal' ? 'i-lucide-user-round' : 'i-lucide-vault'" /></span><span><strong>{{ label }}</strong><small>{{ selection === 'personal' ? 'Только для вас' : 'Личные и общие пароли' }}</small></span><UIcon name="i-lucide-chevrons-up-down" /></button>
+  <UModal v-model:open="open" title="Хранилища" description="Выберите хранилище или создайте общее для своей команды.">
+    <template #body>
+      <div class="space-y-2">
+        <button class="vault-choice" :aria-pressed="selection === 'all'" @click="select('all')"><UIcon name="i-lucide-layout-grid" /><span><strong>Все хранилища</strong><small>Все доступные пароли на главной</small></span></button>
+        <button class="vault-choice" :aria-pressed="selection === 'personal'" @click="select('personal')"><UIcon name="i-lucide-user-round" /><span><strong>Личное хранилище</strong><small>Доступно только вам</small></span></button>
+        <div v-for="group in shared.groups" :key="group.id" class="flex items-center gap-2"><button class="vault-choice flex-1" :aria-pressed="selection === group.id" @click="select(group.id)"><UIcon name="i-lucide-users" /><span><strong>{{ group.name }}</strong><small>{{ group.members.length }} участников · {{ group.ownerId === auth.user?.id ? 'Вы владелец' : 'Общее хранилище' }}</small></span></button><UButton icon="i-lucide-settings-2" color="neutral" variant="ghost" :aria-label="`Участники: ${group.name}`" @click="manage(group.id)" /></div>
+      </div>
+      <UButton class="mt-4" size="sm" variant="ghost" icon="i-lucide-refresh-cw" label="Обновить хранилища" :loading="shared.loading" :disabled="shared.busy" @click="shared.refresh()" />
+      <form class="mt-6 space-y-3 border-t border-default pt-5" @submit.prevent="create"><UFormField label="Новое общее хранилище" required><UInput v-model="name" class="w-full" placeholder="Например, Команда маркетинга" :maxlength="80" required /></UFormField><UButton type="submit" icon="i-lucide-plus" label="Создать хранилище" :loading="shared.busy" :disabled="shared.loading || !name.trim()" /></form>
+      <UAlert v-if="shared.error" class="mt-4" color="error" :description="shared.error" />
+    </template>
+  </UModal>
+  <UModal :open="!!managedId" :title="managed?.name || 'Общее хранилище'" description="Участники могут просматривать, добавлять и изменять общие пароли." @update:open="value => { if (!value) managedId = null }">
+    <template #body>
+      <template v-if="managed">
+        <div v-for="member in managed.members" :key="member.userId" class="shared-member"><span class="min-w-0"><strong class="block truncate">{{ member.email }}</strong><small>{{ member.brand === 'light' ? 'Light' : 'Magnat' }} · {{ member.userId === managed.ownerId ? 'Владелец' : 'Участник' }}</small></span><UButton v-if="isOwner && member.userId !== auth.user?.id" color="error" variant="ghost" icon="i-lucide-user-minus" :aria-label="`Отозвать доступ: ${member.email}`" :disabled="shared.busy" @click="removing = member.userId" /></div>
+        <form v-if="isOwner" class="mt-6 space-y-3" @submit.prevent="invite"><UFormField label="Дать доступ по email" required><UInput v-model="email" type="email" class="w-full" placeholder="colleague@example.com" :maxlength="254" required /></UFormField><p class="text-xs leading-5 text-slate-500">Пользователь должен быть зарегистрирован. Доступ действует сразу и не зависит от бренда аккаунта или присутствия владельца онлайн.</p><UButton type="submit" label="Дать доступ" icon="i-lucide-user-plus" :loading="shared.busy" :disabled="shared.loading || !email.trim()" /></form>
+        <UAlert v-if="shared.error" class="mt-4" color="error" :description="shared.error" />
+      </template>
+    </template>
+  </UModal>
+  <UModal :open="!!removing" title="Отозвать доступ?" description="Участник больше не сможет открывать это хранилище или изменять его пароли." @update:open="value => { if (!value) removing = null }"><template #body><UAlert v-if="shared.error" color="error" :description="shared.error" /></template><template #footer><UButton color="neutral" variant="outline" label="Отмена" @click="removing = null" /><UButton color="error" label="Отозвать доступ" :loading="shared.busy" @click="revoke" /></template></UModal>
+</template>

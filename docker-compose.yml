@@ -15,7 +15,7 @@ services:
       PGUSER: postgres
       PGDATABASE: postgres
     entrypoint: ['/bin/sh', '-c']
-    command: ['export PGPASSWORD="$$POSTGRES_PASSWORD"; exec psql -v ON_ERROR_STOP=1 -f /migrations/001_vault.sql']
+    command: ['export PGPASSWORD="$$POSTGRES_PASSWORD"; for migration in /migrations/*.sql; do psql -v ON_ERROR_STOP=1 -f "$$migration" || exit 1; done']
     volumes:
       - ./supabase/migrations:/migrations:ro
     depends_on:

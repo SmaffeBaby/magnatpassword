@@ -17,7 +17,7 @@ export default defineNuxtConfig({
     '/api/**': { headers: { 'Cache-Control': 'no-store' } },
     '/supabase/**': { headers: { 'Cache-Control': 'no-store' } }
   },
-  runtimeConfig: { supabaseUrl: 'http://localhost:8003', supabaseServiceRoleKey: '', public: { supabaseUrl: '/supabase', supabaseAnonKey: '' } },
+  runtimeConfig: { sharedVaultKey: '', supabaseUrl: 'http://localhost:8003', supabaseServiceRoleKey: '', public: { supabaseUrl: '/supabase', supabaseAnonKey: '' } },
   security: {
     headers: { contentSecurityPolicy: { 'upgrade-insecure-requests': false, 'connect-src': ["'self'"], 'img-src': ["'self'", 'data:'], 'frame-ancestors': ["'none'"] }, strictTransportSecurity: false, crossOriginOpenerPolicy: false, originAgentCluster: false },
     rateLimiter: { tokensPerInterval: 300, interval: 300000, driver: { name: 'lruCache' } }
