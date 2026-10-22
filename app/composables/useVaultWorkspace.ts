@@ -1,3 +1,5 @@
+import { cardKey } from '~~/shared/utils/relationships'
+import type { CredentialLink } from '~~/shared/types/vault'
 import type { Credential, Category, VaultData } from '~~/shared/types/vault'
 import type { VaultSource } from '~~/shared/types/sharing'
 import { createId, copyText } from '~/utils/browser'
@@ -8,7 +10,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const { productName } = useAccountBrand()
   const vault = useVaultStore(), auth = useAuthStore(), shared = useSharedVaultsStore(), toast = useToast()
   const workspaceId = useState<string>('selected-vault', () => 'all')
-  const sources = computed<VaultSource[]>(() => [{ id: 'personal', name: 'Личное', data: vault.data }, ...shared.groups.map(g => ({ id: g.id, name: g.name, data: g.data }))])
+  const sources = computed<VaultSource[]>(() => [{ id: 'personal', name: vault.data.name || 'Личное', data: vault.data }, ...shared.groups.map(g => ({ id: g.id, name: g.name, data: g.data }))])
   const visibleSources = computed(() => workspaceId.value === 'all' ? sources.value : sources.value.filter(s => s.id === workspaceId.value))
   const workspaceName = computed(() => workspaceId.value === 'all' ? 'Все хранилища' : sources.value.find(s => s.id === workspaceId.value)?.name ?? 'Хранилище')
   const entries = computed(() => sourceEntries(visibleSources.value)), categories = computed(() => sourceCategories(visibleSources.value))
@@ -17,7 +19,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const entryOpen = ref(false), categoryOpen = ref(false), deleteOpen = ref(false), showPassword = ref(false)
   const editingVaultId = ref('personal'), categoryVaultId = ref('personal')
   const deleting = ref<ScopedCredential | ScopedCategory | null>(null), deletingCategory = ref(false), formError = ref('')
-  const blankEntry = (): Credential => ({ id: '', title: '', url: '', username: '', password: '', notes: '', categoryId: '', favorite: false, createdAt: '', updatedAt: '' })
+  const blankEntry = (): Credential => ({ id: '', title: '', url: '', username: '', password: '', notes: '', categoryId: '', customFields: [], links: [], favorite: false, createdAt: '', updatedAt: '' })
   const form = reactive<Credential>(blankEntry())
   const categoryForm = reactive<Category>({ id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1' })
   const colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9', '#8b5cf6']
@@ -30,8 +32,9 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const category = (filterId: string) => categories.value.find(c => c.filterId === filterId)
   const entryCategory = (entry: ScopedCredential) => source(entry.vaultId)?.data.categories.find(c => c.id === entry.categoryId)
   const categoryCount = (c: ScopedCategory) => entries.value.filter(e => e.vaultId === c.vaultId && e.categoryId === c.id).length
-  const title = computed(() => active.value === 'all' ? 'Все пароли' : active.value === 'favorites' ? 'Избранное' : category(active.value)?.name ?? 'Все пароли')
-  const filtered = computed(() => entries.value.filter(e => (active.value === 'all' || (active.value === 'favorites' ? e.favorite : categoryFilterId(e.vaultId, e.categoryId) === active.value)) && [e.title, e.username, e.url, e.notes, e.vaultName].some(v => v.toLowerCase().includes(query.value.toLowerCase()))).sort((a, b) => sort.value === 'title' ? a.title.localeCompare(b.title, 'ru') : b.updatedAt.localeCompare(a.updatedAt)))
+  const graphMode = computed(() => active.value === 'relationships')
+  const title = computed(() => graphMode.value ? 'Взаимосвязь' : active.value === 'all' ? 'Все пароли' : active.value === 'favorites' ? 'Избранное' : category(active.value)?.name ?? 'Все пароли')
+  const filtered = computed(() => entries.value.filter(e => (active.value === 'all' || (active.value === 'favorites' ? e.favorite : categoryFilterId(e.vaultId, e.categoryId) === active.value)) && [e.title, e.username, e.url, e.notes, e.vaultName, ...(e.customFields ?? []).filter(f => f.type !== 'secret').map(f => `${f.label} ${f.value}`)].some(v => v.toLowerCase().includes(query.value.toLowerCase()))).sort((a, b) => sort.value === 'title' ? a.title.localeCompare(b.title, 'ru') : b.updatedAt.localeCompare(a.updatedAt)))
   const categoryMode = computed(() => props.mode === 'categories')
   function copyData(id: string): VaultData | null {
     const value = source(id)?.data
@@ -44,7 +47,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     editingVaultId.value = entry?.vaultId ?? defaultTarget()
     const next = entry ?? { ...blankEntry(), categoryId: category(active.value)?.id ?? '' }
     // Copy credential fields only; source labels never enter the encrypted payload.
-    for (const name of Object.keys(blankEntry()) as (keyof Credential)[]) (form as any)[name] = next[name]
+    for (const name of Object.keys(blankEntry()) as (keyof Credential)[]) (form as any)[name] = JSON.parse(JSON.stringify(next[name] ?? blankEntry()[name]))
     showPassword.value = false; formError.value = ''; entryOpen.value = true
   }
   function editCategory(value?: ScopedCategory) {
@@ -53,13 +56,28 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     formError.value = ''; categoryOpen.value = true
   }
   function select(id: string) { active.value = id; mobileOpen.value = false }
+  const allEntries = computed(() => sourceEntries(sources.value))
+  const relationTargets = computed(() => [{ label: 'Выберите карточку', value: '__none' }, ...allEntries.value.filter(e => !(e.id === form.id && e.vaultId === editingVaultId.value)).map(e => ({ label: `${e.title} · ${e.vaultName}`, value: cardKey(e.vaultId, e.id) }))])
+  const fieldTypes = [{ label: 'Текст', value: 'text' }, { label: 'Секрет', value: 'secret' }, { label: 'Ссылка', value: 'url' }]
+  const baseFieldOptions = [{ label: 'Вся карточка', value: 'card' }, { label: 'Название', value: 'title' }, { label: 'Сайт', value: 'url' }, { label: 'Логин', value: 'username' }, { label: 'Пароль', value: 'password' }, { label: 'Заметка', value: 'notes' }]
+  const sourceFieldOptions = computed(() => [...baseFieldOptions, ...(form.customFields ?? []).map(f => ({ label: f.label || 'Без названия', value: f.id }))])
+  function addCustomField() { (form.customFields ??= []).push({ id: createId(), label: '', value: '', type: 'text' }) }
+  function removeCustomField(id: string) { form.customFields = form.customFields?.filter(f => f.id !== id); for (const link of form.links ?? []) if (link.sourceFieldId === id) link.sourceFieldId = 'card' }
+  function addLink() { (form.links ??= []).push({ id: createId(), targetVaultId: '', targetEntryId: '', sourceFieldId: 'card', targetFieldId: 'card', label: '' }) }
+  function removeLink(id: string) { form.links = form.links?.filter(l => l.id !== id) }
+  function linkTarget(link: CredentialLink) { return link.targetEntryId ? cardKey(link.targetVaultId, link.targetEntryId) : '__none' }
+  function setLinkTarget(link: CredentialLink, key: string) { const target = allEntries.value.find(e => cardKey(e.vaultId, e.id) === key); link.targetVaultId = target?.vaultId || ''; link.targetEntryId = target?.id || ''; link.targetFieldId = 'card' }
+  function targetFieldOptions(link: CredentialLink) { const target = allEntries.value.find(e => e.id === link.targetEntryId && e.vaultId === link.targetVaultId); return [...baseFieldOptions, ...(target?.customFields ?? []).map(f => ({ label: f.label, value: f.id }))] }
+  const incomingLinks = computed(() => allEntries.value.flatMap(e => (e.links ?? []).filter(l => l.targetEntryId === form.id && l.targetVaultId === editingVaultId.value).map(l => ({ key: `${e.vaultId}/${l.id}`, title: e.title, vaultName: e.vaultName, label: l.label }))))
   async function saveEntry() {
     formError.value = ''
     if (!form.title.trim() || !form.password) { formError.value = 'Укажите название и пароль'; return }
     if (form.url && !safeUrl(form.url)) { formError.value = 'Укажите корректный HTTP или HTTPS адрес'; return }
+    if ((form.customFields ?? []).some(f => !f.label.trim())) { formError.value = 'Укажите названия дополнительных полей'; return }
+    if ((form.links ?? []).some(l => !l.targetEntryId || !l.targetVaultId || l.targetEntryId === form.id && l.targetVaultId === editingVaultId.value)) { formError.value = 'Выберите другую карточку для каждой связи'; return }
     const next = copyData(editingVaultId.value), now = new Date().toISOString()
     if (!next) return
-    const entry: Credential = { ...form, title: form.title.trim(), url: form.url ? safeUrl(form.url)! : '', id: form.id || createId(), createdAt: form.createdAt || now, updatedAt: now }
+    const entry: Credential = { ...JSON.parse(JSON.stringify(form)), title: form.title.trim(), url: form.url ? safeUrl(form.url)! : '', id: form.id || createId(), createdAt: form.createdAt || now, updatedAt: now }
     const index = next.entries.findIndex(e => e.id === entry.id)
     if (index >= 0) next.entries[index] = entry; else next.entries.push(entry)
     if (await saveData(editingVaultId.value, next)) { entryOpen.value = false; Object.assign(form, blankEntry()); toast.add({ title: 'Карточка сохранена', icon: 'i-lucide-check', color: 'success' }) }
@@ -95,10 +113,10 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     catch { toast.add({ title: 'Браузер не разрешил копирование', color: 'error' }) }
   }
   function host(url: string) { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return 'Приложение или сервис' } }
-  watch(workspaceId, () => { active.value = 'all'; query.value = ''; mobileOpen.value = false })
+  watch(workspaceId, () => { if (active.value !== 'relationships') active.value = 'all'; query.value = ''; mobileOpen.value = false })
   function resetEntryCategory() { if (!form.id) form.categoryId = '' }
   watch(() => shared.groups.map(g => g.id), () => {
-    if (!['all', 'favorites'].includes(active.value) && !category(active.value)) active.value = 'all'
+    if (!['all', 'favorites', 'relationships'].includes(active.value) && !category(active.value)) active.value = 'all'
     if (deleting.value && deleting.value.vaultId !== 'personal' && !source(deleting.value.vaultId)) { deleting.value = null; deleteOpen.value = false }
     if (!['all', 'personal'].includes(workspaceId.value) && !shared.groups.some(g => g.id === workspaceId.value)) workspaceId.value = 'all'
     if (entryOpen.value && editingVaultId.value !== 'personal' && !source(editingVaultId.value)) { entryOpen.value = false; Object.assign(form, blankEntry()) }
@@ -106,5 +124,5 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   })
   watch(() => vault.unlocked, value => { if (!value) { entryOpen.value = false; categoryOpen.value = false; deleteOpen.value = false; Object.assign(form, blankEntry()); query.value = ''; deleting.value = null; workspaceId.value = 'all'; Object.assign(categoryForm, { id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1' }) } })
   onBeforeUnmount(() => Object.assign(form, blankEntry()))
-  return { vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
+  return { graphMode, allEntries, relationTargets, fieldTypes, sourceFieldOptions, incomingLinks, addCustomField, removeCustomField, addLink, removeLink, linkTarget, setLinkTarget, targetFieldOptions, vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
 }

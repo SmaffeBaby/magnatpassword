@@ -1,11 +1,12 @@
 import type { H3Event } from 'h3'
 import { z } from 'zod'
+import { withoutDefaultCategories } from '../../shared/utils/vault-data'
 import { openSharedVault } from './shared-crypto'
 import type { VaultData } from '../../shared/types/vault'
 export const sharedDataSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(1), name: z.string().trim().min(1).max(80).optional(),
   categories: z.array(z.object({ id: z.string().min(1).max(128), name: z.string().trim().min(1).max(60), icon: z.string().regex(/^i-lucide-[a-z0-9-]+$/), color: z.string().regex(/^#[0-9a-fA-F]{6}$/) }).strict()).max(500),
-  entries: z.array(z.object({ id: z.uuid(), title: z.string().trim().min(1).max(120), url: z.string().max(2000), username: z.string().max(300), password: z.string().min(1).max(1024), notes: z.string().max(10000), categoryId: z.string().max(128), favorite: z.boolean(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }).strict()).max(5000)
+  entries: z.array(z.object({ customFields: z.array(z.object({ id: z.uuid(), label: z.string().trim().min(1).max(60), value: z.string().max(4000), type: z.enum(['text', 'secret', 'url']) }).strict()).max(24).optional(), links: z.array(z.object({ id: z.uuid(), targetVaultId: z.union([z.literal('personal'), z.uuid()]), targetEntryId: z.uuid(), sourceFieldId: z.union([z.enum(['card', 'title', 'url', 'username', 'password', 'notes']), z.uuid()]).optional(), targetFieldId: z.union([z.enum(['card', 'title', 'url', 'username', 'password', 'notes']), z.uuid()]).optional(), label: z.string().max(100).optional() }).strict()).max(50).optional(), id: z.uuid(), title: z.string().trim().min(1).max(120), url: z.string().max(2000), username: z.string().max(300), password: z.string().min(1).max(1024), notes: z.string().max(10000), categoryId: z.string().max(128), favorite: z.boolean(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }).strict()).max(5000)
 }).strict()
 export const revisionSchema = z.number().int().positive()
 export async function sharedBody<T extends z.ZodType>(event: H3Event, schema: T): Promise<z.infer<T>> {
@@ -42,7 +43,7 @@ export function sharedSecret(event: H3Event): string {
   return secret
 }
 export function decodeShared(event: H3Event, row: { encrypted_data: any; id: string; key_epoch: number }): VaultData {
-  try { return sharedDataSchema.parse(openSharedVault(row.encrypted_data, sharedSecret(event), row.id, row.key_epoch)) }
+  try { return withoutDefaultCategories(sharedDataSchema.parse(openSharedVault(row.encrypted_data, sharedSecret(event), row.id, row.key_epoch))) }
   catch { throw createError({ statusCode: 503, statusMessage: 'Shared vault request failed', message: 'Не удалось расшифровать общее хранилище' }) }
 }
 export async function mutateShared(context: Awaited<ReturnType<typeof requireSharedUser>>, action: string, id: string, revision: number, payload: Record<string, unknown>) {

@@ -50,6 +50,9 @@ export const useSharedVaultsStore = defineStore('shared-vaults', () => {
   async function revoke(id: string, userId: string): Promise<boolean> {
     return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}/members`, { method: 'DELETE', body: { revision: find(id).revision, userId } }))
   }
+  async function rename(id: string, name: string): Promise<boolean> {
+    return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}`, { method: 'PATCH', body: { revision: find(id).revision, name: name.trim() } }))
+  }
   function lock() { generation++; groups.value = []; busy.value = false; loading.value = false; error.value = '' }
-  return { groups, loading, busy, error, refresh, create, save, invite, revoke, lock }
+  return { groups, loading, busy, error, refresh, create, save, invite, revoke, rename, lock }
 })
