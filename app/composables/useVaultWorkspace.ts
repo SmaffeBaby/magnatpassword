@@ -1,3 +1,6 @@
+import { addPeriod, todayDate, validDate, nextPaidUntil, subscriptionRows } from '~~/shared/utils/subscriptions'
+import type { AppNotification } from '~~/shared/types/subscriptions'
+import type { CustomField } from '~~/shared/types/vault'
 import { cardKey } from '~~/shared/utils/relationships'
 import type { CredentialLink } from '~~/shared/types/vault'
 import type { Credential, Category, VaultData } from '~~/shared/types/vault'
@@ -21,6 +24,8 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const deleting = ref<ScopedCredential | ScopedCategory | null>(null), deletingCategory = ref(false), formError = ref('')
   const blankEntry = (): Credential => ({ id: '', title: '', url: '', username: '', password: '', notes: '', categoryId: '', customFields: [], links: [], favorite: false, createdAt: '', updatedAt: '' })
   const form = reactive<Credential>(blankEntry())
+  const subscriptionSettings = useSubscriptionSettings(() => form.customFields ?? [])
+  watch(entryOpen, open => { if (!open) subscriptionSettings.subscriptionOpen.value = false })
   const categoryForm = reactive<Category>({ id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1' })
   const colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9', '#8b5cf6']
   const icons = ['i-lucide-folder', 'i-lucide-briefcase-business', 'i-lucide-user-round', 'i-lucide-landmark', 'i-lucide-app-window', 'i-lucide-globe', 'i-lucide-gamepad-2', 'i-lucide-shopping-bag']
@@ -32,8 +37,10 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const category = (filterId: string) => categories.value.find(c => c.filterId === filterId)
   const entryCategory = (entry: ScopedCredential) => source(entry.vaultId)?.data.categories.find(c => c.id === entry.categoryId)
   const categoryCount = (c: ScopedCategory) => entries.value.filter(e => e.vaultId === c.vaultId && e.categoryId === c.id).length
+  const calendarMode = computed(() => active.value === 'subscriptions')
+  const subscriptionCount = computed(() => subscriptionRows(entries.value).length)
   const graphMode = computed(() => active.value === 'relationships')
-  const title = computed(() => graphMode.value ? 'Взаимосвязь' : active.value === 'all' ? 'Все пароли' : active.value === 'favorites' ? 'Избранное' : category(active.value)?.name ?? 'Все пароли')
+  const title = computed(() => calendarMode.value ? 'Календарь подписок' : graphMode.value ? 'Взаимосвязь' : active.value === 'all' ? 'Все пароли' : active.value === 'favorites' ? 'Избранное' : category(active.value)?.name ?? 'Все пароли')
   const filtered = computed(() => entries.value.filter(e => (active.value === 'all' || (active.value === 'favorites' ? e.favorite : categoryFilterId(e.vaultId, e.categoryId) === active.value)) && [e.title, e.username, e.url, e.notes, e.vaultName, ...(e.customFields ?? []).filter(f => f.type !== 'secret').map(f => `${f.label} ${f.value}`)].some(v => v.toLowerCase().includes(query.value.toLowerCase()))).sort((a, b) => sort.value === 'title' ? a.title.localeCompare(b.title, 'ru') : b.updatedAt.localeCompare(a.updatedAt)))
   const categoryMode = computed(() => props.mode === 'categories')
   function copyData(id: string): VaultData | null {
@@ -58,10 +65,35 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   function select(id: string) { active.value = id; mobileOpen.value = false }
   const allEntries = computed(() => sourceEntries(sources.value))
   const relationTargets = computed(() => [{ label: 'Выберите карточку', value: '__none' }, ...allEntries.value.filter(e => !(e.id === form.id && e.vaultId === editingVaultId.value)).map(e => ({ label: `${e.title} · ${e.vaultName}`, value: cardKey(e.vaultId, e.id) }))])
-  const fieldTypes = [{ label: 'Текст', value: 'text' }, { label: 'Секрет', value: 'secret' }, { label: 'Ссылка', value: 'url' }]
+  const fieldTypes = [{ label: 'Текст', value: 'text' }, { label: 'Секрет', value: 'secret' }, { label: 'Ссылка', value: 'url' }, { label: 'Подписка', value: 'subscription' }]
   const baseFieldOptions = [{ label: 'Вся карточка', value: 'card' }, { label: 'Название', value: 'title' }, { label: 'Сайт', value: 'url' }, { label: 'Логин', value: 'username' }, { label: 'Пароль', value: 'password' }, { label: 'Заметка', value: 'notes' }]
   const sourceFieldOptions = computed(() => [...baseFieldOptions, ...(form.customFields ?? []).map(f => ({ label: f.label || 'Без названия', value: f.id }))])
   function addCustomField() { (form.customFields ??= []).push({ id: createId(), label: '', value: '', type: 'text' }) }
+  function changeFieldType(field: CustomField, type: string) {
+    if (!['text','secret','url','subscription'].includes(type)) return
+    field.type = type as CustomField['type']
+    if (type === 'subscription') {
+      const today = todayDate()
+      field.subscription ??= {price:0,currency:'RUB',periodCount:1,periodUnit:'month',startsOn:today,paidFrom:today,paidUntil:addPeriod(today,1,'month'),autoRenew:true}
+      field.label ||= 'Подписка'; field.value = ''
+      subscriptionSettings.editSubscription(field)
+    } else delete field.subscription
+  }
+  async function renewSubscription(entry: ScopedCredential, fieldId: string) {
+    if (busy.value) return
+    const next = copyData(entry.vaultId), value = next?.entries.find(e => e.id === entry.id)
+    const sub = value?.customFields?.find(f => f.id === fieldId)?.subscription
+    if (!next || !value || !sub) return
+    const until = nextPaidUntil(sub)
+    if (!until) { toast.add({title:'Не удалось рассчитать срок подписки',color:'error'}); return }
+    sub.paidFrom = sub.paidUntil; sub.paidUntil = until; value.updatedAt = new Date().toISOString()
+    if (await saveData(entry.vaultId,next)) { toast.add({title:'Оплата отмечена, срок продлён',color:'success'}); await useNotificationsStore().refresh() }
+  }
+  function openNotification(notification: AppNotification) {
+    const entry = allEntries.value.find(e => e.id === notification.entryId && e.vaultId === notification.vaultId)
+    if (entry) editEntry(entry)
+    else toast.add({title:'Карточка больше недоступна',color:'neutral'})
+  }
   function removeCustomField(id: string) { form.customFields = form.customFields?.filter(f => f.id !== id); for (const link of form.links ?? []) if (link.sourceFieldId === id) link.sourceFieldId = 'card' }
   function addLink() { (form.links ??= []).push({ id: createId(), targetVaultId: '', targetEntryId: '', sourceFieldId: 'card', targetFieldId: 'card', label: '' }) }
   function removeLink(id: string) { form.links = form.links?.filter(l => l.id !== id) }
@@ -74,6 +106,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     if (!form.title.trim() || !form.password) { formError.value = 'Укажите название и пароль'; return }
     if (form.url && !safeUrl(form.url)) { formError.value = 'Укажите корректный HTTP или HTTPS адрес'; return }
     if ((form.customFields ?? []).some(f => !f.label.trim())) { formError.value = 'Укажите названия дополнительных полей'; return }
+    if ((form.customFields ?? []).some(f => f.type === 'subscription' && (!f.subscription || !validDate(f.subscription.startsOn) || !validDate(f.subscription.paidUntil) || f.subscription.paidUntil < f.subscription.startsOn || !Number.isFinite(f.subscription.price) || f.subscription.price < 0 || !Number.isInteger(f.subscription.periodCount) || f.subscription.periodCount < 1))) { formError.value = 'Проверьте цену, период и даты подписки'; return }
     if ((form.links ?? []).some(l => !l.targetEntryId || !l.targetVaultId || l.targetEntryId === form.id && l.targetVaultId === editingVaultId.value)) { formError.value = 'Выберите другую карточку для каждой связи'; return }
     const next = copyData(editingVaultId.value), now = new Date().toISOString()
     if (!next) return
@@ -113,10 +146,10 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     catch { toast.add({ title: 'Браузер не разрешил копирование', color: 'error' }) }
   }
   function host(url: string) { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return 'Приложение или сервис' } }
-  watch(workspaceId, () => { if (active.value !== 'relationships') active.value = 'all'; query.value = ''; mobileOpen.value = false })
+  watch(workspaceId, () => { if (!['relationships', 'subscriptions'].includes(active.value)) active.value = 'all'; query.value = ''; mobileOpen.value = false })
   function resetEntryCategory() { if (!form.id) form.categoryId = '' }
   watch(() => shared.groups.map(g => g.id), () => {
-    if (!['all', 'favorites', 'relationships'].includes(active.value) && !category(active.value)) active.value = 'all'
+    if (!['all', 'favorites', 'relationships', 'subscriptions'].includes(active.value) && !category(active.value)) active.value = 'all'
     if (deleting.value && deleting.value.vaultId !== 'personal' && !source(deleting.value.vaultId)) { deleting.value = null; deleteOpen.value = false }
     if (!['all', 'personal'].includes(workspaceId.value) && !shared.groups.some(g => g.id === workspaceId.value)) workspaceId.value = 'all'
     if (entryOpen.value && editingVaultId.value !== 'personal' && !source(editingVaultId.value)) { entryOpen.value = false; Object.assign(form, blankEntry()) }
@@ -124,5 +157,5 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   })
   watch(() => vault.unlocked, value => { if (!value) { entryOpen.value = false; categoryOpen.value = false; deleteOpen.value = false; Object.assign(form, blankEntry()); query.value = ''; deleting.value = null; workspaceId.value = 'all'; Object.assign(categoryForm, { id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1' }) } })
   onBeforeUnmount(() => Object.assign(form, blankEntry()))
-  return { graphMode, allEntries, relationTargets, fieldTypes, sourceFieldOptions, incomingLinks, addCustomField, removeCustomField, addLink, removeLink, linkTarget, setLinkTarget, targetFieldOptions, vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
+  return { ...subscriptionSettings, calendarMode, subscriptionCount, changeFieldType, renewSubscription, openNotification, graphMode, allEntries, relationTargets, fieldTypes, sourceFieldOptions, incomingLinks, addCustomField, removeCustomField, addLink, removeLink, linkTarget, setLinkTarget, targetFieldOptions, vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
 }

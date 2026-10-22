@@ -41,7 +41,7 @@ export function buildRelationships(entries: ScopedCredential[], mode: Relationsh
     const titles = entries.map(e => ({ id: cardKey(e.vaultId, e.id), title: normalize(e.title) }))
     const values = new Map<string, string>()
     for (const entry of entries) for (const field of entry.customFields ?? []) {
-      if (field.type === 'secret') continue
+      if (field.type === 'secret' || field.type === 'subscription') continue
       const label = normalize(field.label), value = field.value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru-RU')
       if (!label || !value) continue
       const id = `field:${JSON.stringify([label, value])}`

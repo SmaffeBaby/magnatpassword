@@ -8,7 +8,7 @@ const service = createClient(api, process.env.NUXT_SUPABASE_SERVICE_ROLE_KEY, { 
 const run = randomUUID(), users = []
 let checks = 0
 async function request(user, path, method = 'GET', body, expected = 200) {
-  const response = await fetch(app + (path.startsWith('/personal-vault') ? '/api' : '/api/shared-vaults') + path, { method, headers: { 'Content-Type': 'application/json', ...(user ? { Authorization: `Bearer ${user.token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) })
+  const response = await fetch(app + ((path.startsWith('/personal-vault') || path.startsWith('/notifications')) ? '/api' : '/api/shared-vaults') + path, { method, headers: { 'Content-Type': 'application/json', ...(user ? { Authorization: `Bearer ${user.token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) })
   const result = await response.json()
   assert.equal(response.status, expected, `${method} ${path}: ${JSON.stringify(result)}`)
   checks++; return result
@@ -27,6 +27,7 @@ async function account(brand) {
 try {
   const owner = await account('magnat'), member = await account('light'), outsider = await account('magnat')
   await request(null, '', 'GET', undefined, 401)
+  await request(null, '/notifications', 'GET', undefined, 401)
   await request(null, '/personal-vault', 'GET', undefined, 401)
   const personal = await request(owner, '/personal-vault')
   assert.equal(personal.migrationRequired, false)
@@ -88,11 +89,52 @@ try {
   const fieldId = randomUUID()
   data.entries[0].customFields = [{ id: fieldId, label: 'API ключ', value: 'fixture-secret-field', type: 'secret' }]
   data.entries.push({ ...data.entries[0], id: randomUUID(), title: 'Linked fixture', customFields: [] })
+  const subscriptionId = randomUUID()
+  const today = new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Moscow'}).format(new Date())
+  const subscription = {price:249.5,currency:'CNY',periodCount:1,periodUnit:'month',startsOn:today,paidFrom:today,paidUntil:today,autoRenew:true,reminders:{leadDays:[0],repeatEveryDays:1,customDates:[]}}
+  data.entries[0].customFields.push({id:subscriptionId,label:'Подписка',value:'',type:'subscription',subscription})
   data.entries[0].links = [{ id: randomUUID(), targetVaultId: id, targetEntryId: data.entries[1].id, sourceFieldId: fieldId, targetFieldId: 'card', label: 'Интеграция' }]
   await request(member, `/${id}`, 'PUT', { revision: group.revision, data })
   group = (await request(owner, '')).find(g => g.id === id)
   assert.deepEqual(group.data.entries[0].links, data.entries[0].links)
   assert.deepEqual(group.data.entries[0].customFields, data.entries[0].customFields)
+  const ownerInbox = await request(owner,'/notifications')
+  const memberInbox = await request(member,'/notifications')
+  const reminder = memberInbox.notifications.find(n=>n.kind==='subscription'&&n.fieldId===subscriptionId)
+  assert.ok(reminder,'shared subscriptions generate reminders for a member without owner online')
+  assert.ok(ownerInbox.notifications.some(n=>n.kind==='shared'),'owner sees changes made by another participant')
+  assert.ok(memberInbox.notifications.some(n=>n.kind==='shared'),'member receives invite/rename notifications')
+  assert.equal(JSON.stringify(memberInbox).includes('fixture-secret-field'),false)
+  assert.equal(JSON.stringify(memberInbox).includes('not-a-real-password'),false)
+  const again = await request(member,'/notifications')
+  assert.equal(again.notifications.filter(n=>n.kind==='subscription').length,1,'polling must not duplicate a scheduled reminder')
+  await request(outsider,'/notifications/read','POST',{ids:[reminder.id]})
+  assert.equal((await request(member,'/notifications')).notifications.find(n=>n.id===reminder.id).readAt,null,'another user cannot mark notifications read')
+  await request(member,'/notifications/read','POST',{ids:[reminder.id]})
+  assert.ok((await request(member,'/notifications')).notifications.find(n=>n.id===reminder.id).readAt)
+  const settings={sharedChanges:false,subscriptions:false,leadDays:[5,1,0],repeatEveryDays:2,customDates:[]}
+  await request(member,'/notifications/settings','PUT',{...settings,userId:owner.id},400)
+  await request(member,'/notifications/settings','PUT',settings)
+  assert.equal((await request(member,'/notifications')).notifications.length,0)
+  assert.equal((await request(owner,'/notifications')).settings.sharedChanges,true,'settings belong only to current user')
+  await request(member,'/notifications/settings','PUT',{...settings,subscriptions:true,sharedChanges:true})
+  const invalid = structuredClone(data)
+  invalid.entries[0].customFields.find(f=>f.id===subscriptionId).subscription.currency='GBP'
+  await request(member,`/${id}`,'PUT',{revision:group.revision,data:invalid},400)
+  invalid.entries[0].customFields.find(f=>f.id===subscriptionId).subscription.currency='USD'
+  invalid.entries[0].customFields.find(f=>f.id===subscriptionId).subscription.paidUntil='2026-02-30'
+  await request(member,`/${id}`,'PUT',{revision:group.revision,data:invalid},400)
+  for (const table of ['app_notifications','notification_preferences']) {
+    const directNotifications=await member.client.from(table).select('*')
+    assert.ok(directNotifications.error||!directNotifications.data.length,'notification tables must not expose other users through REST')
+  }
+  const forgedNotice=await outsider.client.rpc('notify_shared_change',{p_actor:owner.id,p_vault:id,p_action:'save'})
+  assert.ok(forgedNotice.error,'clients cannot forge vault events')
+  // A new paid-through date hides the previous cycle reminder, with no auto-renewal assumed.
+  data.entries[0].customFields.find(f=>f.id===subscriptionId).subscription.paidUntil='2099-12-31'
+  await request(member,`/${id}`,'PUT',{revision:group.revision,data})
+  group=(await request(owner,'')).find(g=>g.id===id)
+  assert.equal((await request(member,'/notifications')).notifications.filter(n=>n.kind==='subscription').length,0)
   const personalBeforeRename = await request(owner, '/personal-vault')
   await request(owner, '/personal-vault', 'PUT', { revision: personalBeforeRename.revision, data: { ...personalBeforeRename.data, name: 'My renamed vault' } })
   assert.equal((await request(owner, '/personal-vault')).data.name, 'My renamed vault')
@@ -104,6 +146,7 @@ try {
   assert.ok(forbiddenMutation.error, 'client roles cannot impersonate the owner through privileged RPC')
   await request(owner, `/${id}/members`, 'DELETE', { revision: group.revision, userId: member.id })
   assert.equal((await request(member, '')).length, 0)
+  assert.equal((await request(member,'/notifications')).notifications.length,0,'revoked members lose vault notifications')
   await request(member, `/${id}`, 'PUT', { revision: received.revision, data }, 403)
   assert.equal((await request(outsider, '')).length, 0)
   const rotated = await service.from('shared_vaults').select('key_epoch,encrypted_data').eq('id', id).single()
