@@ -1,1 +1,1 @@
-export default defineAppConfig({ ui: { colors: { primary: 'sky', neutral: 'slate' } } })
+export default defineAppConfig({ ui: { colors: { primary: 'magnat', neutral: 'slate' } } })

@@ -1,32 +1,24 @@
 <script setup lang="ts">
 const props = defineProps<{ admin?: boolean }>()
-const auth = useAuthStore(), vault = useVaultStore()
-const email = ref(''), password = ref(''), register = ref(false), master = ref(''), confirmation = ref('')
-const localError = ref('')
-watch(() => auth.user?.id, id => { if (id && !props.admin) vault.check() }, { immediate: true })
-async function authenticate() { await auth.authenticate(email.value, password.value, register.value); password.value = '' }
-async function openVault() {
-  localError.value = ''
-  if (!vault.exists && master.value !== confirmation.value) { localError.value = 'Мастер-пароли не совпадают'; return }
-  await vault.unlock(master.value); master.value = ''; confirmation.value = ''
-}
+const { auth, vault, email, password, register, master, confirmation, localError, authenticate, openVault, previewBrand, brandOptions, toggleRegistration } = useAuthGate(props)
 </script>
 <template>
   <div v-if="auth.checking || (!admin && auth.user && vault.checking)" class="gate"><UIcon name="i-lucide-loader-circle" class="size-6 animate-spin" /><p>Проверяем сессию…</p></div>
   <div v-else-if="!auth.user || (!admin && !vault.unlocked)" class="gate">
-    <NuxtLink to="/" class="brand gate-brand"><span class="brand-icon"><UIcon name="i-lucide-shield-check" /></span>magnat<span class="brand-light">password</span></NuxtLink>
+    <BrandLogo class="gate-brand" />
     <UCard class="w-full max-w-md">
       <template v-if="!auth.user">
         <span class="eyebrow">{{ admin ? 'ПАНЕЛЬ УПРАВЛЕНИЯ' : 'ВАШЕ ЛИЧНОЕ ПРОСТРАНСТВО' }}</span>
         <h1 class="mt-3 text-2xl font-semibold tracking-tight">{{ register ? 'Создать аккаунт' : 'Добро пожаловать' }}</h1>
         <p class="mt-2 mb-7 text-sm text-slate-500">{{ register ? 'Все ваши доступы. Под одним надёжным замком.' : 'Войдите, чтобы открыть своё хранилище.' }}</p>
         <form class="space-y-5" @submit.prevent="authenticate">
+          <UFormField v-if="register" label="Бренд аккаунта" required><USelect v-model="previewBrand" :items="brandOptions" class="w-full" size="lg" aria-label="Бренд аккаунта" /><p class="mt-2 text-xs text-slate-500">Оформление и логотип будут сохранены для вашего аккаунта.</p></UFormField>
           <UFormField label="Email" required><UInput v-model="email" type="email" autocomplete="username" class="w-full" size="lg" required placeholder="you@example.com" /></UFormField>
           <UFormField label="Пароль аккаунта" required><UInput v-model="password" type="password" :autocomplete="register ? 'new-password' : 'current-password'" :minlength="register ? 12 : undefined" class="w-full" size="lg" required placeholder="Введите пароль" /></UFormField>
           <UAlert v-if="auth.error" color="error" variant="soft" :description="auth.error" />
           <UButton type="submit" block size="lg" :loading="auth.pending">{{ register ? 'Создать аккаунт' : 'Войти' }}<UIcon name="i-lucide-arrow-right" /></UButton>
         </form>
-        <button v-if="!admin" class="mt-6 w-full text-center text-sm text-slate-500 hover:text-sky-600" @click="register = !register; auth.error = ''">{{ register ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться' }}</button>
+        <button v-if="!admin" class="mt-6 w-full text-center text-sm text-slate-500 hover:text-primary-600" @click="toggleRegistration">{{ register ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться' }}</button>
       </template>
       <template v-else>
         <span class="eyebrow">СКВОЗНОЕ ШИФРОВАНИЕ</span>
@@ -44,7 +36,7 @@ async function openVault() {
       </template>
     </UCard>
     <p class="gate-note"><UIcon name="i-lucide-shield-check" /> AES-256-GCM · Ваши секреты остаются вашими</p>
-    <NuxtLink v-if="!admin" to="/admin" class="text-xs text-slate-400 hover:text-sky-600">Панель управления <span aria-hidden="true">↗</span></NuxtLink>
+    <NuxtLink v-if="!admin" to="/admin" class="text-xs text-slate-400 hover:text-primary-600">Панель управления <span aria-hidden="true">↗</span></NuxtLink>
   </div>
   <slot v-else />
 </template>

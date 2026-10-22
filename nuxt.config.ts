@@ -4,7 +4,7 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-10-15',
   srcDir: 'app/', serverDir: 'server/',
   devtools: { enabled: false },
-  app: { head: { title: 'Magnat Password', htmlAttrs: { lang: 'ru' }, meta: [{ name: 'description', content: 'Личное зашифрованное хранилище паролей' }, { name: 'robots', content: 'noindex, nofollow' }] } },
+  app: { head: { title: 'Magnat Password', htmlAttrs: { lang: 'ru' }, link: [{ key: 'brand-favicon', rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }], meta: [{ name: 'description', content: 'Личное зашифрованное хранилище паролей' }, { name: 'robots', content: 'noindex, nofollow' }] } },
   css: ['~/assets/css/main.css'],
   modules: ['./modules/breakpoints', '@nuxt/ui', 'nuxt-security', '@nuxt/content', '@pinia/nuxt', '@nuxtjs/i18n'],
   experimental: { appManifest: false },
