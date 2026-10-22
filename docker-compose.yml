@@ -37,4 +37,4 @@ services:
       api-gw:
         condition: service_healthy
     ports:
-      - '127.0.0.1:3003:3000'
+      - '0.0.0.0:3003:3000'

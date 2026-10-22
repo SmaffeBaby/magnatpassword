@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const props = defineProps<{ admin?: boolean }>()
-const { auth, vault, email, password, register, master, confirmation, localError, authenticate, openVault, previewBrand, brandOptions, toggleRegistration } = useAuthGate(props)
+const { auth, vault, email, password, register, master, localError, authenticate, openVault, previewBrand, brandOptions, toggleRegistration } = useAuthGate(props)
 </script>
 <template>
   <div v-if="auth.checking || (!admin && auth.user && vault.checking)" class="gate"><UIcon name="i-lucide-loader-circle" class="size-6 animate-spin" /><p>Проверяем сессию…</p></div>
@@ -21,16 +21,16 @@ const { auth, vault, email, password, register, master, confirmation, localError
         <button v-if="!admin" class="mt-6 w-full text-center text-sm text-slate-500 hover:text-primary-600" @click="toggleRegistration">{{ register ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться' }}</button>
       </template>
       <template v-else>
-        <span class="eyebrow">СКВОЗНОЕ ШИФРОВАНИЕ</span>
-        <h1 class="mt-3 text-2xl font-semibold tracking-tight">{{ vault.exists ? 'Откройте хранилище' : 'Ваш главный ключ' }}</h1>
-        <p class="mt-2 mb-6 text-sm text-slate-500">{{ vault.exists ? 'Введите мастер-пароль. Ваши данные расшифруются только в этом браузере.' : 'Создайте отдельный мастер-пароль от 12 символов. Сохраните его в надёжном месте: восстановить его невозможно.' }}</p>
+        <span class="eyebrow">ЛИЧНОЕ ХРАНИЛИЩЕ</span>
+        <h1 class="mt-3 text-2xl font-semibold tracking-tight">{{ vault.migrationRequired ? 'Перенесите прежние пароли' : 'Откройте хранилище' }}</h1>
+        <p class="mt-2 mb-6 text-sm text-slate-500">{{ vault.migrationRequired ? 'Введите прежний мастер-пароль один раз, чтобы перенести записи. После переноса для входа достаточно пароля аккаунта.' : 'Хранилище открывается после входа в аккаунт.' }}</p>
         <p class="mb-5 truncate text-xs text-slate-400">{{ auth.user.email }}</p>
         <form class="space-y-5" @submit.prevent="openVault">
-          <UFormField label="Мастер-пароль" required><UInput v-model="master" type="password" autocomplete="off" :minlength="vault.exists ? undefined : 12" class="w-full" size="lg" required :disabled="vault.checking || !!vault.error && !vault.exists" /></UFormField>
-          <UFormField v-if="!vault.exists" label="Повторите мастер-пароль" required><UInput v-model="confirmation" type="password" autocomplete="off" class="w-full" size="lg" required /></UFormField>
+          <UFormField v-if="vault.migrationRequired" label="Прежний мастер-пароль" required><UInput v-model="master" type="password" autocomplete="off" class="w-full" size="lg" required :disabled="vault.checking" /></UFormField>
+
           <UAlert v-if="vault.error || localError" color="error" variant="soft" :description="vault.error || localError" />
           <UButton v-if="vault.error" color="neutral" variant="ghost" block label="Проверить соединение" @click="vault.check()" />
-          <UButton type="submit" block size="lg" :loading="vault.busy || vault.checking" :disabled="vault.checking">{{ vault.exists ? 'Открыть хранилище' : 'Создать хранилище' }}<UIcon name="i-lucide-unlock-keyhole" /></UButton>
+          <UButton type="submit" block size="lg" :loading="vault.busy || vault.checking" :disabled="vault.checking">{{ vault.migrationRequired ? 'Перенести пароли' : 'Открыть хранилище' }}<UIcon name="i-lucide-unlock-keyhole" /></UButton>
         </form>
         <UButton class="mt-4" color="neutral" variant="ghost" block @click="auth.logout()">Выйти из аккаунта</UButton>
       </template>

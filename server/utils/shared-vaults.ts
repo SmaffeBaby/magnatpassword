@@ -38,7 +38,7 @@ export async function requireSharedMember(event: H3Event) {
 }
 export function sharedSecret(event: H3Event): string {
   const secret = useRuntimeConfig(event).sharedVaultKey
-  if (!secret || Buffer.from(secret, 'base64').length !== 32) throw createError({ statusCode: 503, statusMessage: 'Shared vault request failed', message: 'Общие хранилища ещё не настроены' })
+  if (!secret || Buffer.from(secret, 'base64').length !== 32) throw createError({ statusCode: 503, statusMessage: 'Shared vault request failed', message: 'Серверное хранилище ещё не настроено' })
   return secret
 }
 export function decodeShared(event: H3Event, row: { encrypted_data: any; id: string; key_epoch: number }): VaultData {

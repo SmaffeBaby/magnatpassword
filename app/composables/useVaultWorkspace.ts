@@ -1,5 +1,6 @@
 import type { Credential, Category, VaultData } from '~~/shared/types/vault'
 import type { VaultSource } from '~~/shared/types/sharing'
+import { createId, copyText } from '~/utils/browser'
 import { generatePassword, safeUrl } from '~~/shared/utils/crypto'
 import { sourceEntries, sourceCategories, categoryFilterId, type ScopedCredential, type ScopedCategory } from '~~/shared/utils/vault-sources'
 
@@ -58,7 +59,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     if (form.url && !safeUrl(form.url)) { formError.value = 'Укажите корректный HTTP или HTTPS адрес'; return }
     const next = copyData(editingVaultId.value), now = new Date().toISOString()
     if (!next) return
-    const entry: Credential = { ...form, title: form.title.trim(), url: form.url ? safeUrl(form.url)! : '', id: form.id || crypto.randomUUID(), createdAt: form.createdAt || now, updatedAt: now }
+    const entry: Credential = { ...form, title: form.title.trim(), url: form.url ? safeUrl(form.url)! : '', id: form.id || createId(), createdAt: form.createdAt || now, updatedAt: now }
     const index = next.entries.findIndex(e => e.id === entry.id)
     if (index >= 0) next.entries[index] = entry; else next.entries.push(entry)
     if (await saveData(editingVaultId.value, next)) { entryOpen.value = false; Object.assign(form, blankEntry()); toast.add({ title: 'Карточка сохранена', icon: 'i-lucide-check', color: 'success' }) }
@@ -69,7 +70,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     const next = copyData(categoryVaultId.value)
     if (!next) return
     if (next.categories.some(c => c.id !== categoryForm.id && c.name.toLowerCase() === categoryForm.name.trim().toLowerCase())) { formError.value = 'Категория с таким названием уже существует'; return }
-    const value = { ...categoryForm, id: categoryForm.id || crypto.randomUUID(), name: categoryForm.name.trim() }
+    const value = { ...categoryForm, id: categoryForm.id || createId(), name: categoryForm.name.trim() }
     const index = next.categories.findIndex(c => c.id === value.id)
     if (index >= 0) next.categories[index] = value; else next.categories.push(value)
     if (await saveData(categoryVaultId.value, next)) { categoryOpen.value = false; toast.add({ title: 'Категория сохранена', color: 'success' }) }
@@ -90,7 +91,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     if (await saveData(target.vaultId, next)) { if (active.value === categoryFilterId(target.vaultId, target.id)) active.value = 'all'; deleteOpen.value = false; deleting.value = null }
   }
   async function copy(value: string) {
-    try { await navigator.clipboard.writeText(value); toast.add({ title: 'Скопировано в буфер обмена', description: 'История буфера обмена управляется вашей системой.', icon: 'i-lucide-copy', color: 'success' }) }
+    try { await copyText(value); toast.add({ title: 'Скопировано в буфер обмена', description: 'История буфера обмена управляется вашей системой.', icon: 'i-lucide-copy', color: 'success' }) }
     catch { toast.add({ title: 'Браузер не разрешил копирование', color: 'error' }) }
   }
   function host(url: string) { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return 'Приложение или сервис' } }
