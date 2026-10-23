@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import AuthGate from '../components/AuthGate.vue'
-import VaultWorkspace from '../components/VaultWorkspace.vue'
+definePageMeta({ layout: 'vault' })
 </script>
-<template><AuthGate><VaultWorkspace /></AuthGate></template>
+<!-- Section content is rendered by the persistent vault layout. -->
+<template><span hidden /></template>

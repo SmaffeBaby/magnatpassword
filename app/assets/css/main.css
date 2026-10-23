@@ -129,3 +129,9 @@
 .category-folder-section{margin-bottom:28px}.category-folder-heading{display:flex;align-items:center;gap:12px;margin-bottom:16px}.category-folder-heading>div:nth-child(2){flex:1;min-width:0}.category-folder-heading h2,.ungrouped-heading{font-size:17px;font-weight:600;color:#334155;overflow-wrap:anywhere}.category-folder-heading p{font-size:11px;color:#94a3b8;margin-top:4px}.ungrouped-heading{margin-bottom:16px}
 .category-folder-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:10px;background:#f8fafc;flex-shrink:0}.category-folder-icon img,.category-folder-icon .iconify{width:26px;height:26px;object-fit:contain}
 .category-tile-open{display:flex;align-items:center;gap:14px;text-align:left;flex:1;min-width:0;cursor:pointer}.category-tile-open>span:last-child{display:flex;flex-direction:column;gap:4px;min-width:0}.category-tile-open strong{font-size:14px;color:#334155;overflow-wrap:anywhere}.category-tile-open small{font-size:11px;color:#94a3b8}.category-tile-open>span>span{font-size:12px;color:#64748b}
+
+/* The workspace chrome stays mounted across vault routes. */
+.vault-topbar{position:sticky;top:0;z-index:30;backdrop-filter:blur(16px);transform:translateY(0);transition:transform .24s ease,box-shadow .24s ease;box-shadow:0 2px 12px #17233204}
+.vault-topbar.is-hidden{transform:translateY(-100%);pointer-events:none}
+.vault-topbar:focus-within{transform:translateY(0);pointer-events:auto}
+@media(prefers-reduced-motion:reduce){.vault-topbar{transition:none}}

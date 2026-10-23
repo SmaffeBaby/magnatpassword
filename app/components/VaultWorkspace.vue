@@ -12,6 +12,7 @@ import SubscriptionEditor from './SubscriptionEditor.vue'
 import SubscriptionHistory from './SubscriptionHistory.vue'
 import SubscriptionUpcoming from './SubscriptionUpcoming.vue'
 import VaultSwitcher from './VaultSwitcher.vue'
+import { useScrollTopbar } from '../composables/useScrollTopbar'
 import { useVaultWorkspace } from '../composables/useVaultWorkspace'
 const LazyRelationshipGraph = defineAsyncComponent(() => import('./RelationshipGraph.vue'))
 const LazySubscriptionFinances = defineAsyncComponent(() => import('./SubscriptionFinances.vue'))
@@ -137,6 +138,8 @@ const {
  } = useVaultWorkspace(props)
 const categoryRequired = computed(() => targetVaultIds.value.some((id: string) => !canManageCategoryVault(id)))
 function askDeleteCategory(category: ScopedCategory) { askDelete(category, true) }
+const { topbarHidden, resetTopbar } = useScrollTopbar()
+watch(active, () => { if (import.meta.client) resetTopbar() })
 function removeImage(id: string) { form.images = form.images?.filter(image => image.id !== id) }
 </script>
 <template>
@@ -162,8 +165,9 @@ function removeImage(id: string) { form.images = form.images?.filter(image => im
     </aside>
     <button v-if="mobileOpen" class="sidebar-scrim" aria-label="Закрыть меню" @click="mobileOpen = false" />
     <main class="vault-main">
-      <header v-if="!embedded" class="vault-topbar"><div class="breadcrumb"><button class="mobile-menu" aria-label="Открыть меню" @click="mobileOpen = !mobileOpen"><UIcon name="i-lucide-menu" /></button><UIcon name="i-lucide-house" /><span>{{ workspaceName }}</span><UIcon name="i-lucide-chevron-right" /><strong>{{ title }}</strong></div><div class="topbar-actions"><NotificationCenter @open-entry="openNotification" /><span class="secure-status"><i />Хранилище открыто</span><UButton color="neutral" variant="ghost" icon="i-lucide-download" aria-label="Скачать зашифрованную копию личного хранилища" title="Копия личного хранилища" @click="vault.exportEncrypted()" /><UButton color="neutral" variant="ghost" icon="i-lucide-lock-keyhole" label="Выйти" size="sm" @click="auth.logout()" /></div></header>
+      <header v-if="!embedded" class="vault-topbar" :class="{ 'is-hidden': topbarHidden && !mobileOpen }"><div class="breadcrumb"><button class="mobile-menu" aria-label="Открыть меню" @click="mobileOpen = !mobileOpen"><UIcon name="i-lucide-menu" /></button><UIcon name="i-lucide-house" /><span>{{ workspaceName }}</span><UIcon name="i-lucide-chevron-right" /><strong>{{ title }}</strong></div><div class="topbar-actions"><NotificationCenter @open-entry="openNotification" /><span class="secure-status"><i />Хранилище открыто</span><UButton color="neutral" variant="ghost" icon="i-lucide-download" aria-label="Скачать зашифрованную копию личного хранилища" title="Копия личного хранилища" @click="vault.exportEncrypted()" /><UButton color="neutral" variant="ghost" icon="i-lucide-lock-keyhole" label="Выйти" size="sm" @click="auth.logout()" /></div></header>
       <div class="vault-content">
+        <slot />
         <div v-if="embedded" class="embedded-switcher"><VaultSwitcher v-model="workspaceId" /><NotificationCenter @open-entry="openNotification" /></div>
         <UAlert v-if="shared.loading && !shared.groups.length" class="mb-5" color="neutral" title="Загружаем общие хранилища…" />
         <div v-if="!embedded" class="welcome-line"><span class="eyebrow">ПОРЯДОК В ЦИФРОВОЙ ЖИЗНИ</span><span class="vault-date">Ваше безопасное пространство</span></div>
