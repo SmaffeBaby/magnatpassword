@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 const props=defineProps<{entry:ScopedCredential;entries?:ScopedCredential[];busy:boolean}>()
-const emit=defineEmits<{renew:[entry:ScopedCredential,fieldId:string]}>()
+const emit=defineEmits<{renew:[entry:ScopedCredential,fieldId:string];history:[entry:ScopedCredential,fieldId:string]}>()
 const {rows,status,dateLabel,moneyLabel,periodLabel}=useSubscriptionSummary(props)
 </script>
 <template>
@@ -14,6 +14,7 @@ const {rows,status,dateLabel,moneyLabel,periodLabel}=useSubscriptionSummary(prop
   <p v-if="row.subscription.autoRenew">Следующее списание: {{ dateLabel(row.subscription.paidUntil) }}</p>
   <progress :value="row.progress" max="100" :aria-label="`Срок подписки: ${status(row.daysLeft)}`" />
   <small>{{ status(row.daysLeft) }}</small>
+  <UButton size="xs" color="neutral" variant="outline" icon="i-lucide-history" label="История списаний" @click="emit('history',row.entry,row.field.id)"/>
   <UButton size="xs" variant="soft" :disabled="busy" label="Отметить оплату следующего периода" @click="emit('renew',row.entry,row.field.id)" />
  </section>
 </template>

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { SharedCard, SharedVault } from '~~/shared/types/sharing'
+import type { SubscriptionPayment } from '~~/shared/types/subscriptions'
 import type { VaultData } from '~~/shared/types/vault'
 export const useSharedVaultsStore = defineStore('shared-vaults', () => {
   const cards=ref<SharedCard[]>([])
@@ -58,7 +59,9 @@ export const useSharedVaultsStore = defineStore('shared-vaults', () => {
     return !!await mutate(()=>sharedRequest(id?`/api/shared-cards/${id}`:'/api/shared-cards',{method:id?'PUT':'POST',body:{entry,...(vaultIds?{vaultIds}:{}),...(id?{revision:expectedRevision??cards.value.find(card=>card.id===id)?.revision}:{}),...(origin?{origin}:{})}}))
   }
   async function renewCard(id:string,fieldId:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}/renew`,{method:'POST',body:{revision:cards.value.find(card=>card.id===id)?.revision,fieldId}}))}
+  async function savePayment(id:string,payment:SubscriptionPayment){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}/payments`,{method:'PUT',body:{action:'save',revision:cards.value.find(card=>card.id===id)?.revision,payment}}))}
+  async function deletePayment(id:string,paymentId:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}/payments`,{method:'PUT',body:{action:'delete',revision:cards.value.find(card=>card.id===id)?.revision,paymentId}}))}
   async function deleteCard(id:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}`,{method:'DELETE',body:{revision:cards.value.find(card=>card.id===id)?.revision}}))}
   function lock() { generation++; groups.value = []; cards.value=[]; busy.value = false; loading.value = false; error.value = '' }
-  return { cards, saveCard, renewCard, deleteCard, groups, loading, busy, error, refresh, create, save, invite, revoke, rename, lock }
+  return { savePayment, deletePayment, cards, saveCard, renewCard, deleteCard, groups, loading, busy, error, refresh, create, save, invite, revoke, rename, lock }
 })

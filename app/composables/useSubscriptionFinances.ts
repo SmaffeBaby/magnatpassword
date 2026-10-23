@@ -1,13 +1,13 @@
 import type {VaultSource} from '~~/shared/types/sharing'
 import type {Currency} from '~~/shared/types/subscriptions'
 import {sourceEntries} from '~~/shared/utils/vault-sources'
-import {sourcePayments,projectedCharges,currencyTotals,amountLabel,currencies} from '~~/shared/utils/subscription-finances'
+import {sourcePayments,unpaidProjectedCharges,currencyTotals,amountLabel,currencies} from '~~/shared/utils/subscription-finances'
 import {validDate,dayDifference,addPeriod,todayDate,dateLabel} from '~~/shared/utils/subscriptions'
 export function useSubscriptionFinances(props:{sources:VaultSource[]}) {
  const filters=useSubscriptionFilters({get entries(){return sourceEntries(props.sources)},get groups(){return props.sources.map(source=>({id:source.id,name:source.name}))}},'finances')
  const {from,to,chartCurrency,tab}=toRefs(useFiltersStore().finances)
  const validRange=computed(()=>validDate(from.value)&&validDate(to.value)&&from.value<=to.value&&dayDifference(from.value,to.value)<=3660)
- const planned=computed(()=>validRange.value?projectedCharges(filters.matchingRows.value,from.value,to.value,filters.today.value).filter(event=>event.charge):[])
+ const planned=computed(()=>validRange.value?unpaidProjectedCharges(filters.matchingRows.value,sourcePayments(props.sources),from.value,to.value,filters.today.value).filter(event=>event.charge):[])
  const payments=computed(()=>sourcePayments(props.sources).filter(payment=>(filters.group.value==='all'||payment.vaultIds.includes(filters.group.value))&&(filters.currency.value==='all'||payment.currency===filters.currency.value)&&`${payment.service} ${payment.label} ${payment.vaultName}`.toLowerCase().includes(filters.search.value.trim().toLowerCase())&&validRange.value&&todayDate(new Date(payment.paidAt))>=from.value&&todayDate(new Date(payment.paidAt))<=to.value).sort((a,b)=>b.paidAt.localeCompare(a.paidAt)))
  const planTotals=computed(()=>currencyTotals(planned.value)),paidTotals=computed(()=>currencyTotals(payments.value))
  const chartOptions=currencies.map(value=>({label:value,value}))

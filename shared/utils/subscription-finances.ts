@@ -39,3 +39,20 @@ export function sourcePayments(sources:VaultSource[]) {
 export function paymentForRenewal(row:SubscriptionRow,until:string,id:string,now=new Date().toISOString()):SubscriptionPayment {
  return {id,entryId:row.entry.id,fieldId:row.field.id,service:row.entry.title,label:row.field.label,amount:row.subscription.price,currency:row.subscription.currency,paidAt:now,periodFrom:row.subscription.paidUntil,periodUntil:until}
 }
+
+export function paymentMatchesRow(payment: ReturnType<typeof sourcePayments>[number], row: SubscriptionRow) {
+ return payment.fieldId === row.field.id && payment.entryId === row.entry.id && (payment.sharedCardId ? payment.sharedCardId === row.entry.sharedCardId : !row.entry.sharedCardId && (row.entry.vaultIds ?? [row.entry.vaultId]).includes(payment.vaultId))
+}
+export function unpaidProjectedCharges(rows: SubscriptionRow[], payments: ReturnType<typeof sourcePayments>, from: string, to: string, today = todayDate()) {
+ return projectedCharges(rows, from, to, today).filter(event => !payments.some(payment => paymentMatchesRow(payment, event.row) && event.date >= payment.periodFrom && event.date < payment.periodUntil))
+}
+export function recordedCharges(payments: ReturnType<typeof sourcePayments>, entries: import('./vault-sources').ScopedCredential[]) {
+ const rows = subscriptionRows(entries)
+ return payments.map(payment => {
+  const existing = rows.find(row => paymentMatchesRow(payment, row))
+  const entry = entries.find(entry => entry.id === payment.entryId && (payment.sharedCardId ? entry.sharedCardId === payment.sharedCardId : !entry.sharedCardId && (entry.vaultIds ?? [entry.vaultId]).includes(payment.vaultId)))
+  const subscription: Subscription = { price: payment.amount, currency: payment.currency, startsOn: payment.periodFrom, paidUntil: payment.periodUntil, paidFrom: payment.periodFrom, periodCount: 1, periodUnit: 'day', autoRenew: false }
+  const row: SubscriptionRow = existing ?? { key: `${payment.vaultId}/${payment.entryId}/${payment.fieldId}`, entry: entry ?? { id: payment.entryId, sharedCardId: payment.sharedCardId, title: payment.service, vaultId: payment.vaultId, vaultName: payment.vaultName, vaultIds: payment.vaultIds, vaultNames: payment.vaultNames, url: '', username: '', password: '', notes: '', categoryId: '', favorite: false, createdAt: payment.paidAt, updatedAt: payment.paidAt }, field: { id: payment.fieldId, label: payment.label, value: '', type: 'subscription', subscription }, subscription, daysLeft: dayDifference(todayDate(), payment.periodUntil), progress: 100 }
+  return { key: `payment/${payment.sharedCardId ?? payment.vaultId}/${payment.id}`, row, date: todayDate(new Date(payment.paidAt)), amount: payment.amount, currency: payment.currency, charge: true, forecast: false, paid: true, available: !!entry, payment }
+ })
+}

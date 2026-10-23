@@ -1,5 +1,5 @@
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
-export function useSubscriptionFilters(props:{entries:ScopedCredential[];groups?:{id:string;name:string}[]}, scope: 'upcoming' | 'calendar' | 'finances' = 'upcoming') {
+export function useSubscriptionFilters(props:{entries:ScopedCredential[];groups?:{id:string;name:string}[]}, scope: 'upcoming' | 'calendar' | 'finances' | 'history' = 'upcoming') {
  const common=useSubscriptions(props)
  const {group,currency,search,statusFilter}=toRefs(useFiltersStore().subscriptions[scope])
  const groups=computed(()=>[{label:'Все хранилища',value:'all'},...(props.groups??[...new Map(props.entries.map(entry=>[entry.vaultId,{id:entry.vaultId,name:entry.vaultName}])).values()]).map(item=>({label:item.name,value:item.id}))])
