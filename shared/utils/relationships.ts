@@ -1,3 +1,4 @@
+import { subscriptionCardReferences, matchesSubscriptionCard } from './subscriptions'
 import type { ScopedCredential } from './vault-sources'
 export type RelationshipMode = 'all' | 'title' | 'site' | 'field' | 'manual'
 export interface RelationNode { id: string; label: string; kind: 'card' | 'title' | 'site' | 'field'; vaultName?: string }
@@ -28,6 +29,18 @@ export function buildRelationships(entries: ScopedCredential[], mode: Relationsh
       for (const word of words) group('title', word, id)
     }
     if (mode === 'all' || mode === 'site') group('site', siteDomain(entry.url), id)
+    if (mode === 'all' || mode === 'manual') for (const field of entry.customFields ?? []) {
+      if (field.type !== 'subscription' || !field.subscription) continue
+      const targets = new Set<string>()
+      for (const card of subscriptionCardReferences(field.subscription)) {
+        const target = entries.find(entry => matchesSubscriptionCard(card, entry))
+        if (!target) continue
+        const targetId = cardKey(target.vaultId, target.id)
+        if (targetId === id || targets.has(targetId)) continue
+        targets.add(targetId)
+        edges.push({ id: `${id}/subscription/${field.id}/${targetId}`, source: id, target: targetId, kind: 'manual', label: `Подписка: ${field.label}` })
+      }
+    }
     if (mode === 'all' || mode === 'manual') for (const link of entry.links ?? []) {
       const requestedId=cardKey(link.targetVaultId,link.targetEntryId), target=lookup.get(requestedId)??entries.find(entry=>entry.id===link.targetEntryId&&(entry.vaultIds??[entry.vaultId]).includes(link.targetVaultId)),targetId=target?cardKey(target.vaultId,target.id):requestedId
       if (!target || targetId === id) continue

@@ -1,4 +1,4 @@
-import type { Subscription, NotificationSettings, ReminderRules } from '../types/subscriptions'
+import type { Subscription, SubscriptionCard, NotificationSettings, ReminderRules } from '../types/subscriptions'
 import type { ScopedCredential } from './vault-sources'
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = { sharedChanges: true, subscriptions: true, leadDays: [7, 3, 1, 0], repeatEveryDays: 0, customDates: [] }
 export const todayDate = (now = new Date()) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
@@ -35,4 +35,12 @@ export function dueReminder(subscription: Subscription, rules: ReminderRules, to
   if (!first || today < first) return null
   if (rules.repeatEveryDays > 0) { const elapsed = dayDifference(first, today), slot = Math.floor(elapsed / rules.repeatEveryDays); dates.push(addPeriod(first, slot * rules.repeatEveryDays, 'day')) }
   return dates.filter(date => date <= today).sort().at(-1) || null
+}
+
+export const subscriptionCardKey = (card: SubscriptionCard) => card.sharedCardId ? `shared:${card.sharedCardId}` : `${card.vaultId}/${card.entryId}`
+export function matchesSubscriptionCard(card: SubscriptionCard, entry: ScopedCredential): boolean {
+  return card.sharedCardId ? card.sharedCardId === entry.sharedCardId : card.entryId === entry.id && (entry.vaultIds ?? [entry.vaultId]).includes(card.vaultId)
+}
+export function subscriptionCardReferences(subscription: Subscription): SubscriptionCard[] {
+  return [...(subscription.primaryCard ? [subscription.primaryCard] : []), ...(subscription.linkedCards ?? [])]
 }

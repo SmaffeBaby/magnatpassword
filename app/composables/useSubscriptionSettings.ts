@@ -22,6 +22,10 @@ export function useSubscriptionSettings(fields: () => CustomField[]) {
       subscriptionError.value = 'Проверьте стоимость, период и даты подписки.'
       return
     }
+    if ((sub.linkedCards?.length ?? 0) > 50) {
+      subscriptionError.value = 'К подписке можно привязать до 50 дополнительных карточек.'
+      return
+    }
     const rules = sub.reminders
     if (rules && (rules.leadDays.some(days => !Number.isInteger(days) || days < 0 || days > 3650) ||
       !Number.isInteger(rules.repeatEveryDays) || rules.repeatEveryDays < 0 || rules.repeatEveryDays > 365 ||

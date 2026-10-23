@@ -5,7 +5,8 @@ type Node = RelationNode & SimulationNodeDatum
 type Edge = Omit<RelationEdge, 'source' | 'target'> & SimulationLinkDatum<Node> & { curve?: number }
 export function useRelationshipGraph(props: { entries: ScopedCredential[] }, edit: (entry: ScopedCredential) => void) {
   const canvas = ref<SVGSVGElement | null>(null), container = ref<HTMLElement | null>(null)
-  const mode = ref<RelationshipMode>('all'), query = ref(''), selectedId = ref('')
+  const { mode, query } = toRefs(useFiltersStore().relationships)
+  const selectedId = ref('')
   const modes = [{ label: 'Все связи', value: 'all' }, { label: 'По названиям', value: 'title' }, { label: 'По сайтам', value: 'site' }, { label: 'По дополнительным полям', value: 'field' }, { label: 'Ручные связи', value: 'manual' }]
   const matching = computed(() => props.entries.filter(e => [e.title, e.url, e.vaultName, ...(e.customFields ?? []).filter(f => f.type !== 'secret').map(f => `${f.label} ${f.value}`)].some(v => v.toLowerCase().includes(query.value.trim().toLowerCase()))))
   const graph = computed(() => buildRelationships(matching.value.slice(0, 300), mode.value))

@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import type {ScopedCredential} from '~~/shared/utils/vault-sources'
 import type {CustomField} from '~~/shared/types/vault'
-const props=defineProps<{field:CustomField}>()
-const {sub,currencies,units,toggleReminders,addLead,addDate}=useSubscriptionEditor(props)
+const props=defineProps<{field:CustomField;cards?:ScopedCredential[];ownerTitle?:string}>()
+const {sub,primaryCard,primaryOptions,linkedCards,linkedCardOptions,currencies,units,toggleReminders,addLead,addDate}=useSubscriptionEditor(props)
 </script>
 <template><div class="subscription-editor">
+ <div class="space-y-4 mb-5"><UFormField label="Основная карточка подписки"><USelectMenu v-model="primaryCard" :items="primaryOptions" value-key="value" class="w-full" aria-label="Основная карточка подписки"/></UFormField><UFormField label="Другие карточки этой подписки"><USelectMenu v-model="linkedCards" :items="linkedCardOptions" value-key="value" multiple class="w-full" placeholder="Добавить карточки, например сайты на VDS" aria-label="Другие карточки подписки"/></UFormField><p class="text-xs leading-5 text-slate-500">Одна подписка может относиться к нескольким карточкам. Стоимость и оплаты учитываются один раз. Изменения сохраняются вместе с текущей карточкой.</p></div>
  <div class="subscription-form-grid"><UFormField label="Стоимость за период" required><UInput v-model.number="sub.price" type="number" :min="0" :max="1000000000" step="0.01" required class="w-full"/></UFormField><UFormField label="Валюта"><USelect v-model="sub.currency" :items="currencies" class="w-full"/></UFormField><UFormField label="Период" required><UInput v-model.number="sub.periodCount" type="number" :min="1" :max="1000" step="1" required class="w-full"/></UFormField><UFormField label="Единица периода"><USelect v-model="sub.periodUnit" :items="units" class="w-full"/></UFormField><UFormField label="Начало подписки" required><UInput v-model="sub.startsOn" type="date" required class="w-full"/></UFormField><UFormField label="Оплачено до" required><UInput v-model="sub.paidUntil" type="date" :min="sub.startsOn" required class="w-full"/></UFormField></div>
  <UCheckbox v-model="sub.autoRenew" class="mt-4" label="Ожидается автоматическое продление"/><p class="mt-2 text-xs leading-5 text-slate-500">{{sub.autoRenew?'Следующее плановое списание: '+sub.paidUntil:'Подписка заканчивается в указанную дату.'}} Сайт учитывает сроки и не выполняет оплату.</p>
  <UCheckbox :model-value="!!sub.reminders" class="mt-4" label="Свои напоминания для этой подписки" @update:model-value="value=>toggleReminders(!!value)"/>

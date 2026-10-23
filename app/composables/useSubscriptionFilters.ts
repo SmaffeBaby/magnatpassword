@@ -1,6 +1,7 @@
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
-export function useSubscriptionFilters(props:{entries:ScopedCredential[];groups?:{id:string;name:string}[]}) {
- const common=useSubscriptions(props),group=ref('all'),currency=ref('all'),search=ref(''),statusFilter=ref('all')
+export function useSubscriptionFilters(props:{entries:ScopedCredential[];groups?:{id:string;name:string}[]}, scope: 'upcoming' | 'calendar' | 'finances' = 'upcoming') {
+ const common=useSubscriptions(props)
+ const {group,currency,search,statusFilter}=toRefs(useFiltersStore().subscriptions[scope])
  const groups=computed(()=>[{label:'Все хранилища',value:'all'},...(props.groups??[...new Map(props.entries.map(entry=>[entry.vaultId,{id:entry.vaultId,name:entry.vaultName}])).values()]).map(item=>({label:item.name,value:item.id}))])
  const currencyOptions=[{label:'Все валюты',value:'all'},...['RUB','USD','EUR','CNY'].map(value=>({label:value,value}))]
  const statusOptions=[{label:'Все сроки',value:'all'},{label:'Просроченные',value:'overdue'},{label:'В ближайшие 7 дней',value:'week'},{label:'В ближайшие 30 дней',value:'month'},{label:'Будущие',value:'future'}]

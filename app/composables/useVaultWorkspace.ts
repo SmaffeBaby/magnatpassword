@@ -1,3 +1,4 @@
+import { storeToRefs } from 'pinia'
 import {projectSharedCards,storedVaultData} from '~~/shared/utils/shared-card-sources'
 import {credentialAccounts,entryCategoryIds} from '~~/shared/utils/credentials'
 import { paymentForRenewal } from '~~/shared/utils/subscription-finances'
@@ -15,14 +16,18 @@ import { sourceEntries, sourceCategories, categoryFilterId, type ScopedCredentia
 export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) {
   const { productName } = useAccountBrand()
   const vault = useVaultStore(), auth = useAuthStore(), shared = useSharedVaultsStore(), toast = useToast()
-  const workspaceId = useState<string>('selected-vault', () => 'all')
+  const filters = useFiltersStore()
+  const { workspaceId } = storeToRefs(filters)
+  const { query, sort } = toRefs(filters.workspace)
   const sources = computed<VaultSource[]>(() => projectSharedCards([{ id: 'personal', name: vault.data.name || 'Личное', data: vault.data }, ...shared.groups.map(g => ({ id: g.id, name: g.name, data: g.data }))],shared.cards))
   const visibleSources = computed(() => workspaceId.value === 'all' ? sources.value : sources.value.filter(s => s.id === workspaceId.value))
   const workspaceName = computed(() => workspaceId.value === 'all' ? 'Все хранилища' : sources.value.find(s => s.id === workspaceId.value)?.name ?? 'Хранилище')
   const entries = computed(() => sourceEntries(visibleSources.value)), categories = computed(() => sourceCategories(visibleSources.value))
   const busy = computed(() => vault.busy || shared.busy || shared.loading), error = computed(() => vault.error || shared.error)
   const route = useRoute()
-  const active = ref(props.mode === 'upcoming' || props.mode === 'finances' ? props.mode : typeof route.query.view === 'string' ? route.query.view : 'all'), query = ref(''), sort = ref('updated'), mobileOpen = ref(false)
+  const active = computed({ get: () => props.mode === 'upcoming' || props.mode === 'finances' ? props.mode : filters.workspace.active, set: value => { filters.workspace.active = value } })
+  if (typeof route.query.view === 'string' && !props.mode) filters.workspace.active = route.query.view
+  const mobileOpen = ref(false)
   const entryOpen = ref(false), categoryOpen = ref(false), deleteOpen = ref(false), showPassword = ref(false)
   const editingVaultId = ref('personal'), categoryVaultId = ref('personal')
   const deleting = ref<ScopedCredential | ScopedCategory | null>(null), deletingCategory = ref(false), formError = ref('')
@@ -91,6 +96,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   async function uploadImages(event:Event){const session=entrySession,images=await media.readImages(event,5-(form.images?.length??0));if(session===entrySession&&entryOpen.value)(form.images??=[]).push(...images)}
   async function uploadCategorySvg(event:Event){const categoryId=categoryForm.id,value=await media.readSvg(event);if(value&&categoryOpen.value&&categoryId===categoryForm.id)categoryForm.svg=value}
   const relationTargets = computed(() => [{ label: 'Выберите карточку', value: '__none' }, ...allEntries.value.filter(e => !(e.id === form.id && (e.vaultId === editingVaultId.value || !!editingCardId.value && e.sharedCardId === editingCardId.value))).map(e => ({ label: `${e.title} · ${e.vaultName}`, value: cardKey(e.vaultId, e.id) }))])
+  const subscriptionCards = computed(() => allEntries.value.filter(entry => editingCardId.value ? entry.sharedCardId !== editingCardId.value : !(entry.id === form.id && (entry.vaultIds ?? [entry.vaultId]).includes(originVaultId.value))))
   const fieldTypes = [{ label: 'Текст', value: 'text' }, { label: 'Секрет', value: 'secret' }, { label: 'Ссылка', value: 'url' }, { label: 'Подписка', value: 'subscription' }]
   const baseFieldOptions = [{ label: 'Вся карточка', value: 'card' }, { label: 'Название', value: 'title' }, { label: 'Сайт', value: 'url' }, { label: 'Логин', value: 'username' }, { label: 'Пароль', value: 'password' }, { label: 'Заметка', value: 'notes' }]
   const sourceFieldOptions = computed(() => [...baseFieldOptions, ...(form.accounts??[]).map(account=>({label:account.label,value:account.id})), ...(form.customFields ?? []).map(f => ({ label: f.label || 'Без названия', value: f.id }))])
@@ -197,5 +203,5 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   watch(()=>shared.cards,()=>{if(editingCardId.value&&entryOpen.value&&!shared.cards.some(card=>card.id===editingCardId.value&&!card.archived)){entryOpen.value=false;Object.assign(form,blankEntry())}})
   watch(() => vault.unlocked, value => { if (!value) { viewOpen.value=false;viewKey.value='';entryOpen.value = false; categoryOpen.value = false; deleteOpen.value = false; Object.assign(form, blankEntry()); query.value = ''; deleting.value = null; workspaceId.value = 'all'; Object.assign(categoryForm, { id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1' }) } })
   onBeforeUnmount(() => Object.assign(form, blankEntry()))
-  return { ...media, targetVaultIds, sharingEditable, setTargetVaults, addAccount, removeAccount, uploadImages, uploadCategorySvg, viewOpen, viewingEntry, viewingCategories, viewingLinks, viewEntry, entryCategories, upcomingMode, financesMode, visibleSources, ...subscriptionSettings, calendarMode, subscriptionCount, changeFieldType, renewSubscription, openNotification, graphMode, allEntries, relationTargets, fieldTypes, sourceFieldOptions, incomingLinks, addCustomField, removeCustomField, addLink, removeLink, linkTarget, setLinkTarget, targetFieldOptions, vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
+  return { subscriptionCards, ...media, targetVaultIds, sharingEditable, setTargetVaults, addAccount, removeAccount, uploadImages, uploadCategorySvg, viewOpen, viewingEntry, viewingCategories, viewingLinks, viewEntry, entryCategories, upcomingMode, financesMode, visibleSources, ...subscriptionSettings, calendarMode, subscriptionCount, changeFieldType, renewSubscription, openNotification, graphMode, allEntries, relationTargets, fieldTypes, sourceFieldOptions, incomingLinks, addCustomField, removeCustomField, addLink, removeLink, linkTarget, setLinkTarget, targetFieldOptions, vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
 }
