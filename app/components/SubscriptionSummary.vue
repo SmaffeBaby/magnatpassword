@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useSubscriptionSummary } from '../composables/useSubscriptions'
+
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 const props=defineProps<{entry:ScopedCredential;entries?:ScopedCredential[];busy:boolean}>()
 const emit=defineEmits<{renew:[entry:ScopedCredential,fieldId:string];history:[entry:ScopedCredential,fieldId:string];open:[entry:ScopedCredential]}>()

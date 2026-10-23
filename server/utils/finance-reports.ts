@@ -1,3 +1,4 @@
+import {loadCategoryAccess,categoryScopedData} from './category-access'
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
 import type { H3Event } from 'h3'
@@ -16,6 +17,7 @@ export const financeReportRequestSchema = z.object({
 }).strict().refine(value => value.from <= value.to && dayDifference(value.from,value.to) <= 3660, 'Invalid report period')
 
 export async function reportSources(event:H3Event, context:Awaited<ReturnType<typeof requireSharedUser>>, ids:string[]):Promise<VaultSource[]> {
+  const access=await loadCategoryAccess(context,event)
   const selected=[...new Set(ids)], sources:VaultSource[]=[]
   const groupIds=selected.filter(id=>id!=='personal')
   if(groupIds.length){
@@ -24,7 +26,7 @@ export async function reportSources(event:H3Event, context:Awaited<ReturnType<ty
     if(memberships.length!==groupIds.length)throw createError({statusCode:403,message:'Одно из выбранных хранилищ больше недоступно'})
     const {data:groups,error:failure}=await context.client.from('shared_vaults').select('*').in('id',groupIds).order('name')
     if(failure)throw createError({statusCode:503,message:'Не удалось загрузить хранилища для отчёта'})
-    for(const group of groups)sources.push({id:group.id,name:group.name,data:decodeShared(event,group)})
+    for(const group of groups)sources.push({id:group.id,name:group.name,data:categoryScopedData(decodeShared(event,group),access.find(item=>item.vaultId===group.id)!.categoryIds)})
   }
   if(selected.includes('personal')){
     const row=await personalRow(context)
@@ -32,7 +34,7 @@ export async function reportSources(event:H3Event, context:Awaited<ReturnType<ty
     const data=row?openPersonal(event,row):{version:1 as const,entries:[],categories:[]}
     sources.unshift({id:'personal',name:data.name||'Личное',data})
   }
-  return projectSharedCards(sources,await visibleSharedCards(event,context))
+  return projectSharedCards(sources,await visibleSharedCards(event,context,access))
 }
 export function reportSnapshot(request:FinanceReportRequest,sources:VaultSource[],id:string,createdAt:string){
   const search=request.search.toLowerCase()

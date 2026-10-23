@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import FinanceChart from './FinanceChart.vue'
+import FinanceReports from './FinanceReports.vue'
+import SubscriptionFilters from './SubscriptionFilters.vue'
+import { useSubscriptionFinances } from '../composables/useSubscriptionFinances'
+
 import type {VaultSource} from '~~/shared/types/sharing'
 import type {ScopedCredential} from '~~/shared/utils/vault-sources'
 const props=defineProps<{sources:VaultSource[]}>()

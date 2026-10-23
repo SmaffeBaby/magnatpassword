@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useSubscriptionSidebar } from '../composables/useSubscriptions'
+
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 const props=defineProps<{entries:ScopedCredential[]}>()
 const emit=defineEmits<{edit:[entry:ScopedCredential];calendar:[]}>()

@@ -1,3 +1,4 @@
+import {loadCategoryAccess,categoryScopedData} from './category-access'
 import {projectSharedCards} from '../../shared/utils/shared-card-sources'
 import type { NotificationSettings } from '../../shared/types/subscriptions'
 import { DEFAULT_NOTIFICATION_SETTINGS, todayDate, subscriptionRows, dueReminder, dateLabel } from '../../shared/utils/subscriptions'
@@ -7,18 +8,16 @@ export async function loadNotificationSettings(context: Awaited<ReturnType<typeo
   return data ? notificationSettingsSchema.parse(data.settings) : structuredClone(DEFAULT_NOTIFICATION_SETTINGS)
 }
 export async function reminderSources(event: Parameters<typeof requireSharedUser>[0], context: Awaited<ReturnType<typeof requireSharedUser>>) {
-  const { data: memberships, error } = await context.client.from('shared_vault_members').select('vault_id').eq('user_id',context.user.id)
-  if (error) throw createError({ statusCode: 503, statusMessage: 'Notifications unavailable' })
-  const ids: string[] = memberships.map(m => m.vault_id)
+  const access=await loadCategoryAccess(context,event),ids=access.map(item=>item.vaultId)
   const personal = await personalRow(context)
   const sources = []
   if (personal?.encryption_mode === 'server') sources.push({ id:'personal', name:'Личное', data:openPersonal(event,personal) })
   if (ids.length) {
     const { data: groups, error: failure } = await context.client.from('shared_vaults').select('*').in('id',ids)
     if (failure) throw createError({ statusCode: 503, statusMessage: 'Notifications unavailable' })
-    for (const group of groups) sources.push({ id:group.id,name:group.name,data:decodeShared(event,group) })
+    for (const group of groups) sources.push({ id:group.id,name:group.name,data:categoryScopedData(decodeShared(event,group),access.find(item=>item.vaultId===group.id)!.categoryIds) })
   }
-  return { sources:projectSharedCards(sources,await visibleSharedCards(event,context)), ids }
+  return { sources:projectSharedCards(sources,await visibleSharedCards(event,context,access)), ids }
 }
 export async function generateSubscriptionReminders(context: Awaited<ReturnType<typeof requireSharedUser>>, sources: Awaited<ReturnType<typeof reminderSources>>['sources'], settings: NotificationSettings) {
   const { sourceEntries } = await import('../../shared/utils/vault-sources')

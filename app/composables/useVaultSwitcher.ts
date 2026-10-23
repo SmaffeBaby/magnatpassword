@@ -1,3 +1,4 @@
+import type {SharedMember} from '~~/shared/types/sharing'
 import type { Ref } from 'vue'
 export function useVaultSwitcher(selection: Ref<string>) {
   const vault = useVaultStore(), shared = useSharedVaultsStore(), auth = useAuthStore()
@@ -8,6 +9,12 @@ export function useVaultSwitcher(selection: Ref<string>) {
   async function uploadPersonalSvg(event:Event){const value=await media.readSvg(event);if(value)await vault.save({...vault.data,svg:value})}
   async function removePersonalSvg(){const data={...vault.data};delete data.svg;await vault.save(data)}
   const open = ref(false), managedId = ref<string | null>(null), name = ref(''), email = ref(''), removing = ref<string | null>(null)
+  const inviteMode=ref('all'),inviteCategories=ref<string[]>([]),permissionMember=ref<SharedMember|null>(null),permissionMode=ref('all'),permissionCategories=ref<string[]>([])
+  const permissionOptions=[{label:'Все категории',value:'all'},{label:'Выбранные категории',value:'selected'}]
+  const categoryOptions=computed(()=>(managed.value?.data.categories??[]).map(category=>({label:category.name,value:category.id})))
+  function editPermissions(member:SharedMember){permissionMember.value=member;permissionMode.value=member.categoryIds==null?'all':'selected';permissionCategories.value=(member.categoryIds??[]).filter(id=>categoryOptions.value.some(option=>option.value===id))}
+  async function savePermissions(){if(managed.value&&permissionMember.value&&await shared.permissions(managed.value.id,permissionMember.value.userId,permissionMode.value==='all'?null:permissionCategories.value))permissionMember.value=null}
+  function permissionLabel(member:SharedMember){return member.categoryIds==null?'Все категории':member.categoryIds.length?`${member.categoryIds.length} категорий`:'Нет доступных категорий'}
   const renameName = ref(''), personalOpen = ref(false), personalName = ref('')
   const personalLabel = computed(() => vault.data.name || 'Личное хранилище')
   function managePersonal() { personalName.value = personalLabel.value; personalOpen.value = true; vault.error = '' }
@@ -17,13 +24,13 @@ export function useVaultSwitcher(selection: Ref<string>) {
   const isOwner = computed(() => managed.value?.ownerId === auth.user?.id)
   const label = computed(() => selection.value === 'all' ? 'Все хранилища' : selection.value === 'personal' ? personalLabel.value : shared.groups.find(g => g.id === selection.value)?.name ?? 'Все хранилища')
   function select(id: string) { selection.value = id; open.value = false }
-  function manage(id: string) { managedId.value = id; renameName.value = shared.groups.find(g => g.id === id)?.name || ''; email.value = ''; removing.value = null; shared.error = '' }
+  function manage(id: string) { managedId.value = id; renameName.value = shared.groups.find(g => g.id === id)?.name || ''; email.value = ''; inviteMode.value='all';inviteCategories.value=[];permissionMember.value=null;removing.value = null; shared.error = '' }
   async function create() { const id = await shared.create(name.value); if (id) { name.value = ''; select(id); manage(id) } }
-  async function invite() { if (managed.value && await shared.invite(managed.value.id, email.value)) email.value = '' }
+  async function invite() { if (managed.value && await shared.invite(managed.value.id, email.value,inviteMode.value==='all'?null:inviteCategories.value)) email.value = '' }
   async function revoke() { if (managed.value && removing.value && await shared.revoke(managed.value.id, removing.value)) removing.value = null }
   watch(() => shared.groups.map(g => g.id), () => {
     if (!['all', 'personal'].includes(selection.value) && !shared.groups.some(g => g.id === selection.value)) selection.value = 'all'
-    if (managedId.value && !managed.value) managedId.value = null
+    if (managedId.value && !managed.value) {managedId.value = null;permissionMember.value=null}
   })
-  return { ...media, selectedSvg, uploadGroupSvg, removeGroupSvg, uploadPersonalSvg, removePersonalSvg, vault, personalOpen, personalName, personalLabel, managePersonal, renamePersonal, renameName, rename, shared, auth, open, managedId, managed, isOwner, label, name, email, removing, select, manage, create, invite, revoke }
+  return { inviteMode, inviteCategories, permissionMember, permissionMode, permissionCategories, permissionOptions, categoryOptions, editPermissions, savePermissions, permissionLabel, ...media, selectedSvg, uploadGroupSvg, removeGroupSvg, uploadPersonalSvg, removePersonalSvg, vault, personalOpen, personalName, personalLabel, managePersonal, renamePersonal, renameName, rename, shared, auth, open, managedId, managed, isOwner, label, name, email, removing, select, manage, create, invite, revoke }
 }

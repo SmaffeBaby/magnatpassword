@@ -1,10 +1,10 @@
 import { select, forceSimulation, forceLink, forceManyBody, forceCenter, forceCollide, drag, zoom, zoomIdentity, type Simulation, type SimulationNodeDatum, type SimulationLinkDatum } from 'd3'
-import { buildRelationships, cardKey, type RelationshipMode, type RelationNode, type RelationEdge } from '~~/shared/utils/relationships'
+import { buildRelationships, cardKey, type RelationNode, type RelationEdge } from '~~/shared/utils/relationships'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 type Node = RelationNode & SimulationNodeDatum
 type Edge = Omit<RelationEdge, 'source' | 'target'> & SimulationLinkDatum<Node> & { curve?: number }
 export function useRelationshipGraph(props: { entries: ScopedCredential[] }, edit: (entry: ScopedCredential) => void) {
-  const canvas = ref<SVGSVGElement | null>(null), container = ref<HTMLElement | null>(null)
+  const canvas = useTemplateRef<SVGSVGElement>('relationship-canvas'), container = useTemplateRef<HTMLElement>('relationship-container')
   const { mode, query } = toRefs(useFiltersStore().relationships)
   const selectedId = ref('')
   const modes = [{ label: 'Все связи', value: 'all' }, { label: 'По названиям', value: 'title' }, { label: 'По сайтам', value: 'site' }, { label: 'По дополнительным полям', value: 'field' }, { label: 'Ручные связи', value: 'manual' }]
@@ -66,5 +66,5 @@ export function useRelationshipGraph(props: { entries: ScopedCredential[] }, edi
   watch(selectedId, () => { if (canvas.value) select(canvas.value).selectAll<SVGGElement, Node>('.relation-node').classed('is-selected', n => n.id === selectedId.value) })
   onMounted(() => { observer = new ResizeObserver(render); if (container.value) observer.observe(container.value); render() })
   onBeforeUnmount(() => { simulation?.stop(); observer?.disconnect(); positions.clear(); if (canvas.value) select(canvas.value).on('.zoom', null).selectAll('*').remove() })
-  return { canvas, container, mode, query, modes, graph, matching, selectedId, selected, selectedEntry, connected, cards, openSelected, reset }
+  return { mode, query, modes, graph, matching, selectedId, selected, selectedEntry, connected, cards, openSelected, reset }
 }

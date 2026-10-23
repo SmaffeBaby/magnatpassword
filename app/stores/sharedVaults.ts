@@ -46,9 +46,10 @@ export const useSharedVaultsStore = defineStore('shared-vaults', () => {
   async function save(id: string, data: VaultData): Promise<boolean> {
     return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}`, { method: 'PUT', body: { revision: find(id).revision, data } }))
   }
-  async function invite(id: string, email: string): Promise<boolean> {
-    return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}/members`, { method: 'POST', body: { revision: find(id).revision, email: email.trim() } }))
+  async function invite(id: string, email: string, categoryIds:string[]|null=null): Promise<boolean> {
+    return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}/members`, { method: 'POST', body: { revision: find(id).revision, email: email.trim(), categoryIds } }))
   }
+  async function permissions(id:string,userId:string,categoryIds:string[]|null):Promise<boolean>{return !!await mutate(()=>sharedRequest(`/api/shared-vaults/${id}/members`,{method:'PUT',body:{revision:find(id).revision,userId,categoryIds}}))}
   async function revoke(id: string, userId: string): Promise<boolean> {
     return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}/members`, { method: 'DELETE', body: { revision: find(id).revision, userId } }))
   }
@@ -63,5 +64,5 @@ export const useSharedVaultsStore = defineStore('shared-vaults', () => {
   async function deletePayment(id:string,paymentId:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}/payments`,{method:'PUT',body:{action:'delete',revision:cards.value.find(card=>card.id===id)?.revision,paymentId}}))}
   async function deleteCard(id:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}`,{method:'DELETE',body:{revision:cards.value.find(card=>card.id===id)?.revision}}))}
   function lock() { generation++; groups.value = []; cards.value=[]; busy.value = false; loading.value = false; error.value = '' }
-  return { savePayment, deletePayment, cards, saveCard, renewCard, deleteCard, groups, loading, busy, error, refresh, create, save, invite, revoke, rename, lock }
+  return { permissions, savePayment, deletePayment, cards, saveCard, renewCard, deleteCard, groups, loading, busy, error, refresh, create, save, invite, revoke, rename, lock }
 })

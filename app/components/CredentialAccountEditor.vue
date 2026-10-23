@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useAccountEditor } from '../composables/useAccountEditor'
+
 import type {CredentialAccount} from '~~/shared/types/vault'
 const props=defineProps<{account:CredentialAccount}>()
 const emit=defineEmits<{remove:[]}>()

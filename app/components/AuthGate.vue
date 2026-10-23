@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import BrandLogo from './BrandLogo.vue'
+import { useAuthGate } from '../composables/useAuthGate'
+
 const props = defineProps<{ admin?: boolean }>()
 const { auth, vault, email, password, register, master, localError, authenticate, openVault, previewBrand, brandOptions, toggleRegistration } = useAuthGate(props)
 </script>

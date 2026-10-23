@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import SubscriptionFilters from './SubscriptionFilters.vue'
+import { useSubscriptionCalendar } from '../composables/useSubscriptions'
+
 import type { VaultSource } from '~~/shared/types/sharing'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 const props=defineProps<{entries:ScopedCredential[];sources?:VaultSource[];busy:boolean}>()
 const emit=defineEmits<{edit:[entry:ScopedCredential];renew:[entry:ScopedCredential,fieldId:string]}>()
-const {rows,today,selected,monthTitle,cells,selectedRows,move,goToday,status,dateLabel,moneyLabel,group,currency,search,statusFilter,groups,currencyOptions,statusOptions,selectedMonth,selectedYear,monthOptions,monthTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,amountLabel}=useSubscriptionCalendar(props)
+const {rows,today,selected,monthTitle,cells,selectedRows,move,goToday,status,dateLabel,group,currency,search,statusFilter,groups,currencyOptions,statusOptions,selectedMonth,selectedYear,monthOptions,monthTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,amountLabel}=useSubscriptionCalendar(props)
 </script>
 <template>
  <section class="subscription-calendar">

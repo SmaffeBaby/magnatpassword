@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import AuthGate from '../components/AuthGate.vue'
+import BrandLogo from '../components/BrandLogo.vue'
+import VaultWorkspace from '../components/VaultWorkspace.vue'
+import { useAdminPage } from '../composables/useAdminPage'
+
 const { auth, vault, identity, checking, accessError, overview, section, titles, navigation, restore, switchAccount, switchingAccount, date, productName } = useAdminPage()
 </script>
 <template>

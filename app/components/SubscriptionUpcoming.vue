@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import SubscriptionFilters from './SubscriptionFilters.vue'
+import { useSubscriptionFilters } from '../composables/useSubscriptionFilters'
+
 import type {ScopedCredential} from '~~/shared/utils/vault-sources'
 const props=defineProps<{entries:ScopedCredential[];busy:boolean}>()
 const emit=defineEmits<{edit:[entry:ScopedCredential];renew:[entry:ScopedCredential,fieldId:string]}>()

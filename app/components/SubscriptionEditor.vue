@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useSubscriptionEditor } from '../composables/useSubscriptionEditor'
+
 import type {ScopedCredential} from '~~/shared/utils/vault-sources'
 import type {CustomField} from '~~/shared/types/vault'
 const props=defineProps<{field:CustomField;cards?:ScopedCredential[];ownerTitle?:string}>()

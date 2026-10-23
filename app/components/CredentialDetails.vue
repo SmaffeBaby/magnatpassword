@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import SubscriptionSummary from './SubscriptionSummary.vue'
+import { useCredentialDetails } from '../composables/useCredentialDetails'
+
 import type {ScopedCredential,ScopedCategory} from '~~/shared/utils/vault-sources'
 const props=defineProps<{entry:ScopedCredential|null;subscriptionEntries?:ScopedCredential[];open:boolean;categories:ScopedCategory[];links:{id:string;label:string;target:string}[];busy:boolean}>()
 const emit=defineEmits<{close:[];edit:[entry:ScopedCredential];copy:[value:string,trigger?:HTMLElement];renew:[entry:ScopedCredential,fieldId:string];history:[entry:ScopedCredential,fieldId:string];openEntry:[entry:ScopedCredential]}>()

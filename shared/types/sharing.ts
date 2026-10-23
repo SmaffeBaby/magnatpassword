@@ -1,6 +1,6 @@
 import type { VaultData } from './vault'
-export interface SharedMember { userId: string; email: string; brand: 'magnat' | 'light' }
-export interface SharedVault { id: string; name: string; ownerId: string; revision: number; members: SharedMember[]; data: VaultData }
+export interface SharedMember { categoryIds?:string[]|null; userId: string; email: string; brand: 'magnat' | 'light' }
+export interface SharedVault { categoryIds?:string[]|null; canManageStructure?:boolean; id: string; name: string; ownerId: string; revision: number; members: SharedMember[]; data: VaultData }
 export interface VaultSource { id: string; name: string; data: VaultData }
 
-export interface SharedCard { archived?:boolean; id:string; revision:number; ownerId:string; vaultIds:string[]; canManageSharing:boolean; entry:import('./vault').Credential; payments:import('./subscriptions').SubscriptionPayment[] }
+export interface SharedCard { canManageCategories?:boolean; archived?:boolean; id:string; revision:number; ownerId:string; vaultIds:string[]; canManageSharing:boolean; entry:import('./vault').Credential; payments:import('./subscriptions').SubscriptionPayment[] }

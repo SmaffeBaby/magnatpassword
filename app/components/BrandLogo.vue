@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useBrandLogo } from '../composables/useBrandLogo'
+
 const props = withDefaults(defineProps<{ to?: string; compact?: boolean; admin?: boolean }>(), { to: '/' })
 const { brand, label } = useBrandLogo(props)
 </script>

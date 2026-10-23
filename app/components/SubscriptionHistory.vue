@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { usePaymentHistory } from '../composables/usePaymentHistory'
+
 import { todayDate } from '~~/shared/utils/subscriptions'
 import type { VaultSource } from '~~/shared/types/sharing'
 const props = defineProps<{ sources: VaultSource[]; subscriptionKey?: string }>()

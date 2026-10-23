@@ -5,6 +5,7 @@ import { todayDate } from '~~/shared/utils/subscriptions'
 
 const subscriptionFilters = () => ({ group: 'all', currency: 'all', search: '', statusFilter: 'all' })
 export const useFiltersStore = defineStore('filters', () => {
+  const collapsedFolders=ref<string[]>([])
   const workspaceId = ref('all')
   const workspace = reactive({ active: 'all', query: '', sort: 'updated' })
   const subscriptions = reactive({ upcoming: subscriptionFilters(), calendar: subscriptionFilters(), finances: subscriptionFilters(), history: subscriptionFilters() })
@@ -13,6 +14,7 @@ export const useFiltersStore = defineStore('filters', () => {
   const history = reactive({ subscription: 'all', from: '', to: '' })
   const relationships = reactive({ mode: 'all' as RelationshipMode, query: '' })
   function reset() {
+    collapsedFolders.value=[]
     workspaceId.value = 'all'
     Object.assign(workspace, { active: 'all', query: '', sort: 'updated' })
     for (const filters of Object.values(subscriptions)) Object.assign(filters, subscriptionFilters())
@@ -21,5 +23,5 @@ export const useFiltersStore = defineStore('filters', () => {
     Object.assign(history, { subscription: 'all', from: '', to: '' })
     Object.assign(relationships, { mode: 'all', query: '' })
   }
-  return { history, workspaceId, workspace, subscriptions, calendar, finances, relationships, reset }
+  return { collapsedFolders, history, workspaceId, workspace, subscriptions, calendar, finances, relationships, reset }
 })

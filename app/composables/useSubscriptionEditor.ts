@@ -11,7 +11,7 @@ export function useSubscriptionEditor(props:{field:CustomField;cards?:ScopedCred
   for(const ref of [sub.value.primaryCard,...(sub.value.linkedCards??[])])if(ref&&!refs.has(subscriptionCardKey(ref)))refs.set(subscriptionCardKey(ref),ref)
   return refs
  })
- const cardOptions=computed(()=>[...cardReferences.value].map(([value,ref])=>{const card=props.cards?.find(card=>subscriptionCardKey({vaultId:card.vaultId,entryId:card.id,sharedCardId:card.sharedCardId})===value);return {value,label:card?`${card.title} · ${card.vaultName}`:'Недоступная карточка'}}))
+ const cardOptions=computed(()=>[...cardReferences.value.keys()].map(value=>{const card=props.cards?.find(card=>subscriptionCardKey({vaultId:card.vaultId,entryId:card.id,sharedCardId:card.sharedCardId})===value);return {value,label:card?`${card.title} · ${card.vaultName}`:'Недоступная карточка'}}))
  const primaryOptions=computed(()=>[{label:props.ownerTitle||'Текущая карточка',value:'__current'},...cardOptions.value])
  const primaryCard=computed({get:()=>sub.value.primaryCard?subscriptionCardKey(sub.value.primaryCard):'__current',set:(value:string)=>{
   sub.value.primaryCard=value==='__current'?undefined:cardReferences.value.get(value)

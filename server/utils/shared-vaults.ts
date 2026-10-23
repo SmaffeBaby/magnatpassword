@@ -19,10 +19,12 @@ export const credentialSchema = z.object({
   links:z.array(z.object({id:z.uuid(),targetVaultId:z.union([z.literal('personal'),z.uuid()]),targetEntryId:z.uuid(),sourceFieldId:z.union([z.enum(['card','title','url','username','password','notes']),z.uuid()]).optional(),targetFieldId:z.union([z.enum(['card','title','url','username','password','notes']),z.uuid()]).optional(),label:z.string().max(100).optional()}).strict()).max(50).optional()
 }).strict()
 export const svgSchema=z.string().max(65000).transform(value=>sanitizeSvg(value)).refine(Boolean,'Invalid SVG')
+export const categoryIdsSchema=z.array(z.string().min(1).max(128)).max(500).nullable()
 export const sharedDataSchema = z.object({
  version:z.literal(1),name:z.string().trim().min(1).max(80).optional(),svg:svgSchema.optional(),
  subscriptionPayments:z.array(paymentSchema).max(20000).optional(),
- categories:z.array(z.object({id:z.string().min(1).max(128),name:z.string().trim().min(1).max(60),icon:z.string().regex(/^i-lucide-[a-z0-9-]+$/),color:z.string().regex(/^#[0-9a-fA-F]{6}$/),svg:svgSchema.optional()}).strict()).max(500),
+ categoryFolders:z.array(z.object({categoryLinks:z.array(z.object({vaultId:z.union([z.literal('personal'),z.uuid()]),categoryId:z.string().min(1).max(128)}).strict()).max(500).optional(),id:z.uuid(),name:z.string().trim().min(1).max(60),icon:z.string().regex(/^i-lucide-[a-z0-9-]+$/),color:z.string().regex(/^#[0-9a-fA-F]{6}$/),svg:svgSchema.optional()}).strict()).max(500).optional(),
+ categories:z.array(z.object({folderId:z.uuid().optional(),id:z.string().min(1).max(128),name:z.string().trim().min(1).max(60),icon:z.string().regex(/^i-lucide-[a-z0-9-]+$/),color:z.string().regex(/^#[0-9a-fA-F]{6}$/),svg:svgSchema.optional()}).strict()).max(500),
  entries:z.array(credentialSchema).max(5000)
 }).strict()
 export const revisionSchema = z.number().int().positive()
@@ -47,12 +49,12 @@ export function sharedId(event: H3Event) {
 }
 export async function requireSharedMember(event: H3Event) {
   const context = await requireSharedUser(event), id = sharedId(event)
-  const { data: membership, error } = await context.client.from('shared_vault_members').select('user_id').eq('vault_id', id).eq('user_id', context.user.id).maybeSingle()
+  const { data: membership, error } = await context.client.from('shared_vault_members').select('user_id,category_ids,access_token').eq('vault_id', id).eq('user_id', context.user.id).maybeSingle()
   if (error) throw createError({ statusCode: 503, statusMessage: 'Shared vault request failed', message: 'Не удалось проверить доступ' })
   if (!membership) throw createError({ statusCode: 403, statusMessage: 'Shared vault request failed', message: 'Нет доступа к хранилищу' })
   const { data: row, error: failure } = await context.client.from('shared_vaults').select('*').eq('id', id).single()
   if (failure) throw createError({ statusCode: 503, statusMessage: 'Shared vault request failed', message: 'Не удалось загрузить хранилище' })
-  return { ...context, id, row }
+  return { ...context, id, row, membership }
 }
 export function sharedSecret(event: H3Event): string {
   const secret = useRuntimeConfig(event).sharedVaultKey

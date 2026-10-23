@@ -3,7 +3,7 @@ import type { FinanceMonth, FinanceSegment } from '~~/shared/types/finances'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 
 export function useFinanceChart(props: { monthly: FinanceMonth[]; distribution: {key:string;label:string;value:number}[]; currency:string }, open: (entry: ScopedCredential) => void) {
- const canvas=ref<SVGSVGElement|null>(null),groupCanvas=ref<SVGSVGElement|null>(null),host=ref<HTMLElement|null>(null)
+ const canvas=useTemplateRef<SVGSVGElement>('finance-chart-canvas'),groupCanvas=useTemplateRef<SVGSVGElement>('finance-chart-groups'),host=useTemplateRef<HTMLElement>('finance-chart-host')
  let observer:ResizeObserver|undefined
  const serviceColor=(key:string)=>{
   let hash=0
@@ -50,5 +50,5 @@ export function useFinanceChart(props: { monthly: FinanceMonth[]; distribution: 
  watch(()=>[props.monthly,props.distribution,props.currency],()=>nextTick(render),{deep:true})
  onMounted(()=>{observer=new ResizeObserver(render);if(host.value)observer.observe(host.value);render()})
  onBeforeUnmount(()=>observer?.disconnect())
- return {canvas,groupCanvas,host,services,serviceColor,money,share}
+ return {services,serviceColor,money,share}
 }
