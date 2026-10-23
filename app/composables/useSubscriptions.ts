@@ -1,6 +1,6 @@
 import type { VaultSource } from '~~/shared/types/sharing'
 import { unpaidProjectedCharges, sourcePayments, recordedCharges, currencyTotals, amountLabel } from '~~/shared/utils/subscription-finances'
-import { addPeriod, todayDate, subscriptionRows, subscriptionCardReferences, matchesSubscriptionCard, dateLabel, moneyLabel, periodLabel } from '~~/shared/utils/subscriptions'
+import { addPeriod, todayDate, subscriptionRows, subscriptionCardReferences, subscriptionCardKey, matchesSubscriptionCard, dateLabel, moneyLabel, periodLabel } from '~~/shared/utils/subscriptions'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 export function useSubscriptions(props:{entries:ScopedCredential[]}) {
  const today=useState('subscription-today',()=>todayDate())
@@ -13,8 +13,8 @@ export function useSubscriptionSummary(props:{entry:ScopedCredential;entries?:Sc
  const sameCard=(a:ScopedCredential,b:ScopedCredential)=>a.sharedCardId&&b.sharedCardId?a.sharedCardId===b.sharedCardId:a.id===b.id&&(a.vaultIds??[a.vaultId]).some(id=>(b.vaultIds??[b.vaultId]).includes(id))
  const rows=computed(()=>common.rows.value.filter(row=>sameCard(row.entry,props.entry)||subscriptionCardReferences(row.subscription).some(card=>matchesSubscriptionCard(card,props.entry))).map(row=>{
   const primary=row.subscription.primaryCard?(props.entries??[props.entry]).find(entry=>matchesSubscriptionCard(row.subscription.primaryCard!,entry)):row.entry
-  const linked=(row.subscription.linkedCards??[]).map(card=>(props.entries??[props.entry]).find(entry=>matchesSubscriptionCard(card,entry))?.title??'Недоступная карточка')
-  return {...row,owner:!sameCard(row.entry,props.entry)?row.entry.title:'',primaryTitle:primary?.title??'Недоступная карточка',linkedTitles:linked}
+  const linkedCards=(row.subscription.linkedCards??[]).map(card=>{const entry=(props.entries??[props.entry]).find(entry=>matchesSubscriptionCard(card,entry));return {key:subscriptionCardKey(card),entry,title:entry?.title??'Недоступная карточка'}})
+  return {...row,owner:!sameCard(row.entry,props.entry)?row.entry.title:'',primaryEntry:primary,primaryTitle:primary?.title??'Недоступная карточка',linkedCards}
  }))
  return {...common,rows}
 }

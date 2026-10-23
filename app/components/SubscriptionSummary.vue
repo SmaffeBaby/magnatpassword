@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 const props=defineProps<{entry:ScopedCredential;entries?:ScopedCredential[];busy:boolean}>()
-const emit=defineEmits<{renew:[entry:ScopedCredential,fieldId:string];history:[entry:ScopedCredential,fieldId:string]}>()
+const emit=defineEmits<{renew:[entry:ScopedCredential,fieldId:string];history:[entry:ScopedCredential,fieldId:string];open:[entry:ScopedCredential]}>()
 const {rows,status,dateLabel,moneyLabel,periodLabel}=useSubscriptionSummary(props)
 </script>
 <template>
  <section v-for="row in rows" :key="row.key" class="subscription-summary" :class="{'is-due':row.daysLeft<=7,'is-overdue':row.daysLeft<0}">
-  <div><strong>{{ row.field.label }}</strong><span>{{ moneyLabel(row.subscription) }} / {{ periodLabel(row.subscription) }}</span></div>
+  <div class="subscription-summary-heading"><strong>{{ row.field.label }}</strong><span>{{ moneyLabel(row.subscription) }} / {{ periodLabel(row.subscription) }}</span></div>
   <p v-if="row.owner">Подписка из карточки «{{ row.owner }}»</p>
-  <p>Основная карточка: {{ row.primaryTitle }}</p>
-  <p v-if="row.linkedTitles.length">Другие карточки: {{ row.linkedTitles.join(', ') }}</p>
+  <p>Основная карточка: <button v-if="row.primaryEntry" type="button" class="subscription-card-link" @click="emit('open',row.primaryEntry)">{{ row.primaryTitle }}</button><span v-else>{{ row.primaryTitle }}</span></p>
+  <p v-if="row.linkedCards.length">Другие карточки: <template v-for="(card,index) in row.linkedCards" :key="card.key"><span v-if="index">, </span><button v-if="card.entry" type="button" class="subscription-card-link" @click="emit('open',card.entry)">{{ card.title }}</button><span v-else>{{ card.title }}</span></template></p>
   <p>Оплачено до {{ dateLabel(row.subscription.paidUntil) }}</p>
   <p v-if="row.subscription.autoRenew">Следующее списание: {{ dateLabel(row.subscription.paidUntil) }}</p>
   <progress :value="row.progress" max="100" :aria-label="`Срок подписки: ${status(row.daysLeft)}`" />
   <small>{{ status(row.daysLeft) }}</small>
-  <UButton size="xs" color="neutral" variant="outline" icon="i-lucide-history" label="История списаний" @click="emit('history',row.entry,row.field.id)"/>
-  <UButton size="xs" variant="soft" :disabled="busy" label="Отметить оплату следующего периода" @click="emit('renew',row.entry,row.field.id)" />
+  <div class="subscription-summary-actions">
+  <UButton type="button" size="xs" color="neutral" variant="outline" icon="i-lucide-history" label="История списаний" @click="emit('history',row.entry,row.field.id)"/>
+  <UButton type="button" size="xs" variant="soft" :disabled="busy" label="Отметить оплату следующего периода" @click="emit('renew',row.entry,row.field.id)" />
+  </div>
  </section>
 </template>
