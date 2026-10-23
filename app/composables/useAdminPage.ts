@@ -2,7 +2,8 @@ export function useAdminPage() {
   const { productName } = useAccountBrand()
   const auth = useAuthStore(), vault = useVaultStore(), route = useRoute()
   const identity = ref<{ id: string; email?: string } | null>(null), checking = ref(true), accessError = ref('')
-  const overview = ref<{ vaults: number; totalUsers: number; users: { id: string; email?: string; createdAt: string; lastSignIn?: string }[] } | null>(null)
+  type AdminOverview = { vaults: number; totalUsers: number; users: { id: string; email?: string; createdAt: string; lastSignIn?: string }[] }
+  const overview = ref<AdminOverview | null>(null), switchingAccount = ref(false)
   const section = computed(() => ['categories', 'credentials', 'users', 'security'].includes(String(route.query.section)) ? String(route.query.section) : 'overview')
   const titles: Record<string, string> = { overview: 'Обзор хранилища', categories: 'Категории', credentials: 'Пароли', users: 'Пользователи', security: 'Безопасность' }
   const navigation = computed(() => [{ label: 'Хранилище', icon: 'i-lucide-panels-top-left', defaultOpen: true, children: [
@@ -18,16 +19,34 @@ export function useAdminPage() {
     if (!data.session) throw new Error('Войдите в аккаунт администратора')
     return $fetch<T>(url, { headers: { Authorization: `Bearer ${data.session.access_token}` } }) as Promise<T>
   }
+  let restoreAttempt = 0
   async function restore() {
-    if (auth.checking) return
-    checking.value = true; accessError.value = ''; identity.value = null
-    if (!auth.user) { checking.value = false; return }
-    try { identity.value = await adminFetch('/api/admin/me'); overview.value = await adminFetch('/api/admin/overview') }
-    catch { accessError.value = 'Нет доступа к панели или сервис недоступен. Войдите под администратором и повторите.' }
-    finally { checking.value = false }
+    const attempt = ++restoreAttempt, userId = auth.user?.id
+    identity.value = null; overview.value = null; accessError.value = ''
+    if (auth.checking) { checking.value = true; return }
+    if (!userId) { checking.value = false; return }
+    checking.value = true
+    try {
+      const currentIdentity = await adminFetch<{ id: string; email?: string }>('/api/admin/me')
+      const currentOverview = await adminFetch<AdminOverview>('/api/admin/overview')
+      if (attempt !== restoreAttempt || auth.user?.id !== userId) return
+      identity.value = currentIdentity; overview.value = currentOverview
+    } catch (failure: any) {
+      if (attempt !== restoreAttempt || auth.user?.id !== userId) return
+      const status = failure?.statusCode ?? failure?.status ?? failure?.response?.status
+      accessError.value = status === 403 ? 'У текущего аккаунта нет прав администратора. Войдите под аккаунтом администратора.'
+        : status === 401 ? 'Сессия завершена. Войдите в аккаунт заново.'
+        : 'Не удалось загрузить панель управления. Повторите попытку или проверьте соединение с сервером.'
+    } finally { if (attempt === restoreAttempt) checking.value = false }
   }
+  async function switchAccount() {
+    if (switchingAccount.value) return
+    switchingAccount.value = true
+    try { await auth.logout() } finally { switchingAccount.value = false }
+  }
+
   watch(() => [auth.checking, auth.user?.id], restore, { immediate: true })
   useHead({ title: () => `${titles[section.value]} · ${productName.value} / Admin` })
   const date = (value?: string) => value ? new Date(value).toLocaleDateString('ru-RU') : 'Ещё не входил'
-  return { auth, vault, identity, checking, accessError, overview, section, titles, navigation, restore, date, productName }
+  return { auth, vault, identity, checking, accessError, overview, section, titles, navigation, restore, switchAccount, switchingAccount, date, productName }
 }

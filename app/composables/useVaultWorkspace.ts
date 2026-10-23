@@ -189,8 +189,8 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     else next.entries = next.entries.filter(e => e.id !== target.id)
     if (await saveData(target.vaultId, next)) { if (active.value === categoryFilterId(target.vaultId, target.id)) active.value = 'all'; deleteOpen.value = false; deleting.value = null }
   }
-  async function copy(value: string) {
-    try { await copyText(value); toast.add({ title: 'Скопировано в буфер обмена', description: 'История буфера обмена управляется вашей системой.', icon: 'i-lucide-copy', color: 'success' }) }
+  async function copy(value: string, trigger?: HTMLElement) {
+    try { await copyText(value, trigger); toast.add({ title: 'Скопировано в буфер обмена', description: 'История буфера обмена управляется вашей системой.', icon: 'i-lucide-copy', color: 'success' }) }
     catch { toast.add({ title: 'Браузер не разрешил копирование', color: 'error' }) }
   }
   function host(url: string) { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return 'Приложение или сервис' } }

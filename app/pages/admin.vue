@@ -1,10 +1,10 @@
 <script setup lang="ts">
-const { auth, vault, identity, checking, accessError, overview, section, titles, navigation, restore, date, productName } = useAdminPage()
+const { auth, vault, identity, checking, accessError, overview, section, titles, navigation, restore, switchAccount, switchingAccount, date, productName } = useAdminPage()
 </script>
 <template>
   <AuthGate admin>
     <div v-if="checking" class="gate"><UIcon name="i-lucide-loader-circle" class="size-6 animate-spin" />Проверяем доступ…</div>
-    <div v-else-if="!identity" class="gate"><UCard class="max-w-md"><h1 class="text-xl font-semibold">Панель управления</h1><p class="my-5 text-sm text-slate-500">{{ accessError }}</p><div class="flex gap-2"><UButton to="/" color="neutral" variant="outline" label="В хранилище" /><UButton label="Повторить" @click="restore" /><UButton color="neutral" variant="ghost" label="Выйти" @click="auth.logout()" /></div></UCard></div>
+    <div v-else-if="!identity" class="gate"><UCard class="max-w-md"><h1 class="text-xl font-semibold">Панель управления</h1><p v-if="auth.user?.email" class="mt-4 break-all text-sm text-slate-500">Текущий аккаунт: {{ auth.user.email }}</p><p class="my-5 text-sm text-slate-500">{{ accessError }}</p><UAlert v-if="auth.error" color="error" :description="auth.error" class="mb-4"/><div class="flex flex-wrap gap-2"><UButton to="/" color="neutral" variant="outline" label="В хранилище" /><UButton label="Повторить" @click="restore" /><UButton color="neutral" variant="outline" label="Войти под другим аккаунтом" :loading="switchingAccount" @click="switchAccount" /></div></UCard></div>
     <UDashboardGroup v-else>
       <UDashboardSidebar id="magnat-admin" collapsible class="bg-slate-50/70" :ui="{ footer: 'border-t border-default' }">
         <template #header="{ collapsed }"><BrandLogo to="/admin" :compact="collapsed" admin class="px-1 py-3" /></template>
