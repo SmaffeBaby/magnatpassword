@@ -1,3 +1,4 @@
+import { projectedCharges, currencyTotals, amountLabel } from '~~/shared/utils/subscription-finances'
 import { addPeriod, todayDate, subscriptionRows, dateLabel, moneyLabel, periodLabel } from '~~/shared/utils/subscriptions'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 export function useSubscriptions(props:{entries:ScopedCredential[]}) {
@@ -15,11 +16,18 @@ export function useSubscriptionSidebar(props:{entries:ScopedCredential[]}) {
  return {...common,upcoming}
 }
 export function useSubscriptionCalendar(props:{entries:ScopedCredential[]}) {
- const common=useSubscriptions(props), month=ref(common.today.value.slice(0,7)+'-01'), selected=ref(common.today.value)
+ const common=useSubscriptionFilters(props), month=ref(common.today.value.slice(0,7)+'-01'), selected=ref(common.today.value)
  const monthTitle=computed(()=>new Intl.DateTimeFormat('ru-RU',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(month.value+'T12:00:00Z')))
- const cells=computed(()=>{const weekday=(new Date(month.value+'T12:00:00Z').getUTCDay()+6)%7;return Array.from({length:42},(_,i)=>{const date=addPeriod(month.value,i-weekday,'day');return {date,day:Number(date.slice(-2)),outside:date.slice(0,7)!==month.value.slice(0,7),events:common.rows.value.filter(row=>row.subscription.paidUntil===date)}})})
- const selectedRows=computed(()=>common.rows.value.filter(row=>row.subscription.paidUntil===selected.value))
- function move(delta:number){month.value=addPeriod(month.value,delta,'month')}
+ const selectedMonth=computed({get:()=>month.value.slice(5,7),set:value=>{month.value=month.value.slice(0,5)+value+'-01'}})
+ const selectedYear=computed({get:()=>Number(month.value.slice(0,4)),set:value=>{if(Number.isInteger(value)&&value>=1900&&value<=9998)month.value=String(value).padStart(4,'0')+month.value.slice(4)}})
+ const monthOptions=Array.from({length:12},(_,i)=>({label:new Intl.DateTimeFormat('ru-RU',{month:'long',timeZone:'UTC'}).format(new Date(Date.UTC(2026,i,1))),value:String(i+1).padStart(2,'0')}))
+ const charges=computed(()=>projectedCharges(common.matchingRows.value,addPeriod(month.value,-6,'day'),addPeriod(month.value,42,'day'),common.today.value))
+ const cells=computed(()=>{const weekday=(new Date(month.value+'T12:00:00Z').getUTCDay()+6)%7;return Array.from({length:42},(_,i)=>{const date=addPeriod(month.value,i-weekday,'day'),events=charges.value.filter(event=>event.date===date);return {date,day:Number(date.slice(-2)),outside:date.slice(0,7)!==month.value.slice(0,7),events,totals:currencyTotals(events.filter(event=>event.charge).map(event=>({amount:event.amount,currency:event.currency})))}})})
+ const selectedRows=computed(()=>charges.value.filter(event=>event.date===selected.value))
+ const monthTotals=computed(()=>currencyTotals(charges.value.filter(event=>event.charge&&event.date.slice(0,7)===month.value.slice(0,7))))
+ const selectedTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>event.charge)))
+ function move(delta:number){const next=addPeriod(month.value,delta,'month');if(next)month.value=next}
  function goToday(){month.value=common.today.value.slice(0,7)+'-01';selected.value=common.today.value}
- return {...common,month,selected,monthTitle,cells,selectedRows,move,goToday}
+ watch(month,value=>{selected.value=value})
+ return {...common,month,selected,monthTitle,cells,selectedRows,move,goToday,selectedMonth,selectedYear,monthOptions,monthTotals,selectedTotals,amountLabel}
 }

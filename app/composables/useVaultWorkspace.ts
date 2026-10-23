@@ -1,3 +1,6 @@
+import {projectSharedCards,storedVaultData} from '~~/shared/utils/shared-card-sources'
+import {credentialAccounts,entryCategoryIds} from '~~/shared/utils/credentials'
+import { paymentForRenewal } from '~~/shared/utils/subscription-finances'
 import { addPeriod, todayDate, validDate, nextPaidUntil, subscriptionRows } from '~~/shared/utils/subscriptions'
 import type { AppNotification } from '~~/shared/types/subscriptions'
 import type { CustomField } from '~~/shared/types/vault'
@@ -13,61 +16,84 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const { productName } = useAccountBrand()
   const vault = useVaultStore(), auth = useAuthStore(), shared = useSharedVaultsStore(), toast = useToast()
   const workspaceId = useState<string>('selected-vault', () => 'all')
-  const sources = computed<VaultSource[]>(() => [{ id: 'personal', name: vault.data.name || 'Личное', data: vault.data }, ...shared.groups.map(g => ({ id: g.id, name: g.name, data: g.data }))])
+  const sources = computed<VaultSource[]>(() => projectSharedCards([{ id: 'personal', name: vault.data.name || 'Личное', data: vault.data }, ...shared.groups.map(g => ({ id: g.id, name: g.name, data: g.data }))],shared.cards))
   const visibleSources = computed(() => workspaceId.value === 'all' ? sources.value : sources.value.filter(s => s.id === workspaceId.value))
   const workspaceName = computed(() => workspaceId.value === 'all' ? 'Все хранилища' : sources.value.find(s => s.id === workspaceId.value)?.name ?? 'Хранилище')
   const entries = computed(() => sourceEntries(visibleSources.value)), categories = computed(() => sourceCategories(visibleSources.value))
   const busy = computed(() => vault.busy || shared.busy || shared.loading), error = computed(() => vault.error || shared.error)
-  const active = ref('all'), query = ref(''), sort = ref('updated'), mobileOpen = ref(false)
+  const route = useRoute()
+  const active = ref(props.mode === 'upcoming' || props.mode === 'finances' ? props.mode : typeof route.query.view === 'string' ? route.query.view : 'all'), query = ref(''), sort = ref('updated'), mobileOpen = ref(false)
   const entryOpen = ref(false), categoryOpen = ref(false), deleteOpen = ref(false), showPassword = ref(false)
   const editingVaultId = ref('personal'), categoryVaultId = ref('personal')
   const deleting = ref<ScopedCredential | ScopedCategory | null>(null), deletingCategory = ref(false), formError = ref('')
-  const blankEntry = (): Credential => ({ id: '', title: '', url: '', username: '', password: '', notes: '', categoryId: '', customFields: [], links: [], favorite: false, createdAt: '', updatedAt: '' })
+  const blankEntry = (): Credential => ({ accounts:[],categoryIds:[],images:[], id: '', title: '', url: '', username: '', password: '', notes: '', categoryId: '', customFields: [], links: [], favorite: false, createdAt: '', updatedAt: '' })
   const form = reactive<Credential>(blankEntry())
+  const media=useMediaUploads()
+  const targetVaultIds=ref<string[]>(['personal']),editingCardId=ref(''),editingCardRevision=ref(0),editingSourceRevision=ref(0),originVaultId=ref('personal'),viewOpen=ref(false),viewKey=ref(''),sharingEditable=computed(()=>!editingCardId.value||!!shared.cards.find(card=>card.id===editingCardId.value)?.canManageSharing)
+  let entrySession=0
   const subscriptionSettings = useSubscriptionSettings(() => form.customFields ?? [])
-  watch(entryOpen, open => { if (!open) subscriptionSettings.subscriptionOpen.value = false })
-  const categoryForm = reactive<Category>({ id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1' })
+  watch(entryOpen, open => { if (!open) {subscriptionSettings.subscriptionOpen.value = false;entrySession++} })
+  const categoryForm = reactive<Category>({ id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1',svg:undefined })
   const colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9', '#8b5cf6']
   const icons = ['i-lucide-folder', 'i-lucide-briefcase-business', 'i-lucide-user-round', 'i-lucide-landmark', 'i-lucide-app-window', 'i-lucide-globe', 'i-lucide-gamepad-2', 'i-lucide-shopping-bag']
   const source = (id: string) => sources.value.find(s => s.id === id)
   const vaultOptions = computed(() => sources.value.map(s => ({ label: s.name, value: s.id })))
-  const categoryOptions = computed(() => [{ label: 'Без категории', value: '__none' }, ...(source(editingVaultId.value)?.data.categories ?? []).map(c => ({ label: c.name, value: c.id }))])
-  const selectedCategory = computed({ get: () => form.categoryId || '__none', set: value => { form.categoryId = value === '__none' ? '' : value } })
+  const categoryOptions = computed(() => sources.value.filter(source=>targetVaultIds.value.includes(source.id)).flatMap(source=>source.data.categories.map(category=>({label:`${category.name} · ${source.name}`,value:category.id}))))
+  const selectedCategory = computed({get:()=>entryCategoryIds(form).filter(id=>categoryOptions.value.some(option=>option.value===id)),set:(values:string[])=>{const hidden=entryCategoryIds(form).filter(id=>!categoryOptions.value.some(option=>option.value===id));form.categoryIds=[...new Set([...hidden,...values])];form.categoryId=form.categoryIds[0]??''}})
   const favorites = computed(() => entries.value.filter(e => e.favorite).length)
   const category = (filterId: string) => categories.value.find(c => c.filterId === filterId)
-  const entryCategory = (entry: ScopedCredential) => source(entry.vaultId)?.data.categories.find(c => c.id === entry.categoryId)
-  const categoryCount = (c: ScopedCategory) => entries.value.filter(e => e.vaultId === c.vaultId && e.categoryId === c.id).length
+  const entryCategories = (entry:ScopedCredential)=>sourceCategories(sources.value.filter(source=>(entry.vaultIds??[entry.vaultId]).includes(source.id))).filter(category=>entryCategoryIds(entry).includes(category.id))
+  const entryCategory = (entry: ScopedCredential) => entryCategories(entry)[0]
+  const categoryCount = (c: ScopedCategory) => entries.value.filter(e => (e.vaultIds??[e.vaultId]).includes(c.vaultId) && entryCategoryIds(e).includes(c.id)).length
+  const upcomingMode = computed(() => active.value === 'upcoming'), financesMode = computed(() => active.value === 'finances')
   const calendarMode = computed(() => active.value === 'subscriptions')
   const subscriptionCount = computed(() => subscriptionRows(entries.value).length)
   const graphMode = computed(() => active.value === 'relationships')
-  const title = computed(() => calendarMode.value ? 'Календарь подписок' : graphMode.value ? 'Взаимосвязь' : active.value === 'all' ? 'Все пароли' : active.value === 'favorites' ? 'Избранное' : category(active.value)?.name ?? 'Все пароли')
-  const filtered = computed(() => entries.value.filter(e => (active.value === 'all' || (active.value === 'favorites' ? e.favorite : categoryFilterId(e.vaultId, e.categoryId) === active.value)) && [e.title, e.username, e.url, e.notes, e.vaultName, ...(e.customFields ?? []).filter(f => f.type !== 'secret').map(f => `${f.label} ${f.value}`)].some(v => v.toLowerCase().includes(query.value.toLowerCase()))).sort((a, b) => sort.value === 'title' ? a.title.localeCompare(b.title, 'ru') : b.updatedAt.localeCompare(a.updatedAt)))
+  const title = computed(() => upcomingMode.value ? 'Ближайшие подписки' : financesMode.value ? 'Финансы' : calendarMode.value ? 'Календарь подписок' : graphMode.value ? 'Взаимосвязь' : active.value === 'all' ? 'Все карточки' : active.value === 'favorites' ? 'Избранное' : category(active.value)?.name ?? 'Все карточки')
+  const filtered = computed(() => entries.value.filter(e => (active.value === 'all' || (active.value === 'favorites' ? e.favorite : (e.vaultIds??[e.vaultId]).some(vaultId=>entryCategoryIds(e).some(id=>categoryFilterId(vaultId,id)===active.value)))) && [e.title, ...credentialAccounts(e).flatMap(account=>[account.label,account.username]), e.url, e.notes, ...(e.vaultNames??[e.vaultName]), ...(e.customFields ?? []).filter(f => f.type !== 'secret').map(f => `${f.label} ${f.value}`)].some(v => v.toLowerCase().includes(query.value.toLowerCase()))).sort((a, b) => sort.value === 'title' ? a.title.localeCompare(b.title, 'ru') : b.updatedAt.localeCompare(a.updatedAt)))
   const categoryMode = computed(() => props.mode === 'categories')
   function copyData(id: string): VaultData | null {
     const value = source(id)?.data
     if (!value) { formError.value = 'Хранилище недоступно. Обновите список.'; return null }
     return JSON.parse(JSON.stringify(value))
   }
-  const saveData = (id: string, next: VaultData) => id === 'personal' ? vault.save(next) : shared.save(id, next)
+  const saveData = (id: string, next: VaultData) => id === 'personal' ? vault.save(storedVaultData(next)) : shared.save(id, storedVaultData(next))
   const defaultTarget = () => category(active.value)?.vaultId ?? (workspaceId.value === 'all' ? 'personal' : workspaceId.value)
   function editEntry(entry?: ScopedCredential) {
+    entrySession++;media.mediaError.value='';viewOpen.value=false
+    originVaultId.value=entry?.vaultId??defaultTarget();editingCardId.value=entry?.sharedCardId??''
+    const linked=entry?.sharedCardId?shared.cards.find(card=>card.id===entry.sharedCardId):undefined
+    editingCardRevision.value=linked?.revision??0
+    editingSourceRevision.value=originVaultId.value==='personal'?vault.getRevision():shared.groups.find(group=>group.id===originVaultId.value)?.revision??0
+    targetVaultIds.value=linked?(linked.vaultIds.length?[...linked.vaultIds]:['personal']):[entry?.vaultId??defaultTarget()]
     editingVaultId.value = entry?.vaultId ?? defaultTarget()
     const next = entry ?? { ...blankEntry(), categoryId: category(active.value)?.id ?? '' }
     // Copy credential fields only; source labels never enter the encrypted payload.
     for (const name of Object.keys(blankEntry()) as (keyof Credential)[]) (form as any)[name] = JSON.parse(JSON.stringify(next[name] ?? blankEntry()[name]))
+    form.accounts=entry?JSON.parse(JSON.stringify(credentialAccounts(entry))):[];form.categoryIds=entryCategoryIds(next);form.categoryId=form.categoryIds[0]??''
     showPassword.value = false; formError.value = ''; entryOpen.value = true
   }
   function editCategory(value?: ScopedCategory) {
     categoryVaultId.value = value?.vaultId ?? defaultTarget()
-    Object.assign(categoryForm, { id: value?.id ?? '', name: value?.name ?? '', icon: value?.icon ?? 'i-lucide-folder', color: value?.color ?? '#6366f1' })
+    Object.assign(categoryForm, { id: value?.id ?? '', name: value?.name ?? '', icon: value?.icon ?? 'i-lucide-folder', color: value?.color ?? '#6366f1',svg:value?.svg })
     formError.value = ''; categoryOpen.value = true
   }
-  function select(id: string) { active.value = id; mobileOpen.value = false }
+  function select(id: string) { mobileOpen.value = false; if (id === 'upcoming' || id === 'finances') { navigateTo(id === 'upcoming' ? '/subscriptions' : '/finances'); return } if (props.mode === 'upcoming' || props.mode === 'finances') { navigateTo({path:'/',query:{view:id}}); return } active.value = id }
   const allEntries = computed(() => sourceEntries(sources.value))
-  const relationTargets = computed(() => [{ label: 'Выберите карточку', value: '__none' }, ...allEntries.value.filter(e => !(e.id === form.id && e.vaultId === editingVaultId.value)).map(e => ({ label: `${e.title} · ${e.vaultName}`, value: cardKey(e.vaultId, e.id) }))])
+  const viewingEntry=computed(()=>allEntries.value.find(entry=>(entry.sharedCardId||`${entry.vaultId}/${entry.id}`)===viewKey.value)??null)
+  const viewingCategories=computed(()=>viewingEntry.value?entryCategories(viewingEntry.value):[])
+  const viewingLinks=computed(()=>(viewingEntry.value?.links??[]).map(link=>{const target=allEntries.value.find(entry=>entry.id===link.targetEntryId&&(entry.vaultIds??[entry.vaultId]).includes(link.targetVaultId));return {id:link.id,label:link.label||'Ручная связь',target:target?.title||'Недоступная карточка'}}))
+  function viewEntry(entry:ScopedCredential){viewKey.value=entry.sharedCardId||`${entry.vaultId}/${entry.id}`;viewOpen.value=true}
+  watch(viewingEntry,entry=>{if(!entry)viewOpen.value=false})
+  function setTargetVaults(values:string[]){const added=values.find(id=>!targetVaultIds.value.includes(id));targetVaultIds.value=added==='personal'?['personal']:values.filter(id=>id!=='personal');if(!targetVaultIds.value.length)targetVaultIds.value=['personal'];editingVaultId.value=targetVaultIds.value[0]!}
+  function addAccount(){(form.accounts??=[]).push({id:createId(),label:`Доступ ${(form.accounts?.length??0)+1}`,username:'',password:''})}
+  function removeAccount(id:string){form.accounts=form.accounts?.filter(account=>account.id!==id)}
+  async function uploadImages(event:Event){const session=entrySession,images=await media.readImages(event,5-(form.images?.length??0));if(session===entrySession&&entryOpen.value)(form.images??=[]).push(...images)}
+  async function uploadCategorySvg(event:Event){const categoryId=categoryForm.id,value=await media.readSvg(event);if(value&&categoryOpen.value&&categoryId===categoryForm.id)categoryForm.svg=value}
+  const relationTargets = computed(() => [{ label: 'Выберите карточку', value: '__none' }, ...allEntries.value.filter(e => !(e.id === form.id && (e.vaultId === editingVaultId.value || !!editingCardId.value && e.sharedCardId === editingCardId.value))).map(e => ({ label: `${e.title} · ${e.vaultName}`, value: cardKey(e.vaultId, e.id) }))])
   const fieldTypes = [{ label: 'Текст', value: 'text' }, { label: 'Секрет', value: 'secret' }, { label: 'Ссылка', value: 'url' }, { label: 'Подписка', value: 'subscription' }]
   const baseFieldOptions = [{ label: 'Вся карточка', value: 'card' }, { label: 'Название', value: 'title' }, { label: 'Сайт', value: 'url' }, { label: 'Логин', value: 'username' }, { label: 'Пароль', value: 'password' }, { label: 'Заметка', value: 'notes' }]
-  const sourceFieldOptions = computed(() => [...baseFieldOptions, ...(form.customFields ?? []).map(f => ({ label: f.label || 'Без названия', value: f.id }))])
+  const sourceFieldOptions = computed(() => [...baseFieldOptions, ...(form.accounts??[]).map(account=>({label:account.label,value:account.id})), ...(form.customFields ?? []).map(f => ({ label: f.label || 'Без названия', value: f.id }))])
   function addCustomField() { (form.customFields ??= []).push({ id: createId(), label: '', value: '', type: 'text' }) }
   function changeFieldType(field: CustomField, type: string) {
     if (!['text','secret','url','subscription'].includes(type)) return
@@ -81,17 +107,20 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   }
   async function renewSubscription(entry: ScopedCredential, fieldId: string) {
     if (busy.value) return
+    if(entry.sharedCardId){if(await shared.renewCard(entry.sharedCardId,fieldId))await useNotificationsStore().refresh();return}
     const next = copyData(entry.vaultId), value = next?.entries.find(e => e.id === entry.id)
     const sub = value?.customFields?.find(f => f.id === fieldId)?.subscription
     if (!next || !value || !sub) return
     const until = nextPaidUntil(sub)
     if (!until) { toast.add({title:'Не удалось рассчитать срок подписки',color:'error'}); return }
+    const row = subscriptionRows([{...value,vaultId:entry.vaultId,vaultName:entry.vaultName}]).find(row=>row.field.id===fieldId)!
+    ;(next.subscriptionPayments ??= []).push(paymentForRenewal(row,until,createId()))
     sub.paidFrom = sub.paidUntil; sub.paidUntil = until; value.updatedAt = new Date().toISOString()
     if (await saveData(entry.vaultId,next)) { toast.add({title:'Оплата отмечена, срок продлён',color:'success'}); await useNotificationsStore().refresh() }
   }
   function openNotification(notification: AppNotification) {
     const entry = allEntries.value.find(e => e.id === notification.entryId && e.vaultId === notification.vaultId)
-    if (entry) editEntry(entry)
+    if (entry) viewEntry(entry)
     else toast.add({title:'Карточка больше недоступна',color:'neutral'})
   }
   function removeCustomField(id: string) { form.customFields = form.customFields?.filter(f => f.id !== id); for (const link of form.links ?? []) if (link.sourceFieldId === id) link.sourceFieldId = 'card' }
@@ -99,22 +128,30 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   function removeLink(id: string) { form.links = form.links?.filter(l => l.id !== id) }
   function linkTarget(link: CredentialLink) { return link.targetEntryId ? cardKey(link.targetVaultId, link.targetEntryId) : '__none' }
   function setLinkTarget(link: CredentialLink, key: string) { const target = allEntries.value.find(e => cardKey(e.vaultId, e.id) === key); link.targetVaultId = target?.vaultId || ''; link.targetEntryId = target?.id || ''; link.targetFieldId = 'card' }
-  function targetFieldOptions(link: CredentialLink) { const target = allEntries.value.find(e => e.id === link.targetEntryId && e.vaultId === link.targetVaultId); return [...baseFieldOptions, ...(target?.customFields ?? []).map(f => ({ label: f.label, value: f.id }))] }
+  function targetFieldOptions(link: CredentialLink) { const target = allEntries.value.find(e => e.id === link.targetEntryId && e.vaultId === link.targetVaultId); return [...baseFieldOptions,...(target?credentialAccounts(target):[]).map(account=>({label:account.label,value:account.id})), ...(target?.customFields ?? []).map(f => ({ label: f.label, value: f.id }))] }
   const incomingLinks = computed(() => allEntries.value.flatMap(e => (e.links ?? []).filter(l => l.targetEntryId === form.id && l.targetVaultId === editingVaultId.value).map(l => ({ key: `${e.vaultId}/${l.id}`, title: e.title, vaultName: e.vaultName, label: l.label }))))
   async function saveEntry() {
     formError.value = ''
-    if (!form.title.trim() || !form.password) { formError.value = 'Укажите название и пароль'; return }
+    if (!form.title.trim()) { formError.value = 'Укажите название карточки'; return }
+    if(media.mediaBusy.value){formError.value='Дождитесь загрузки изображений';return}
+    if(form.accounts?.some(account=>!account.label.trim())){formError.value='Укажите название каждого блока доступа';return}
     if (form.url && !safeUrl(form.url)) { formError.value = 'Укажите корректный HTTP или HTTPS адрес'; return }
     if ((form.customFields ?? []).some(f => !f.label.trim())) { formError.value = 'Укажите названия дополнительных полей'; return }
     if ((form.customFields ?? []).some(f => f.type === 'subscription' && (!f.subscription || !validDate(f.subscription.startsOn) || !validDate(f.subscription.paidUntil) || f.subscription.paidUntil < f.subscription.startsOn || !Number.isFinite(f.subscription.price) || f.subscription.price < 0 || !Number.isInteger(f.subscription.periodCount) || f.subscription.periodCount < 1))) { formError.value = 'Проверьте цену, период и даты подписки'; return }
     if ((form.links ?? []).some(l => !l.targetEntryId || !l.targetVaultId || l.targetEntryId === form.id && l.targetVaultId === editingVaultId.value)) { formError.value = 'Выберите другую карточку для каждой связи'; return }
     const next = copyData(editingVaultId.value), now = new Date().toISOString()
     if (!next) return
+    form.username=form.accounts?.[0]?.username??'';form.password=form.accounts?.[0]?.password??''
     const entry: Credential = { ...JSON.parse(JSON.stringify(form)), title: form.title.trim(), url: form.url ? safeUrl(form.url)! : '', id: form.id || createId(), createdAt: form.createdAt || now, updatedAt: now }
-    const index = next.entries.findIndex(e => e.id === entry.id)
-    if (index >= 0) next.entries[index] = entry; else next.entries.push(entry)
-    if (await saveData(editingVaultId.value, next)) { entryOpen.value = false; Object.assign(form, blankEntry()); toast.add({ title: 'Карточка сохранена', icon: 'i-lucide-check', color: 'success' }) }
+    const targets=targetVaultIds.value.filter(id=>id!=='personal')
+    const existing=!!form.id&&!editingCardId.value
+    const origin=existing?{vaultId:originVaultId.value,revision:editingSourceRevision.value}:undefined
+    if(await shared.saveCard(entry,sharingEditable.value?targets:undefined,editingCardId.value||undefined,origin,editingCardRevision.value||undefined)){
+      if(origin?.vaultId==='personal')await vault.check()
+      entryOpen.value=false;Object.assign(form,blankEntry());toast.add({title:'Карточка сохранена',icon:'i-lucide-check',color:'success'})
+    }
   }
+
   async function saveCategory() {
     formError.value = ''
     if (!categoryForm.name.trim()) return
@@ -127,6 +164,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     if (await saveData(categoryVaultId.value, next)) { categoryOpen.value = false; toast.add({ title: 'Категория сохранена', color: 'success' }) }
   }
   async function favorite(entry: ScopedCredential) {
+    if(entry.sharedCardId){const card=shared.cards.find(card=>card.id===entry.sharedCardId);if(card)await shared.saveCard({...card.entry,favorite:!entry.favorite},undefined,card.id);return}
     const next = copyData(entry.vaultId), value = next?.entries.find(e => e.id === entry.id)
     if (!next || !value) return
     value.favorite = !value.favorite; await saveData(entry.vaultId, next)
@@ -137,7 +175,8 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     if (!target) return
     const next = copyData(target.vaultId)
     if (!next) return
-    if (deletingCategory.value) { next.categories = next.categories.filter(c => c.id !== target.id); next.entries.forEach(e => { if (e.categoryId === target.id) e.categoryId = '' }) }
+    if (!deletingCategory.value && 'sharedCardId' in target && target.sharedCardId){if(await shared.deleteCard(target.sharedCardId)){deleteOpen.value=false;viewOpen.value=false;deleting.value=null}return}
+    if (deletingCategory.value) { next.categories = next.categories.filter(c => c.id !== target.id); next.entries.forEach(e => { e.categoryIds=entryCategoryIds(e).filter(id=>id!==target.id);e.categoryId=e.categoryIds[0]??'' }) }
     else next.entries = next.entries.filter(e => e.id !== target.id)
     if (await saveData(target.vaultId, next)) { if (active.value === categoryFilterId(target.vaultId, target.id)) active.value = 'all'; deleteOpen.value = false; deleting.value = null }
   }
@@ -146,16 +185,17 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     catch { toast.add({ title: 'Браузер не разрешил копирование', color: 'error' }) }
   }
   function host(url: string) { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return 'Приложение или сервис' } }
-  watch(workspaceId, () => { if (!['relationships', 'subscriptions'].includes(active.value)) active.value = 'all'; query.value = ''; mobileOpen.value = false })
-  function resetEntryCategory() { if (!form.id) form.categoryId = '' }
+  watch(workspaceId, () => { if (!['relationships', 'subscriptions', 'upcoming', 'finances'].includes(active.value)) active.value = 'all'; query.value = ''; mobileOpen.value = false })
+  function resetEntryCategory() { if (!form.id) {form.categoryId='';form.categoryIds=[]} }
   watch(() => shared.groups.map(g => g.id), () => {
-    if (!['all', 'favorites', 'relationships', 'subscriptions'].includes(active.value) && !category(active.value)) active.value = 'all'
+    if (!['all', 'favorites', 'relationships', 'subscriptions', 'upcoming', 'finances'].includes(active.value) && !category(active.value)) active.value = 'all'
     if (deleting.value && deleting.value.vaultId !== 'personal' && !source(deleting.value.vaultId)) { deleting.value = null; deleteOpen.value = false }
     if (!['all', 'personal'].includes(workspaceId.value) && !shared.groups.some(g => g.id === workspaceId.value)) workspaceId.value = 'all'
     if (entryOpen.value && editingVaultId.value !== 'personal' && !source(editingVaultId.value)) { entryOpen.value = false; Object.assign(form, blankEntry()) }
     if (categoryOpen.value && categoryVaultId.value !== 'personal' && !source(categoryVaultId.value)) categoryOpen.value = false
   })
-  watch(() => vault.unlocked, value => { if (!value) { entryOpen.value = false; categoryOpen.value = false; deleteOpen.value = false; Object.assign(form, blankEntry()); query.value = ''; deleting.value = null; workspaceId.value = 'all'; Object.assign(categoryForm, { id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1' }) } })
+  watch(()=>shared.cards,()=>{if(editingCardId.value&&entryOpen.value&&!shared.cards.some(card=>card.id===editingCardId.value&&!card.archived)){entryOpen.value=false;Object.assign(form,blankEntry())}})
+  watch(() => vault.unlocked, value => { if (!value) { viewOpen.value=false;viewKey.value='';entryOpen.value = false; categoryOpen.value = false; deleteOpen.value = false; Object.assign(form, blankEntry()); query.value = ''; deleting.value = null; workspaceId.value = 'all'; Object.assign(categoryForm, { id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1' }) } })
   onBeforeUnmount(() => Object.assign(form, blankEntry()))
-  return { ...subscriptionSettings, calendarMode, subscriptionCount, changeFieldType, renewSubscription, openNotification, graphMode, allEntries, relationTargets, fieldTypes, sourceFieldOptions, incomingLinks, addCustomField, removeCustomField, addLink, removeLink, linkTarget, setLinkTarget, targetFieldOptions, vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
+  return { ...media, targetVaultIds, sharingEditable, setTargetVaults, addAccount, removeAccount, uploadImages, uploadCategorySvg, viewOpen, viewingEntry, viewingCategories, viewingLinks, viewEntry, entryCategories, upcomingMode, financesMode, visibleSources, ...subscriptionSettings, calendarMode, subscriptionCount, changeFieldType, renewSubscription, openNotification, graphMode, allEntries, relationTargets, fieldTypes, sourceFieldOptions, incomingLinks, addCustomField, removeCustomField, addLink, removeLink, linkTarget, setLinkTarget, targetFieldOptions, vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
 }

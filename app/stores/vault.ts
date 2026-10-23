@@ -44,5 +44,5 @@ export const useVaultStore = defineStore('vault', () => {
       const a = document.createElement('a'); a.href = url; a.download = `magnat-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(url)
     } catch (e) { error.value = message(e) }
   }
-  return { data, unlocked, exists, checking, busy, error, migrationRequired, check, unlock, save, lock, exportEncrypted }
+  return { getRevision:()=>revision, data, unlocked, exists, checking, busy, error, migrationRequired, check, unlock, save, lock, exportEncrypted }
 })

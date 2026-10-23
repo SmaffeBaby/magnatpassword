@@ -94,10 +94,14 @@ try {
   const subscription = {price:249.5,currency:'CNY',periodCount:1,periodUnit:'month',startsOn:today,paidFrom:today,paidUntil:today,autoRenew:true,reminders:{leadDays:[0],repeatEveryDays:1,customDates:[]}}
   data.entries[0].customFields.push({id:subscriptionId,label:'Подписка',value:'',type:'subscription',subscription})
   data.entries[0].links = [{ id: randomUUID(), targetVaultId: id, targetEntryId: data.entries[1].id, sourceFieldId: fieldId, targetFieldId: 'card', label: 'Интеграция' }]
+  data.subscriptionPayments = [{id:randomUUID(),entryId:data.entries[0].id,fieldId:subscriptionId,service:data.entries[0].title,label:'Подписка',amount:249.5,currency:'CNY',paidAt:new Date().toISOString(),periodFrom:today,periodUntil:'2099-12-31'}]
   await request(member, `/${id}`, 'PUT', { revision: group.revision, data })
   group = (await request(owner, '')).find(g => g.id === id)
   assert.deepEqual(group.data.entries[0].links, data.entries[0].links)
   assert.deepEqual(group.data.entries[0].customFields, data.entries[0].customFields)
+  assert.deepEqual(group.data.subscriptionPayments,data.subscriptionPayments,'shared payment snapshots round-trip without currency or amount changes')
+  const badPayment=structuredClone(data);badPayment.subscriptionPayments[0].amount=-1
+  await request(member,`/${id}`,'PUT',{revision:group.revision,data:badPayment},400)
   const ownerInbox = await request(owner,'/notifications')
   const memberInbox = await request(member,'/notifications')
   const reminder = memberInbox.notifications.find(n=>n.kind==='subscription'&&n.fieldId===subscriptionId)
@@ -136,8 +140,11 @@ try {
   group=(await request(owner,'')).find(g=>g.id===id)
   assert.equal((await request(member,'/notifications')).notifications.filter(n=>n.kind==='subscription').length,0)
   const personalBeforeRename = await request(owner, '/personal-vault')
-  await request(owner, '/personal-vault', 'PUT', { revision: personalBeforeRename.revision, data: { ...personalBeforeRename.data, name: 'My renamed vault' } })
-  assert.equal((await request(owner, '/personal-vault')).data.name, 'My renamed vault')
+  await request(owner, '/personal-vault', 'PUT', { revision: personalBeforeRename.revision, data: { ...personalBeforeRename.data, name: 'My renamed vault',subscriptionPayments:data.subscriptionPayments } })
+  const personalHistory=await request(owner,'/personal-vault')
+  assert.equal(personalHistory.data.name, 'My renamed vault')
+  assert.deepEqual(personalHistory.data.subscriptionPayments,data.subscriptionPayments)
+  assert.equal((await request(member,'/personal-vault')).data.subscriptionPayments,undefined,'personal financial history stays private')
   const direct = await member.client.from('shared_vaults').select('*')
   assert.ok(direct.error || direct.data.length === 0, 'authenticated database role must not bypass application authorization')
   const forbiddenDirectory = await outsider.client.rpc('shared_vault_directory', { p_actor: owner.id })

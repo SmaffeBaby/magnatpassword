@@ -1,3 +1,4 @@
+import {projectSharedCards} from '../../shared/utils/shared-card-sources'
 import type { NotificationSettings } from '../../shared/types/subscriptions'
 import { DEFAULT_NOTIFICATION_SETTINGS, todayDate, subscriptionRows, dueReminder, dateLabel } from '../../shared/utils/subscriptions'
 export async function loadNotificationSettings(context: Awaited<ReturnType<typeof requireSharedUser>>): Promise<NotificationSettings> {
@@ -17,7 +18,7 @@ export async function reminderSources(event: Parameters<typeof requireSharedUser
     if (failure) throw createError({ statusCode: 503, statusMessage: 'Notifications unavailable' })
     for (const group of groups) sources.push({ id:group.id,name:group.name,data:decodeShared(event,group) })
   }
-  return { sources, ids }
+  return { sources:projectSharedCards(sources,await visibleSharedCards(event,context)), ids }
 }
 export async function generateSubscriptionReminders(context: Awaited<ReturnType<typeof requireSharedUser>>, sources: Awaited<ReturnType<typeof reminderSources>>['sources'], settings: NotificationSettings) {
   const { sourceEntries } = await import('../../shared/utils/vault-sources')

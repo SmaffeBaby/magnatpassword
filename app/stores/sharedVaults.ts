@@ -1,14 +1,15 @@
 import { defineStore } from 'pinia'
-import type { SharedVault } from '~~/shared/types/sharing'
+import type { SharedCard, SharedVault } from '~~/shared/types/sharing'
 import type { VaultData } from '~~/shared/types/vault'
 export const useSharedVaultsStore = defineStore('shared-vaults', () => {
+  const cards=ref<SharedCard[]>([])
   const groups = ref<SharedVault[]>([]), loading = ref(false), busy = ref(false), error = ref('')
   let generation = 0
   const message = (e: any) => e?.data?.message || e?.data?.statusMessage || e?.message || 'Общие хранилища недоступны'
   async function fetchGroups(attempt: number) {
-    const rows = await sharedRequest<SharedVault[]>('/api/shared-vaults')
+    const [rows,records] = await Promise.all([sharedRequest<SharedVault[]>('/api/shared-vaults'),sharedRequest<SharedCard[]>('/api/shared-cards')])
     if (attempt !== generation || !useVaultStore().unlocked) return false
-    groups.value = rows; return true
+    groups.value = rows; cards.value=records; return true
   }
   async function refresh() {
     if (loading.value || busy.value || !useVaultStore().unlocked) return
@@ -53,6 +54,11 @@ export const useSharedVaultsStore = defineStore('shared-vaults', () => {
   async function rename(id: string, name: string): Promise<boolean> {
     return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}`, { method: 'PATCH', body: { revision: find(id).revision, name: name.trim() } }))
   }
-  function lock() { generation++; groups.value = []; busy.value = false; loading.value = false; error.value = '' }
-  return { groups, loading, busy, error, refresh, create, save, invite, revoke, rename, lock }
+  async function saveCard(entry:VaultData['entries'][number],vaultIds:string[]|undefined,id?:string,origin?:{vaultId:string;revision:number},expectedRevision?:number):Promise<boolean>{
+    return !!await mutate(()=>sharedRequest(id?`/api/shared-cards/${id}`:'/api/shared-cards',{method:id?'PUT':'POST',body:{entry,...(vaultIds?{vaultIds}:{}),...(id?{revision:expectedRevision??cards.value.find(card=>card.id===id)?.revision}:{}),...(origin?{origin}:{})}}))
+  }
+  async function renewCard(id:string,fieldId:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}/renew`,{method:'POST',body:{revision:cards.value.find(card=>card.id===id)?.revision,fieldId}}))}
+  async function deleteCard(id:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}`,{method:'DELETE',body:{revision:cards.value.find(card=>card.id===id)?.revision}}))}
+  function lock() { generation++; groups.value = []; cards.value=[]; busy.value = false; loading.value = false; error.value = '' }
+  return { cards, saveCard, renewCard, deleteCard, groups, loading, busy, error, refresh, create, save, invite, revoke, rename, lock }
 })

@@ -3,3 +3,5 @@ export interface ReminderRules { leadDays: number[]; repeatEveryDays: number; cu
 export interface Subscription { price: number; currency: Currency; periodCount: number; periodUnit: 'day' | 'month' | 'year'; startsOn: string; paidFrom?: string; paidUntil: string; autoRenew: boolean; reminders?: ReminderRules }
 export interface NotificationSettings extends ReminderRules { sharedChanges: boolean; subscriptions: boolean }
 export interface AppNotification { id: string; kind: 'shared' | 'subscription'; title: string; message: string; createdAt: string; readAt: string | null; vaultId: string | null; entryId: string | null; fieldId: string | null }
+
+export interface SubscriptionPayment { sharedCardId?:string; id:string; entryId:string; fieldId:string; service:string; label:string; amount:number; currency:Currency; paidAt:string; periodFrom:string; periodUntil:string }
