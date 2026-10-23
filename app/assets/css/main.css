@@ -107,3 +107,15 @@
 .finance-chart-segment{cursor:pointer;transition:filter .15s}
 .finance-chart-segment:hover,.finance-chart-segment:focus-visible{filter:brightness(.85);stroke:#334155;stroke-width:1.5;outline:none}
 .finance-month-total{font-weight:600;background:#f8fafc}
+
+.finance-report-builder{display:grid;gap:20px;max-width:900px;padding:24px;border:1px solid #e2e8f0;border-radius:14px;background:white}
+.finance-report-builder h2,.finance-report-history-heading h2{font-size:20px;font-weight:600;color:#334155}
+.finance-report-builder>div>p,.finance-report-history-heading p,.finance-report-caption{font-size:12px;line-height:1.8;color:#64748b;margin-top:6px}
+.finance-report-scope{display:grid;grid-template-columns:1fr 1fr;gap:16px;background:#f8fafc;border-radius:10px;padding:16px;font-size:12px}
+.finance-report-scope dt{color:#94a3b8;margin-bottom:5px}.finance-report-scope dd{color:#334155;overflow-wrap:anywhere}
+.finance-report-contents h3{font-size:13px;font-weight:600;color:#334155;margin-bottom:8px}.finance-report-contents ul{list-style:disc;padding-left:20px;color:#64748b;font-size:12px;line-height:2}
+.finance-report-builder>button{justify-self:start}
+.finance-report-history-heading,.finance-report-pagination{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:20px 0}
+.finance-report-pagination{font-size:12px;color:#64748b}.finance-report-details{font-size:11px;margin-top:8px;color:#64748b}.finance-report-details summary{cursor:pointer}.finance-report-details p{margin-top:6px;white-space:normal;max-width:420px}
+.finance-tabs{flex-wrap:wrap}
+@media(max-width:700px){.finance-report-scope{grid-template-columns:1fr}.finance-report-builder{padding:16px}.finance-report-history-heading{align-items:flex-start;flex-direction:column}.finance-report-pagination{flex-wrap:wrap}}
