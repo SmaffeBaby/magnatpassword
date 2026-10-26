@@ -14,7 +14,7 @@ import SubscriptionUpcoming from './SubscriptionUpcoming.vue'
 import VaultSwitcher from './VaultSwitcher.vue'
 import { useScrollTopbar } from '../composables/useScrollTopbar'
 import { useVaultWorkspace } from '../composables/useVaultWorkspace'
-const LazyRelationshipGraph = defineAsyncComponent(() => import('./RelationshipGraph.vue'))
+const LazyRelationshipExplorer = defineAsyncComponent(() => import('./RelationshipExplorer.vue'))
 const LazySubscriptionFinances = defineAsyncComponent(() => import('./SubscriptionFinances.vue'))
 
 import type { ScopedCategory } from '~~/shared/utils/vault-sources'
@@ -140,6 +140,7 @@ const categoryRequired = computed(() => targetVaultIds.value.some((id: string) =
 function askDeleteCategory(category: ScopedCategory) { askDelete(category, true) }
 const { topbarHidden, resetTopbar } = useScrollTopbar()
 watch(active, () => { if (import.meta.client) resetTopbar() })
+function openStructureVault(id: string) { workspaceId.value = id; select('all') }
 function removeImage(id: string) { form.images = form.images?.filter(image => image.id !== id) }
 </script>
 <template>
@@ -178,7 +179,7 @@ function removeImage(id: string) { form.images = form.images?.filter(image => im
         <LazySubscriptionFinances v-else-if="financesMode" :sources="visibleSources" @edit="viewEntry" />
         <SubscriptionHistory v-else-if="historyMode" :sources="visibleSources"/>
         <SubscriptionCalendar v-else-if="calendarMode" :sources="visibleSources" :entries="entries" :busy="busy" @edit="viewEntry" @renew="renewSubscription" />
-        <LazyRelationshipGraph v-else-if="graphMode" :entries="entries" @edit="viewEntry" />
+        <LazyRelationshipExplorer v-else-if="graphMode" :entries="entries" :sources="visibleSources" @open="viewEntry" @category="selectCategory" @vault="openStructureVault" />
         <CategoryBrowser v-else-if="categoryMode" :categories="navigationCategories" :folders="folders" :count="categoryCount" :can-manage="canManageCategoryVault" @open="selectCategory" @edit="editCategory" @remove="askDeleteCategory" @edit-folder="editFolder" @remove-folder="askDeleteFolder"/>
         <template v-else>
           <div class="filter-bar"><UInput v-model="query" icon="i-lucide-search" placeholder="Найти карточку, сайт или логин…" aria-label="Поиск по хранилищу" size="lg" class="vault-search" /><div class="filter-right"><span>{{ filtered.length }} записей</span><USelect v-model="sort" :items="[{ label: 'Сначала новые', value: 'updated' }, { label: 'По названию', value: 'title' }]" aria-label="Сортировка" size="lg" /></div></div>
