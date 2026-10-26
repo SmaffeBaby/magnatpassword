@@ -1,4 +1,5 @@
 export function useAdminPage() {
+  const queries = useAccountQueries()
   const { productName } = useAccountBrand()
   const auth = useAuthStore(), vault = useVaultStore(), route = useRoute()
   const identity = ref<{ id: string; email?: string } | null>(null), checking = ref(true), accessError = ref('')
@@ -15,9 +16,7 @@ export function useAdminPage() {
     { label: 'Безопасность', icon: 'i-lucide-shield-check', to: '/admin?section=security', active: section.value === 'security' }
   ] }])
   async function adminFetch<T>(url: string): Promise<T> {
-    const { $supabase } = useNuxtApp(); const { data } = await $supabase.auth.getSession()
-    if (!data.session) throw new Error('Войдите в аккаунт администратора')
-    return $fetch<T>(url, { headers: { Authorization: `Bearer ${data.session.access_token}` } }) as Promise<T>
+    return queries.read<T>('admin', url)
   }
   let restoreAttempt = 0
   async function restore() {

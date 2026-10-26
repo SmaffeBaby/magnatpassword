@@ -2,17 +2,18 @@ import { defineStore } from 'pinia'
 import type { FinanceReportRequest, FinanceReportSummary } from '~~/shared/types/finance-reports'
 
 export const useFinanceReportsStore = defineStore('finance-reports', () => {
+  const queries = useAccountQueries()
   const items=ref<FinanceReportSummary[]>([]),total=ref(0),page=ref(1)
   const loading=ref(false),generating=ref(false),deletingId=ref(''),downloadingIds=ref<string[]>([]),error=ref('')
   let generation=0,loadSequence=0
   const pages=computed(()=>Math.max(1,Math.ceil(total.value/20)))
   const message=(failure:any)=>failure?.data?.message||failure?.message||'Отчёты недоступны'
-  async function refresh(nextPage=page.value){
+  async function refresh(nextPage=page.value,force=false){
     if(!useVaultStore().unlocked)return
     const attempt=generation,sequence=++loadSequence
     loading.value=true;error.value=''
     try{
-      const result=await sharedRequest<{items:FinanceReportSummary[];total:number}>(`/api/finance-reports?page=${nextPage}`)
+      const result=await queries.read<{items:FinanceReportSummary[];total:number}>('reports',`/api/finance-reports?page=${nextPage}`,{force})
       if(attempt!==generation||sequence!==loadSequence)return
       items.value=result.items;total.value=result.total;page.value=nextPage
     }catch(failure){if(attempt===generation&&sequence===loadSequence)error.value=message(failure)}
@@ -24,6 +25,7 @@ export const useFinanceReportsStore = defineStore('finance-reports', () => {
     try{
       const report=await sharedRequest<FinanceReportSummary>('/api/finance-reports',{method:'POST',body:request})
       if(attempt!==generation)return null
+      await queries.invalidate('reports')
       await refresh(1)
       return attempt===generation?report:null
     }catch(failure){if(attempt===generation)error.value=message(failure);return null}
@@ -51,6 +53,7 @@ export const useFinanceReportsStore = defineStore('finance-reports', () => {
       await sharedRequest(`/api/finance-reports/${report.id}`,{method:'DELETE'})
       if(attempt!==generation)return false
       const nextPage=items.value.length===1&&page.value>1?page.value-1:page.value
+      await queries.invalidate('reports')
       await refresh(nextPage)
       return attempt===generation
     }catch(failure){if(attempt===generation)error.value=message(failure);return false}

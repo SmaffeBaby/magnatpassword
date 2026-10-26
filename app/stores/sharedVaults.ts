@@ -3,19 +3,20 @@ import type { SharedCard, SharedVault } from '~~/shared/types/sharing'
 import type { SubscriptionPayment } from '~~/shared/types/subscriptions'
 import type { VaultData } from '~~/shared/types/vault'
 export const useSharedVaultsStore = defineStore('shared-vaults', () => {
+  const queries = useAccountQueries()
   const cards=ref<SharedCard[]>([])
   const groups = ref<SharedVault[]>([]), loading = ref(false), busy = ref(false), error = ref('')
   let generation = 0
   const message = (e: any) => e?.data?.message || e?.data?.statusMessage || e?.message || 'Общие хранилища недоступны'
-  async function fetchGroups(attempt: number) {
-    const [rows,records] = await Promise.all([sharedRequest<SharedVault[]>('/api/shared-vaults'),sharedRequest<SharedCard[]>('/api/shared-cards')])
+  async function fetchGroups(attempt: number, force = false) {
+    const { groups: rows, cards: records } = await queries.read<{ groups: SharedVault[]; cards: SharedCard[] }>('workspace', '/api/workspace', { force })
     if (attempt !== generation || !useVaultStore().unlocked) return false
     groups.value = rows; cards.value=records; return true
   }
-  async function refresh() {
+  async function refresh(force = false) {
     if (loading.value || busy.value || !useVaultStore().unlocked) return
     const attempt = generation; loading.value = true
-    try { if (await fetchGroups(attempt)) error.value = '' }
+    try { if (await fetchGroups(attempt, force)) error.value = '' }
     catch (e) { if (attempt === generation) error.value = message(e) }
     finally { if (attempt === generation) loading.value = false }
   }
@@ -24,12 +25,14 @@ export const useSharedVaultsStore = defineStore('shared-vaults', () => {
     const attempt = generation; busy.value = true; error.value = ''
     try {
       const result = await action()
+      if (attempt !== generation) return null
+      await queries.invalidate('workspace', 'notifications')
       if (!await fetchGroups(attempt)) return null
       return result
     } catch (e: any) {
       if (attempt === generation) {
         error.value = message(e)
-        if ([403, 409].includes(e?.statusCode ?? e?.status)) { try { await fetchGroups(attempt) } catch {} }
+        if ([403, 409].includes(e?.statusCode ?? e?.status)) { try { await fetchGroups(attempt, true) } catch {} }
       }
       return null
     } finally { if (attempt === generation) busy.value = false }
