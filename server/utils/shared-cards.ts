@@ -19,12 +19,14 @@ export async function visibleSharedCards(event:H3Event,context:Awaited<ReturnTyp
   const data=sharedDataSchema.parse(openSharedVault(row.encrypted_data,sharedSecret(event),`card:${row.id}`,1))
   const entry=data.entries[0]!,permitted=all.filter(id=>{const grant=access.find(item=>item.vaultId===id);return grant&&canAccessCategoryEntry(entry,grant.categoryIds)})
   if(all.length&&!permitted.length)return null
-  const fullAccess=all.every(id=>access.some(grant=>grant.vaultId===id&&grant.categoryIds===null))
-  return {id:row.id,archived:row.archived,revision:row.revision,ownerId:row.owner_id,vaultIds:permitted,canManageSharing:row.owner_id===context.user.id&&fullAccess,canManageCategories:fullAccess,entry,payments:data.subscriptionPayments??[]}
+  const canEdit=all.length===0&&row.owner_id===context.user.id||permitted.some(id=>access.some(grant=>grant.vaultId===id&&grant.role!=='viewer'))
+  const fullAccess=canEdit&&all.every(id=>access.some(grant=>grant.vaultId===id&&grant.categoryIds===null&&grant.role!=='viewer'))
+  return {canEdit,id:row.id,archived:row.archived,revision:row.revision,ownerId:row.owner_id,vaultIds:permitted,canManageSharing:row.owner_id===context.user.id&&fullAccess,canManageCategories:fullAccess,entry,payments:data.subscriptionPayments??[]}
  }).filter((card):card is NonNullable<typeof card>=>card!==null)
 }
 export async function requireCard(event:H3Event) {
  const context=await requireSharedUser(event),id=sharedId(event),access=await loadCategoryAccess(context,event),card=(await visibleSharedCards(event,context,access)).find(card=>card.id===id)
+ if(card?.canEdit===false)throw createError({statusCode:403,message:'Доступ только для просмотра'})
  if(!card||card.archived)throw createError({statusCode:403,message:'Нет доступа к карточке'})
  return {...context,id,card,access}
 }

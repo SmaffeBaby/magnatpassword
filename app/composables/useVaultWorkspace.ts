@@ -25,7 +25,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const entries = computed(() => sourceEntries(visibleSources.value)), categories = computed(() => sourceCategories(visibleSources.value))
   const busy = computed(() => vault.busy || shared.busy || shared.loading), error = computed(() => vault.error || shared.error)
   const route = useRoute()
-  const active = computed({ get: () => !props.embedded && ['upcoming','finances','categories'].includes(props.mode??'') ? props.mode!  : filters.workspace.active, set: value => { filters.workspace.active = value } })
+  const active = computed({ get: () => !props.embedded && ['upcoming','finances','categories','team','profile'].includes(props.mode??'') ? props.mode!  : filters.workspace.active, set: value => { filters.workspace.active = value } })
   watch(() => [route.path, route.query.view], () => {
     if (!props.embedded && route.path === '/') filters.workspace.active = typeof route.query.view === 'string' ? route.query.view : 'all'
   }, { immediate: true })
@@ -50,7 +50,8 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9', '#8b5cf6']
   const icons = ['i-lucide-folder', 'i-lucide-briefcase-business', 'i-lucide-user-round', 'i-lucide-landmark', 'i-lucide-app-window', 'i-lucide-globe', 'i-lucide-gamepad-2', 'i-lucide-shopping-bag']
   const source = (id: string) => sources.value.find(s => s.id === id)
-  const vaultOptions = computed(() => sources.value.map(s => ({ label: s.name, value: s.id })))
+  const canEditEntry=(entry:ScopedCredential)=>entry.sharedCardId?shared.cards.find(card=>card.id===entry.sharedCardId)?.canEdit!==false:entry.vaultId==='personal'||shared.groups.find(group=>group.id===entry.vaultId)?.canEdit!==false
+  const vaultOptions = computed(() => sources.value.filter(source=>source.id==='personal'||shared.groups.find(group=>group.id===source.id)?.canEdit!==false).map(s => ({ label: s.name, value: s.id })))
   const categoryOptions = computed(() => sources.value.filter(source=>targetVaultIds.value.includes(source.id)).flatMap(source=>source.data.categories.map(category=>({label:`${category.name} · ${source.name}`,value:category.id}))))
   const selectedCategory = computed({get:()=>entryCategoryIds(form).filter(id=>categoryOptions.value.some(option=>option.value===id)),set:(values:string[])=>{const hidden=entryCategoryIds(form).filter(id=>!categoryOptions.value.some(option=>option.value===id));form.categoryIds=[...new Set([...hidden,...values])];form.categoryId=form.categoryIds[0]??''}})
   const favorites = computed(() => entries.value.filter(e => e.favorite).length)
@@ -62,7 +63,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const calendarMode = computed(() => active.value === 'subscriptions')
   const subscriptionCount = computed(() => subscriptionRows(entries.value).length)
   const graphMode = computed(() => active.value === 'relationships')
-  const title = computed(() => active.value==='categories' ? 'Категории' : historyMode.value ? 'История списаний' : upcomingMode.value ? 'Ближайшие подписки' : financesMode.value ? 'Финансы' : calendarMode.value ? 'Календарь подписок' : graphMode.value ? 'Взаимосвязь' : active.value === 'all' ? 'Все карточки' : active.value === 'favorites' ? 'Избранное' : category(active.value)?.name ?? 'Все карточки')
+  const title = computed(() => active.value==='team' ? 'Команда' : active.value==='profile' ? 'Мой профиль' : active.value==='categories' ? 'Категории' : historyMode.value ? 'История списаний' : upcomingMode.value ? 'Ближайшие подписки' : financesMode.value ? 'Финансы' : calendarMode.value ? 'Календарь подписок' : graphMode.value ? 'Взаимосвязь' : active.value === 'all' ? 'Все карточки' : active.value === 'favorites' ? 'Избранное' : category(active.value)?.name ?? 'Все карточки')
   const filtered = computed(() => entries.value.filter(e => (active.value === 'all' || (active.value === 'favorites' ? e.favorite : (e.vaultIds??[e.vaultId]).some(vaultId=>entryCategoryIds(e).some(id=>categoryFilterId(vaultId,id)===active.value)))) && [e.title, ...credentialAccounts(e).flatMap(account=>[account.label,account.username]), e.url, e.notes, ...(e.vaultNames??[e.vaultName]), ...(e.customFields ?? []).filter(f => f.type !== 'secret').map(f => `${f.label} ${f.value}`)].some(v => v.toLowerCase().includes(query.value.toLowerCase()))).sort((a, b) => sort.value === 'title' ? a.title.localeCompare(b.title, 'ru') : b.updatedAt.localeCompare(a.updatedAt)))
   const categoryMode = computed(() => active.value === 'categories')
   function copyData(id: string): VaultData | null {
@@ -77,6 +78,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const defaultTarget = () => category(active.value)?.vaultId ?? (workspaceId.value === 'all' ? 'personal' : workspaceId.value)
   const folderSettings=useCategoryFolders(()=>sources.value,()=>visibleSources.value,saveData,canManageCategoryVault,defaultTarget)
   function editEntry(entry?: ScopedCredential) {
+    if(entry&&!canEditEntry(entry)){toast.add({title:'Доступ только для просмотра',color:'neutral'});return}
     entrySession++;media.mediaError.value='';viewOpen.value=false
     originVaultId.value=entry?.vaultId??defaultTarget();editingCardId.value=entry?.sharedCardId??''
     const linked=entry?.sharedCardId?shared.cards.find(card=>card.id===entry.sharedCardId):undefined
@@ -108,6 +110,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   }
   function select(id: string) {
     mobileOpen.value = false
+    if (id==='team'||id==='profile') { navigateTo(id==='team'?'/team':'/profile'); return }
     if (props.embedded) { active.value = id; return }
     const path = ({ categories: '/categories', upcoming: '/subscriptions', finances: '/finances' } as Record<string, string>)[id]
     if (path) { navigateTo(path); return }
@@ -142,6 +145,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     } else delete field.subscription
   }
   async function renewSubscription(entry: ScopedCredential, fieldId: string) {
+    if(!canEditEntry(entry)){toast.add({title:'Доступ только для просмотра',color:'neutral'});return}
     if (busy.value) return
     if(entry.sharedCardId){if(await shared.renewCard(entry.sharedCardId,fieldId))await useNotificationsStore().refresh();return}
     const next = copyData(entry.vaultId), value = next?.entries.find(e => e.id === entry.id)
@@ -201,6 +205,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
     if (await saveData(categoryVaultId.value, next)) { categoryOpen.value = false; toast.add({ title: 'Категория сохранена', color: 'success' }) }
   }
   async function favorite(entry: ScopedCredential) {
+    if(!canEditEntry(entry)){toast.add({title:'Доступ только для просмотра',color:'neutral'});return}
     if(entry.sharedCardId){const card=shared.cards.find(card=>card.id===entry.sharedCardId);if(card)await shared.saveCard({...card.entry,favorite:!entry.favorite},undefined,card.id);return}
     const next = copyData(entry.vaultId), value = next?.entries.find(e => e.id === entry.id)
     if (!next || !value) return
@@ -234,5 +239,5 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   watch(()=>shared.cards,()=>{if(editingCardId.value&&entryOpen.value&&!shared.cards.some(card=>card.id===editingCardId.value&&!card.archived)){entryOpen.value=false;Object.assign(form,blankEntry())}})
   watch(() => vault.unlocked, value => { if (!value) { historyOpen.value=false;historyKey.value='';viewOpen.value=false;viewKey.value='';entryOpen.value = false; categoryOpen.value = false; deleteOpen.value = false; Object.assign(form, blankEntry()); query.value = ''; deleting.value = null; workspaceId.value = 'all'; Object.assign(categoryForm, { id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1' }) } })
   onBeforeUnmount(() => Object.assign(form, blankEntry()))
-  return { navigationCategories, selectCategory, ...folderSettings, filters, canManageCategoryVault, structureVaultOptions, categoriesEditable, folderOptions, selectedFolder, historyOpen, historyKey, historyMode, openPaymentHistory, sources, subscriptionCards, ...media, targetVaultIds, sharingEditable, setTargetVaults, addAccount, removeAccount, uploadImages, uploadCategorySvg, viewOpen, viewingEntry, viewingCategories, viewingLinks, viewEntry, entryCategories, upcomingMode, financesMode, visibleSources, ...subscriptionSettings, calendarMode, subscriptionCount, changeFieldType, renewSubscription, openNotification, graphMode, allEntries, relationTargets, fieldTypes, sourceFieldOptions, incomingLinks, addCustomField, removeCustomField, addLink, removeLink, linkTarget, setLinkTarget, targetFieldOptions, vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
+  return { canEditEntry, navigationCategories, selectCategory, ...folderSettings, filters, canManageCategoryVault, structureVaultOptions, categoriesEditable, folderOptions, selectedFolder, historyOpen, historyKey, historyMode, openPaymentHistory, sources, subscriptionCards, ...media, targetVaultIds, sharingEditable, setTargetVaults, addAccount, removeAccount, uploadImages, uploadCategorySvg, viewOpen, viewingEntry, viewingCategories, viewingLinks, viewEntry, entryCategories, upcomingMode, financesMode, visibleSources, ...subscriptionSettings, calendarMode, subscriptionCount, changeFieldType, renewSubscription, openNotification, graphMode, allEntries, relationTargets, fieldTypes, sourceFieldOptions, incomingLinks, addCustomField, removeCustomField, addLink, removeLink, linkTarget, setLinkTarget, targetFieldOptions, vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
 }

@@ -2,7 +2,7 @@
 import { useSubscriptionSummary } from '../composables/useSubscriptions'
 
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
-const props=defineProps<{entry:ScopedCredential;entries?:ScopedCredential[];busy:boolean}>()
+const props=defineProps<{entry:ScopedCredential;entries?:ScopedCredential[];busy:boolean;readonly?:boolean}>()
 const emit=defineEmits<{renew:[entry:ScopedCredential,fieldId:string];history:[entry:ScopedCredential,fieldId:string];open:[entry:ScopedCredential]}>()
 const {rows,status,dateLabel,moneyLabel,periodLabel}=useSubscriptionSummary(props)
 </script>
@@ -18,7 +18,7 @@ const {rows,status,dateLabel,moneyLabel,periodLabel}=useSubscriptionSummary(prop
   <small>{{ status(row.daysLeft) }}</small>
   <div class="subscription-summary-actions">
   <UButton type="button" size="xs" color="neutral" variant="outline" icon="i-lucide-history" label="История списаний" @click="emit('history',row.entry,row.field.id)"/>
-  <UButton type="button" size="xs" variant="soft" :disabled="busy" label="Отметить оплату следующего периода" @click="emit('renew',row.entry,row.field.id)" />
+  <UButton type="button" size="xs" variant="soft" :disabled="busy||readonly" label="Отметить оплату следующего периода" @click="emit('renew',row.entry,row.field.id)" />
   </div>
  </section>
 </template>

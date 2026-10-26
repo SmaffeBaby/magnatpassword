@@ -4,7 +4,7 @@ export function useAppSession() {
   const subscriptionToday=useState('subscription-today',()=>todayDate())
   const auth = useAuthStore(), vault = useVaultStore()
   const shared = useSharedVaultsStore(), notifications = useNotificationsStore()
-  watch(() => vault.unlocked, open => { if (open) { shared.refresh(); notifications.refresh() } else { shared.lock(); notifications.lock(); useFiltersStore().reset(); useFinanceReportsStore().lock() } })
+  watch(() => vault.unlocked, open => { if (open) { shared.refresh(); notifications.refresh(); useTeamStore().refreshMe() } else { shared.lock(); notifications.lock(); useTeamStore().lock(); useFiltersStore().reset(); useFinanceReportsStore().lock() } })
   const { brand, productName, previewBrand } = useAccountBrand()
   useHead(() => ({ htmlAttrs: { 'data-brand': brand.value }, title: productName.value, link: [{ key: 'brand-favicon', rel: 'icon', type: 'image/svg+xml', href: brand.value === 'light' ? '/light-favicon.svg' : '/favicon.svg' }] }))
   watch(() => auth.user?.id, (id, previous) => {

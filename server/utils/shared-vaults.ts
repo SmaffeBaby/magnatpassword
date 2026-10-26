@@ -49,7 +49,7 @@ export function sharedId(event: H3Event) {
 }
 export async function requireSharedMember(event: H3Event) {
   const context = await requireSharedUser(event), id = sharedId(event)
-  const { data: membership, error } = await context.client.from('shared_vault_members').select('user_id,category_ids,access_token').eq('vault_id', id).eq('user_id', context.user.id).maybeSingle()
+  const { data: membership, error } = await context.client.from('shared_vault_members').select('user_id,category_ids,access_token,member_role').eq('vault_id', id).eq('user_id', context.user.id).maybeSingle()
   if (error) throw createError({ statusCode: 503, statusMessage: 'Shared vault request failed', message: 'Не удалось проверить доступ' })
   if (!membership) throw createError({ statusCode: 403, statusMessage: 'Shared vault request failed', message: 'Нет доступа к хранилищу' })
   const { data: row, error: failure } = await context.client.from('shared_vaults').select('*').eq('id', id).single()

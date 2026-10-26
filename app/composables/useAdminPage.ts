@@ -3,20 +3,27 @@ export function useAdminPage() {
   const { productName } = useAccountBrand()
   const auth = useAuthStore(), vault = useVaultStore(), route = useRoute()
   const identity = ref<{ id: string; email?: string } | null>(null), checking = ref(true), accessError = ref('')
-  type AdminOverview = { vaults: number; totalUsers: number; users: { id: string; email?: string; createdAt: string; lastSignIn?: string }[] }
+  type AdminOverview = { vaults: number; totalUsers: number; users: { isHidden?:boolean; id: string; email?: string; createdAt: string; lastSignIn?: string }[] }
   const overview = ref<AdminOverview | null>(null), switchingAccount = ref(false)
-  const section = computed(() => ['categories', 'credentials', 'users', 'security'].includes(String(route.query.section)) ? String(route.query.section) : 'overview')
-  const titles: Record<string, string> = { overview: 'Обзор хранилища', categories: 'Категории', credentials: 'Пароли', users: 'Пользователи', security: 'Безопасность' }
+  const section = computed(() => ['categories', 'credentials', 'users', 'security', 'team'].includes(String(route.query.section)) ? String(route.query.section) : 'overview')
+  const titles: Record<string, string> = { overview: 'Обзор хранилища', categories: 'Категории', credentials: 'Пароли', team:'Команда и роли', users: 'Пользователи', security: 'Безопасность' }
   const navigation = computed(() => [{ label: 'Хранилище', icon: 'i-lucide-panels-top-left', defaultOpen: true, children: [
     { label: 'Обзор', icon: 'i-lucide-chart-no-axes-combined', to: '/admin', active: section.value === 'overview' },
     { label: 'Категории', icon: 'i-lucide-folders', to: '/admin?section=categories', active: section.value === 'categories' },
     { label: 'Пароли', icon: 'i-lucide-key-round', to: '/admin?section=credentials', active: section.value === 'credentials' }
   ] }, { label: 'Управление', icon: 'i-lucide-settings-2', defaultOpen: true, children: [
+    { label: 'Команда и роли', icon:'i-lucide-network',to:'/admin?section=team',active:section.value==='team' },
     { label: 'Пользователи', icon: 'i-lucide-users', to: '/admin?section=users', active: section.value === 'users' },
     { label: 'Безопасность', icon: 'i-lucide-shield-check', to: '/admin?section=security', active: section.value === 'security' }
   ] }])
   async function adminFetch<T>(url: string): Promise<T> {
     return queries.read<T>('admin', url)
+  }
+  const visibilityBusy=ref('')
+  async function setTeamVisibility(user:{id:string;isHidden?:boolean}){
+    if(visibilityBusy.value)return
+    visibilityBusy.value=user.id;accessError.value=''
+    try{const hidden=!user.isHidden,userId=auth.user?.id;await sharedRequest('/api/admin/team/visibility',{method:'PUT',body:{userId:user.id,hidden}});if(auth.user?.id!==userId)return;await queries.invalidate('admin','team','team-search','admin-team-search','team-profile','profile');if(auth.user?.id===userId&&overview.value)overview.value={...overview.value,users:overview.value.users.map(item=>item.id===user.id?{...item,isHidden:hidden}:item)}}catch(failure:any){accessError.value=failure?.data?.message||'Не удалось изменить видимость аккаунта'}finally{visibilityBusy.value=''}
   }
   let restoreAttempt = 0
   async function restore() {
@@ -47,5 +54,5 @@ export function useAdminPage() {
   watch(() => [auth.checking, auth.user?.id], restore, { immediate: true })
   useHead({ title: () => `${titles[section.value]} · ${productName.value} / Admin` })
   const date = (value?: string) => value ? new Date(value).toLocaleDateString('ru-RU') : 'Ещё не входил'
-  return { auth, vault, identity, checking, accessError, overview, section, titles, navigation, restore, switchAccount, switchingAccount, date, productName }
+  return { setTeamVisibility, visibilityBusy, auth, vault, identity, checking, accessError, overview, section, titles, navigation, restore, switchAccount, switchingAccount, date, productName }
 }

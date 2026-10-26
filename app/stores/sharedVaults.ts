@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { VaultRole } from '~~/shared/types/team'
 import type { SharedCard, SharedVault } from '~~/shared/types/sharing'
 import type { SubscriptionPayment } from '~~/shared/types/subscriptions'
 import type { VaultData } from '~~/shared/types/vault'
@@ -49,10 +50,10 @@ export const useSharedVaultsStore = defineStore('shared-vaults', () => {
   async function save(id: string, data: VaultData): Promise<boolean> {
     return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}`, { method: 'PUT', body: { revision: find(id).revision, data } }))
   }
-  async function invite(id: string, email: string, categoryIds:string[]|null=null): Promise<boolean> {
-    return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}/members`, { method: 'POST', body: { revision: find(id).revision, email: email.trim(), categoryIds } }))
+  async function invite(id: string, email: string, categoryIds:string[]|null=null,role:VaultRole='member',userId?:string): Promise<boolean> {
+    return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}/members`, { method: 'POST', body: { revision: find(id).revision, email: email.trim(), userId, role, categoryIds } }))
   }
-  async function permissions(id:string,userId:string,categoryIds:string[]|null):Promise<boolean>{return !!await mutate(()=>sharedRequest(`/api/shared-vaults/${id}/members`,{method:'PUT',body:{revision:find(id).revision,userId,categoryIds}}))}
+  async function permissions(id:string,userId:string,categoryIds:string[]|null,role:VaultRole='member'):Promise<boolean>{return !!await mutate(()=>sharedRequest(`/api/shared-vaults/${id}/members`,{method:'PUT',body:{revision:find(id).revision,userId,categoryIds,role}}))}
   async function revoke(id: string, userId: string): Promise<boolean> {
     return !!await mutate(() => sharedRequest(`/api/shared-vaults/${id}/members`, { method: 'DELETE', body: { revision: find(id).revision, userId } }))
   }

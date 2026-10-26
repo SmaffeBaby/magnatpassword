@@ -2,11 +2,11 @@ import {decodeShared} from './shared-vaults'
 import type { Credential, VaultData } from '../../shared/types/vault'
 import { entryCategoryIds } from '../../shared/utils/credentials'
 
-export interface VaultCategoryAccess { vaultId:string; categoryIds:string[]|null; token:string }
+export interface VaultCategoryAccess { vaultId:string; role?:'viewer'|'member'|'manager'; categoryIds:string[]|null; token:string }
 export async function loadCategoryAccess(context:Awaited<ReturnType<typeof requireSharedUser>>,event:Parameters<typeof requireSharedUser>[0]):Promise<VaultCategoryAccess[]> {
-  const {data,error}=await context.client.from('shared_vault_members').select('vault_id,category_ids,access_token').eq('user_id',context.user.id)
+  const {data,error}=await context.client.from('shared_vault_members').select('vault_id,category_ids,access_token,member_role').eq('user_id',context.user.id)
   if(error)throw createError({statusCode:503,message:'Не удалось проверить доступ к категориям'})
-  const access:VaultCategoryAccess[]=data.map(row=>({vaultId:row.vault_id,categoryIds:row.category_ids,token:row.access_token}))
+  const access:VaultCategoryAccess[]=data.map(row=>({vaultId:row.vault_id,role:row.member_role,categoryIds:row.category_ids,token:row.access_token}))
   const restricted=access.filter(item=>item.categoryIds!==null)
   if(restricted.length){
     const {data:groups,error:failure}=await context.client.from('shared_vaults').select('id,encrypted_data,key_epoch').in('id',restricted.map(item=>item.vaultId))
@@ -40,5 +40,5 @@ export function mergeCategoryScopedData(original:VaultData,candidate:VaultData,c
 }
 export function accessTokens(access:VaultCategoryAccess[]){return Object.fromEntries(access.map(item=>[item.vaultId,item.token]))}
 export function assertNewCardAccess(entry:Credential,vaultIds:string[],access:VaultCategoryAccess[]){
-  for(const id of vaultIds){const grant=access.find(item=>item.vaultId===id);if(!grant)throw createError({statusCode:403,message:'Нет доступа к выбранному хранилищу'});if(grant.categoryIds!==null&&(vaultIds.length!==1||!canAccessCategoryEntry(entry,grant.categoryIds)||entryCategoryIds(entry).some(id=>!grant.categoryIds!.includes(id))))throw createError({statusCode:403,message:'Выберите одно хранилище и только разрешённые вам категории'})}
+  for(const id of vaultIds){const grant=access.find(item=>item.vaultId===id);if(!grant||grant.role==='viewer')throw createError({statusCode:403,message:'Нет доступа к выбранному хранилищу'});if(grant.categoryIds!==null&&(vaultIds.length!==1||!canAccessCategoryEntry(entry,grant.categoryIds)||entryCategoryIds(entry).some(id=>!grant.categoryIds!.includes(id))))throw createError({statusCode:403,message:'Выберите одно хранилище и только разрешённые вам категории'})}
 }
