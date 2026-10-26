@@ -24,7 +24,7 @@ export function buildRelationships(entries: ScopedCredential[], mode: Relationsh
     const id = cardKey(entry.vaultId, entry.id)
     if (mode === 'all' || mode === 'title') {
       const title = normalize(entry.title)
-      const words = new Set(title.split(' ').filter(word => word.length >= 3 && !['для', 'the', 'and', 'account', 'аккаунт'].includes(word)))
+      const words = new Set(title.split(' ').filter(word => word.length >= 3 && !['для', 'the', 'and', 'account', 'аккаунт', 'com', 'net', 'org', 'www', 'http', 'https'].includes(word)))
       if (title) words.add(title)
       for (const word of words) group('title', word, id)
     }
