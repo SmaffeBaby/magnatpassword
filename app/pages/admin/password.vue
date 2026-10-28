@@ -1,4 +1,4 @@
 <script setup lang="ts">
-import PasswordAdmin from '~/components/PasswordPage/Admin/PasswordAdmin.vue'
+import AdminWorkspace from '~/components/AdminWorkspace.vue'
 </script>
-<template><PasswordAdmin /></template>
+<template><AdminWorkspace /></template>

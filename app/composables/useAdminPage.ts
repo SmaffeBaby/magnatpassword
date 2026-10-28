@@ -5,8 +5,8 @@ export function useAdminPage() {
   const identity = ref<{ id: string; email?: string } | null>(null), checking = ref(true), accessError = ref('')
   type AdminOverview = { vaults: number; totalUsers: number; users: { isHidden?:boolean; id: string; email?: string; createdAt: string; lastSignIn?: string }[] }
   const overview = ref<AdminOverview | null>(null), switchingAccount = ref(false)
-  const section = computed(() => ['categories', 'credentials', 'users', 'security', 'team'].includes(String(route.query.section)) ? String(route.query.section) : 'overview')
-  const titles: Record<string, string> = { overview: 'Обзор хранилища', categories: 'Категории', credentials: 'Пароли', team:'Команда и роли', users: 'Пользователи', security: 'Безопасность' }
+  const section = computed(() => route.path === '/admin/projects' ? 'projects' : ['categories', 'credentials', 'users', 'security', 'team'].includes(String(route.query.section)) ? String(route.query.section) : 'overview')
+  const titles: Record<string, string> = { projects: 'Доступ к проектам', overview: 'Обзор хранилища', categories: 'Категории', credentials: 'Пароли', team:'Команда и роли', users: 'Пользователи', security: 'Безопасность' }
   const navigation = computed(() => [{ label: 'Пароли', icon: 'i-lucide-panels-top-left', defaultOpen: true, children: [
     { label: 'Обзор', icon: 'i-lucide-chart-no-axes-combined', to: '/admin/password', active: section.value === 'overview' },
     { label: 'Категории', icon: 'i-lucide-folders', to: '/admin/password?section=categories', active: section.value === 'categories' },
@@ -14,6 +14,8 @@ export function useAdminPage() {
     { label: 'Команда и роли', icon:'i-lucide-network',to:'/admin/password?section=team',active:section.value==='team' },
     { label: 'Пользователи', icon: 'i-lucide-users', to: '/admin/password?section=users', active: section.value === 'users' },
     { label: 'Безопасность', icon: 'i-lucide-shield-check', to: '/admin/password?section=security', active: section.value === 'security' }
+  ] }, { label: 'Проекты', icon: 'i-lucide-folder-kanban', defaultOpen: true, children: [
+    { label: 'Доступ к разделу', icon: 'i-lucide-user-round-check', to: '/admin/projects', active: section.value === 'projects' }
   ] }])
   async function adminFetch<T>(url: string): Promise<T> {
     return queries.read<T>('admin', url)
