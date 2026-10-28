@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+RUN NODE_OPTIONS=--max-old-space-size=1536 npm run build
 
 FROM node:24-alpine AS runner
 RUN apk add --no-cache python3 py3-reportlab font-dejavu

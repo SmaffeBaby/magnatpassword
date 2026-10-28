@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useSubscriptionSummary } from '../composables/useSubscriptions'
+import { useSubscriptionSummary } from '../../composables/useSubscriptions'
 
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 const props=defineProps<{entry:ScopedCredential;entries?:ScopedCredential[];busy:boolean;readonly?:boolean}>()

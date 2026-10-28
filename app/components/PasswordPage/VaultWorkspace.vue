@@ -1,20 +1,21 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
-import BrandLogo from './BrandLogo.vue'
+import PasswordHeader from './PasswordHeader.vue'
+import BrandLogo from '../BrandLogo.vue'
 import CategoryBrowser from './CategoryBrowser.vue'
 import CategoryNav from './CategoryNav.vue'
 import CredentialAccountEditor from './CredentialAccountEditor.vue'
 import CredentialDetails from './CredentialDetails.vue'
 import CredentialTile from './CredentialTile.vue'
-import NotificationCenter from './NotificationCenter.vue'
+import NotificationCenter from '../NotificationCenter.vue'
 import SubscriptionCalendar from './SubscriptionCalendar.vue'
 import SubscriptionEditor from './SubscriptionEditor.vue'
 import SubscriptionHistory from './SubscriptionHistory.vue'
 import SubscriptionUpcoming from './SubscriptionUpcoming.vue'
 import VaultSwitcher from './VaultSwitcher.vue'
-import PersonAvatar from './PersonAvatar.vue'
-import { useScrollTopbar } from '../composables/useScrollTopbar'
-import { useVaultWorkspace } from '../composables/useVaultWorkspace'
+import PersonAvatar from '../PersonAvatar.vue'
+import { useScrollTopbar } from '../../composables/useScrollTopbar'
+import { useVaultWorkspace } from '../../composables/useVaultWorkspace'
 const LazyTeamWorkspace=defineAsyncComponent(()=>import('./TeamWorkspace.vue'))
 const LazyProfileView=defineAsyncComponent(()=>import('./ProfileView.vue'))
 const LazyRelationshipExplorer = defineAsyncComponent(() => import('./RelationshipExplorer.vue'))
@@ -171,11 +172,11 @@ function removeImage(id: string) { form.images = form.images?.filter(image => im
       <CategoryNav :categories="navigationCategories" :folders="folders" :active="active" :workspace-id="workspaceId" :collapsed="filters.collapsedFolders" :count="categoryCount" @select="selectCategory" @toggle="toggleFolder"/>
       <button v-if="workspaceId==='all'||canManageCategoryVault(workspaceId)" class="add-category" @click="editCategory()"><UIcon name="i-lucide-plus" />Новая категория</button>
 
-      <div class="sidebar-bottom"><div class="encryption-card"><span class="encryption-icon"><UIcon name="i-lucide-shield-check" /></span><strong>Под надёжной защитой</strong><p>Личное — только для вас.<br>Общее — для участников.</p><span class="encryption-tag"><i /> AES-256-GCM</span></div><NuxtLink to="/admin" class="sidebar-admin"><UIcon name="i-lucide-settings-2" />Панель управления<UIcon name="i-lucide-arrow-up-right" /></NuxtLink><div class="sidebar-user"><NuxtLink to="/profile" class="sidebar-profile"><PersonAvatar :name="team.me?.person.fullName||auth.user?.email||'Профиль'" :src="team.me?.person.avatarUrl"/><span><strong>{{ team.me?.person.fullName||'Мой профиль' }}</strong><small>{{ auth.user?.email }}</small></span></NuxtLink><button title="Выйти" aria-label="Выйти" @click="auth.logout()"><UIcon name="i-lucide-log-out"/></button></div></div>
+      <div class="sidebar-bottom"><div class="encryption-card"><span class="encryption-icon"><UIcon name="i-lucide-shield-check" /></span><strong>Под надёжной защитой</strong><p>Личное — только для вас.<br>Общее — для участников.</p><span class="encryption-tag"><i /> AES-256-GCM</span></div><NuxtLink to="/admin/password" class="sidebar-admin"><UIcon name="i-lucide-settings-2" />Панель управления<UIcon name="i-lucide-arrow-up-right" /></NuxtLink><div class="sidebar-user"><NuxtLink to="/password/profile" class="sidebar-profile"><PersonAvatar :name="team.me?.person.fullName||auth.user?.email||'Профиль'" :src="team.me?.person.avatarUrl"/><span><strong>{{ team.me?.person.fullName||'Мой профиль' }}</strong><small>{{ auth.user?.email }}</small></span></NuxtLink><button title="Выйти" aria-label="Выйти" @click="auth.logout()"><UIcon name="i-lucide-log-out"/></button></div></div>
     </aside>
     <button v-if="mobileOpen" class="sidebar-scrim" aria-label="Закрыть меню" @click="mobileOpen = false" />
     <main class="vault-main">
-      <header v-if="!embedded" class="vault-topbar" :class="{ 'is-hidden': topbarHidden && !mobileOpen }"><div class="breadcrumb"><button class="mobile-menu" aria-label="Открыть меню" @click="mobileOpen = !mobileOpen"><UIcon name="i-lucide-menu" /></button><UIcon name="i-lucide-house" /><span>{{ workspaceName }}</span><UIcon name="i-lucide-chevron-right" /><strong>{{ title }}</strong></div><div class="topbar-actions"><NotificationCenter @open-entry="openNotification" /><span class="secure-status"><i />Хранилище открыто</span><UButton color="neutral" variant="ghost" icon="i-lucide-download" aria-label="Скачать зашифрованную копию личного хранилища" title="Копия личного хранилища" @click="vault.exportEncrypted()" /><UButton color="neutral" variant="ghost" icon="i-lucide-lock-keyhole" label="Выйти" size="sm" @click="auth.logout()" /></div></header>
+      <header v-if="!embedded" class="vault-topbar password-topbar" :class="{ 'is-hidden': topbarHidden && !mobileOpen }"><PasswordHeader :workspace-name="workspaceName" :title="title" @toggle-menu="mobileOpen = !mobileOpen" @open-entry="openNotification" /></header>
       <div class="vault-content">
         <slot />
         <div v-if="embedded" class="embedded-switcher"><VaultSwitcher v-model="workspaceId" /><NotificationCenter @open-entry="openNotification" /></div>

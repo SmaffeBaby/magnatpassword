@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import UserPicker from '../UserPicker.vue'
+import UserPicker from '../../UserPicker.vue'
 import { unitLabel } from '~~/shared/utils/team'
 import type { TeamUnit,TeamPerson } from '~~/shared/types/team'
 const queries=useAccountQueries(),data=ref<{units:TeamUnit[];}|null>(null),loading=ref(false),busy=ref(false),error=ref(''),success=ref('')

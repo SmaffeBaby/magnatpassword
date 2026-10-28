@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useRelationshipGraph } from '../composables/useRelationshipGraph'
+import { useRelationshipGraph } from '../../composables/useRelationshipGraph'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 
 const props = defineProps<{ entries: ScopedCredential[] }>()

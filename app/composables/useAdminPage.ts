@@ -7,14 +7,13 @@ export function useAdminPage() {
   const overview = ref<AdminOverview | null>(null), switchingAccount = ref(false)
   const section = computed(() => ['categories', 'credentials', 'users', 'security', 'team'].includes(String(route.query.section)) ? String(route.query.section) : 'overview')
   const titles: Record<string, string> = { overview: 'Обзор хранилища', categories: 'Категории', credentials: 'Пароли', team:'Команда и роли', users: 'Пользователи', security: 'Безопасность' }
-  const navigation = computed(() => [{ label: 'Хранилище', icon: 'i-lucide-panels-top-left', defaultOpen: true, children: [
-    { label: 'Обзор', icon: 'i-lucide-chart-no-axes-combined', to: '/admin', active: section.value === 'overview' },
-    { label: 'Категории', icon: 'i-lucide-folders', to: '/admin?section=categories', active: section.value === 'categories' },
-    { label: 'Пароли', icon: 'i-lucide-key-round', to: '/admin?section=credentials', active: section.value === 'credentials' }
-  ] }, { label: 'Управление', icon: 'i-lucide-settings-2', defaultOpen: true, children: [
-    { label: 'Команда и роли', icon:'i-lucide-network',to:'/admin?section=team',active:section.value==='team' },
-    { label: 'Пользователи', icon: 'i-lucide-users', to: '/admin?section=users', active: section.value === 'users' },
-    { label: 'Безопасность', icon: 'i-lucide-shield-check', to: '/admin?section=security', active: section.value === 'security' }
+  const navigation = computed(() => [{ label: 'Пароли', icon: 'i-lucide-panels-top-left', defaultOpen: true, children: [
+    { label: 'Обзор', icon: 'i-lucide-chart-no-axes-combined', to: '/admin/password', active: section.value === 'overview' },
+    { label: 'Категории', icon: 'i-lucide-folders', to: '/admin/password?section=categories', active: section.value === 'categories' },
+    { label: 'Пароли', icon: 'i-lucide-key-round', to: '/admin/password?section=credentials', active: section.value === 'credentials' },
+    { label: 'Команда и роли', icon:'i-lucide-network',to:'/admin/password?section=team',active:section.value==='team' },
+    { label: 'Пользователи', icon: 'i-lucide-users', to: '/admin/password?section=users', active: section.value === 'users' },
+    { label: 'Безопасность', icon: 'i-lucide-shield-check', to: '/admin/password?section=security', active: section.value === 'security' }
   ] }])
   async function adminFetch<T>(url: string): Promise<T> {
     return queries.read<T>('admin', url)

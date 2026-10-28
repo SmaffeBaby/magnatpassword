@@ -11,6 +11,7 @@ export default defineNuxtConfig({
   ui: { fonts: false, colorMode: false },
   icon: { serverBundle: { collections: ['lucide'] } },
   routeRules: {
+    '/password': { ssr: false }, '/password/**': { ssr: false },
     '/': { ssr: false }, '/categories': { ssr: false }, '/subscriptions': { ssr: false }, '/finances': { ssr: false }, '/admin': { ssr: false }, '/admin/**': { ssr: false },
     '/_nuxt/**': { security: { rateLimiter: false } },
     '/fonts/**': { security: { rateLimiter: false } },

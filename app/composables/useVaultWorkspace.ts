@@ -27,7 +27,10 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const route = useRoute()
   const active = computed({ get: () => !props.embedded && ['upcoming','finances','categories','team','profile'].includes(props.mode??'') ? props.mode!  : filters.workspace.active, set: value => { filters.workspace.active = value } })
   watch(() => [route.path, route.query.view], () => {
-    if (!props.embedded && route.path === '/') filters.workspace.active = typeof route.query.view === 'string' ? route.query.view : 'all'
+    if (!props.embedded && route.path === '/password') filters.workspace.active = typeof route.query.view === 'string' ? route.query.view : 'all'
+  }, { immediate: true })
+  watch(() => props.mode, mode => {
+    if (props.embedded) filters.workspace.active = mode === 'categories' ? 'categories' : 'all'
   }, { immediate: true })
   const mobileOpen = ref(false)
   const historyOpen = ref(false), historyKey = ref('')
@@ -110,12 +113,12 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   }
   function select(id: string) {
     mobileOpen.value = false
-    if (id==='team'||id==='profile') { navigateTo(id==='team'?'/team':'/profile'); return }
+    if (id==='team'||id==='profile') { navigateTo(id==='team'?'/password/team':'/password/profile'); return }
     if (props.embedded) { active.value = id; return }
-    const path = ({ categories: '/categories', upcoming: '/subscriptions', finances: '/finances' } as Record<string, string>)[id]
+    const path = ({ categories: '/password/categories', upcoming: '/password/subscriptions', finances: '/password/finances' } as Record<string, string>)[id]
     if (path) { navigateTo(path); return }
     filters.workspace.active = id
-    navigateTo({ path: '/', query: id === 'all' ? {} : { view: id } })
+    navigateTo({ path: '/password', query: id === 'all' ? {} : { view: id } })
   }
   const allEntries = computed(() => sourceEntries(sources.value))
   const viewingEntry=computed(()=>allEntries.value.find(entry=>(entry.sharedCardId||`${entry.vaultId}/${entry.id}`)===viewKey.value)??null)
@@ -123,6 +126,15 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const viewingLinks=computed(()=>(viewingEntry.value?.links??[]).map(link=>{const target=allEntries.value.find(entry=>entry.id===link.targetEntryId&&(entry.vaultIds??[entry.vaultId]).includes(link.targetVaultId));return {id:link.id,label:link.label||'Ручная связь',target:target?.title||'Недоступная карточка'}}))
   function viewEntry(entry:ScopedCredential){viewKey.value=entry.sharedCardId||`${entry.vaultId}/${entry.id}`;viewOpen.value=true}
   watch(viewingEntry,entry=>{if(!entry)viewOpen.value=false})
+  let openedRouteEntry = ''
+  watch(() => [route.query.entry, route.query.vault, allEntries.value] as const, ([entryId, vaultId]) => {
+    if (props.embedded || typeof entryId !== 'string' || typeof vaultId !== 'string') return
+    const key = `${vaultId}/${entryId}`
+    if (openedRouteEntry === key) return
+    const entry = allEntries.value.find(item => item.id === entryId && (item.vaultIds ?? [item.vaultId]).includes(vaultId))
+    if (entry) { openedRouteEntry = key; viewEntry(entry) }
+  }, { immediate: true })
+
   function setTargetVaults(values:string[]){const added=values.find(id=>!targetVaultIds.value.includes(id));targetVaultIds.value=added==='personal'?['personal']:added&&!canManageCategoryVault(added)?[added]:values.filter(id=>id!=='personal'&&(!added||canManageCategoryVault(id)));if(!targetVaultIds.value.length)targetVaultIds.value=['personal'];editingVaultId.value=targetVaultIds.value[0]!}
   function addAccount(){(form.accounts??=[]).push({id:createId(),label:`Доступ ${(form.accounts?.length??0)+1}`,username:'',password:''})}
   function removeAccount(id:string){form.accounts=form.accounts?.filter(account=>account.id!==id)}

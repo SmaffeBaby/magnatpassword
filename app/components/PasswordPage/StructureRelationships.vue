@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useStructureRelationships } from '../composables/useStructureRelationships'
+import { useStructureRelationships } from '../../composables/useStructureRelationships'
 import type { VaultSource } from '~~/shared/types/sharing'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 import type { StructureView } from '~~/shared/utils/structure-relationships'

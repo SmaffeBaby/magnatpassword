@@ -39,7 +39,7 @@ const { auth, vault, email, password, register, master, localError, authenticate
       </template>
     </UCard>
     <p class="gate-note"><UIcon name="i-lucide-shield-check" /> AES-256-GCM · Ваши секреты остаются вашими</p>
-    <NuxtLink v-if="!admin" to="/admin" class="text-xs text-slate-400 hover:text-primary-600">Панель управления <span aria-hidden="true">↗</span></NuxtLink>
+    <NuxtLink v-if="!admin" to="/admin/password" class="text-xs text-slate-400 hover:text-primary-600">Панель управления <span aria-hidden="true">↗</span></NuxtLink>
   </div>
   <slot v-else />
 </template>

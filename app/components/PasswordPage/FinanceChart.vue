@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useFinanceChart } from '../composables/useFinanceChart'
+import { useFinanceChart } from '../../composables/useFinanceChart'
 
 import type { FinanceMonth } from '~~/shared/types/finances'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import SubscriptionFilters from './SubscriptionFilters.vue'
-import { useSubscriptionCalendar } from '../composables/useSubscriptions'
+import { useSubscriptionCalendar } from '../../composables/useSubscriptions'
 
 import type { VaultSource } from '~~/shared/types/sharing'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'

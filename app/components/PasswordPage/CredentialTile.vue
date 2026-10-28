@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useCredentialTile } from '../composables/useCredentialTile'
+import { useCredentialTile } from '../../composables/useCredentialTile'
 
 import type {ScopedCredential,ScopedCategory} from '~~/shared/utils/vault-sources'
 const props=defineProps<{entry:ScopedCredential;categories:ScopedCategory[];busy:boolean;readonly?:boolean}>()
