@@ -16,8 +16,6 @@ import VaultSwitcher from './VaultSwitcher.vue'
 import PersonAvatar from '../PersonAvatar.vue'
 import { useScrollTopbar } from '../../composables/useScrollTopbar'
 import { useVaultWorkspace } from '../../composables/useVaultWorkspace'
-const LazyTeamWorkspace=defineAsyncComponent(()=>import('./TeamWorkspace.vue'))
-const LazyProfileView=defineAsyncComponent(()=>import('./ProfileView.vue'))
 const LazyRelationshipExplorer = defineAsyncComponent(() => import('./RelationshipExplorer.vue'))
 const LazySubscriptionFinances = defineAsyncComponent(() => import('./SubscriptionFinances.vue'))
 
@@ -143,9 +141,8 @@ const {
  } = useVaultWorkspace(props)
 const categoryRequired = computed(() => targetVaultIds.value.some((id: string) => !canManageCategoryVault(id)))
 function askDeleteCategory(category: ScopedCategory) { askDelete(category, true) }
-const team=useTeamStore(),route=useRoute()
+const team=useTeamStore()
 onMounted(()=>team.refreshMe())
-const profileId=computed(()=>typeof route.params.id==='string'?route.params.id:undefined)
 const { topbarHidden, resetTopbar } = useScrollTopbar()
 watch(active, () => { if (import.meta.client) resetTopbar() })
 function openStructureVault(id: string) { workspaceId.value = id; select('all') }
@@ -165,14 +162,12 @@ function removeImage(id: string) { form.images = form.images?.filter(image => im
         <button :class="{ selected: upcomingMode }" @click="select('upcoming')"><UIcon name="i-lucide-clock-3" />Ближайшие подписки</button>
         <button :class="{ selected: financesMode }" @click="select('finances')"><UIcon name="i-lucide-chart-no-axes-combined" />Финансы</button>
         <button :class="{ selected: historyMode }" @click="select('history')"><UIcon name="i-lucide-history" />История списаний</button>
-        <button :class="{selected:active==='team'}" @click="select('team')"><UIcon name="i-lucide-users-round"/>Команда</button>
-        <button :class="{selected:active==='profile'}" @click="select('profile')"><UIcon name="i-lucide-user-round-cog"/>Мой профиль</button>
       </nav>
       <div class="sidebar-label category-label"><button class="category-page-link" :class="{selected:categoryMode}" @click="select('categories')">КАТЕГОРИИ</button><button v-if="workspaceId==='all'||canManageCategoryVault(workspaceId)" title="Добавить категорию" aria-label="Добавить категорию" @click="editCategory()"><UIcon name="i-lucide-plus"/></button></div>
       <CategoryNav :categories="navigationCategories" :folders="folders" :active="active" :workspace-id="workspaceId" :collapsed="filters.collapsedFolders" :count="categoryCount" @select="selectCategory" @toggle="toggleFolder"/>
       <button v-if="workspaceId==='all'||canManageCategoryVault(workspaceId)" class="add-category" @click="editCategory()"><UIcon name="i-lucide-plus" />Новая категория</button>
 
-      <div class="sidebar-bottom"><div class="encryption-card"><span class="encryption-icon"><UIcon name="i-lucide-shield-check" /></span><strong>Под надёжной защитой</strong><p>Личное — только для вас.<br>Общее — для участников.</p><span class="encryption-tag"><i /> AES-256-GCM</span></div><NuxtLink to="/admin/password" class="sidebar-admin"><UIcon name="i-lucide-settings-2" />Панель управления<UIcon name="i-lucide-arrow-up-right" /></NuxtLink><div class="sidebar-user"><NuxtLink to="/password/profile" class="sidebar-profile"><PersonAvatar :name="team.me?.person.fullName||auth.user?.email||'Профиль'" :src="team.me?.person.avatarUrl"/><span><strong>{{ team.me?.person.fullName||'Мой профиль' }}</strong><small>{{ auth.user?.email }}</small></span></NuxtLink><button title="Выйти" aria-label="Выйти" @click="auth.logout()"><UIcon name="i-lucide-log-out"/></button></div></div>
+      <div class="sidebar-bottom"><div class="encryption-card"><span class="encryption-icon"><UIcon name="i-lucide-shield-check" /></span><strong>Под надёжной защитой</strong><p>Личное — только для вас.<br>Общее — для участников.</p><span class="encryption-tag"><i /> AES-256-GCM</span></div><NuxtLink to="/admin/password" class="sidebar-admin"><UIcon name="i-lucide-settings-2" />Панель управления<UIcon name="i-lucide-arrow-up-right" /></NuxtLink><div class="sidebar-user"><NuxtLink to="/profile" class="sidebar-profile"><PersonAvatar :name="team.me?.person.fullName||auth.user?.email||'Профиль'" :src="team.me?.person.avatarUrl"/><span><strong>{{ team.me?.person.fullName||'Мой профиль' }}</strong><small>{{ auth.user?.email }}</small></span></NuxtLink><button title="Выйти" aria-label="Выйти" @click="auth.logout()"><UIcon name="i-lucide-log-out"/></button></div></div>
     </aside>
     <button v-if="mobileOpen" class="sidebar-scrim" aria-label="Закрыть меню" @click="mobileOpen = false" />
     <main class="vault-main">
@@ -180,9 +175,6 @@ function removeImage(id: string) { form.images = form.images?.filter(image => im
       <div class="vault-content">
         <slot />
         <div v-if="embedded" class="embedded-switcher"><VaultSwitcher v-model="workspaceId" /><NotificationCenter @open-entry="openNotification" /></div>
-        <LazyTeamWorkspace v-if="active==='team'" :profile-id="profileId"/>
-        <LazyProfileView v-else-if="active==='profile'"/>
-        <template v-else>
         <UAlert v-if="shared.loading && !shared.groups.length" class="mb-5" color="neutral" title="Загружаем общие хранилища…" />
         <div v-if="!embedded" class="welcome-line"><span class="eyebrow">ПОРЯДОК В ЦИФРОВОЙ ЖИЗНИ</span><span class="vault-date">Ваше безопасное пространство</span></div>
         <div class="page-heading"><div><h1>{{ categoryMode ? 'Категории' : title }}<span class="title-dot">.</span></h1><p>{{ categoryMode ? 'Организуйте доступы так, как удобно вам.' : graphMode ? 'Как связаны сервисы, хостинги и подписки.' : historyMode ? 'Прошлые оплаты подписок для отчётов.' : financesMode ? 'Расходы на подписки, план списаний и отмеченные оплаты.' : upcomingMode ? 'Сроки подписок и предстоящие продления во всех хранилищах.' : 'Все важные доступы — в одном надёжном месте.' }}</p></div><div class="heading-actions"><UButton v-if="category(active) && !categoryMode && canManageCategoryVault(category(active)!.vaultId)" color="neutral" variant="outline" icon="i-lucide-pencil" aria-label="Изменить категорию" @click="editCategory(category(active))" /><UButton v-if="category(active) && !categoryMode && canManageCategoryVault(category(active)!.vaultId)" color="neutral" variant="outline" icon="i-lucide-trash-2" aria-label="Удалить категорию" @click="askDelete(category(active)!, true)" /><UButton v-if="categoryMode&&(workspaceId==='all'||canManageCategoryVault(workspaceId))" color="neutral" variant="outline" icon="i-lucide-folder-plus" label="Новая папка" @click="editFolder()"/><UButton v-if="(!categoryMode||workspaceId==='all'||canManageCategoryVault(workspaceId))&&(workspaceId==='all'||workspaceId==='personal'||shared.groups.find(group=>group.id===workspaceId)?.canEdit!==false)" size="lg" icon="i-lucide-plus" :label="categoryMode ? 'Новая категория' : 'Добавить карточку'" @click="categoryMode ? editCategory() : editEntry()" /></div></div>
@@ -201,7 +193,6 @@ function removeImage(id: string) { form.images = form.images?.filter(image => im
         </template>
         <div v-if="!embedded" class="vault-tip"><span><UIcon name="i-lucide-lightbulb" /></span><p><strong>Маленькая привычка — большая защита.</strong> Используйте уникальный пароль для каждого сервиса. Генератор поможет его придумать.</p><UIcon name="i-lucide-sparkles" /></div>
         <footer v-if="!embedded" class="vault-footer"><span>{{ productName }} <span class="footer-divider">/</span> Личное — для вас. Общее — для команды.</span><span><UIcon name="i-lucide-lock-keyhole" />Выход через 5 минут бездействия</span></footer>
-        </template>
       </div>
     </main>
     <CredentialDetails @open-entry="viewEntry" :open="viewOpen" :entry="viewingEntry" :subscription-entries="allEntries" :categories="viewingCategories" :links="viewingLinks" :busy="busy" :readonly="!!viewingEntry&&!canEditEntry(viewingEntry)" @close="viewOpen=false" @edit="editEntry" @copy="copy" @renew="renewSubscription" @history="openPaymentHistory"/>

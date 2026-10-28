@@ -246,3 +246,10 @@
 .project-invite-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}
 @media(max-width:767px){.home-applications{flex-direction:column;gap:22px}.home-applications>.password-launch-card{width:100%;justify-content:flex-start}.projects-launch-icon{width:44px;height:44px}.projects-heading{align-items:flex-start;flex-direction:column}.projects-heading h1{font-size:30px}.projects-main{padding-top:32px}.projects-empty{min-height:340px}.project-member{flex-wrap:wrap}.project-member-person{min-width:150px}.project-invite-actions{align-items:stretch;flex-direction:column}.project-rename{align-items:stretch;flex-direction:column}.projects-back{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.project-tile{transition:none}}
+
+/* Shared account pages occupy the home content area, independent of products. */
+.home-section{flex:1;width:100%;max-width:1240px;margin:0 auto;padding:48px clamp(20px,5vw,64px)}
+.home-section>.profile-page{width:100%;max-width:1040px;margin:0 auto}
+.project-member-profile{display:block;overflow-wrap:anywhere;color:#475569;font-size:13px;font-weight:500}
+.project-member-profile:hover{color:var(--ui-primary);text-decoration:underline;text-underline-offset:3px}
+@media(max-width:767px){.home-section{padding-top:32px}}

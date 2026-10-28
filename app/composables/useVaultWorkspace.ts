@@ -25,7 +25,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const entries = computed(() => sourceEntries(visibleSources.value)), categories = computed(() => sourceCategories(visibleSources.value))
   const busy = computed(() => vault.busy || shared.busy || shared.loading), error = computed(() => vault.error || shared.error)
   const route = useRoute()
-  const active = computed({ get: () => !props.embedded && ['upcoming','finances','categories','team','profile'].includes(props.mode??'') ? props.mode!  : filters.workspace.active, set: value => { filters.workspace.active = value } })
+  const active = computed({ get: () => !props.embedded && ['upcoming','finances','categories'].includes(props.mode??'') ? props.mode!  : filters.workspace.active, set: value => { filters.workspace.active = value } })
   watch(() => [route.path, route.query.view], () => {
     if (!props.embedded && route.path === '/password') filters.workspace.active = typeof route.query.view === 'string' ? route.query.view : 'all'
   }, { immediate: true })
@@ -66,7 +66,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   const calendarMode = computed(() => active.value === 'subscriptions')
   const subscriptionCount = computed(() => subscriptionRows(entries.value).length)
   const graphMode = computed(() => active.value === 'relationships')
-  const title = computed(() => active.value==='team' ? 'Команда' : active.value==='profile' ? 'Мой профиль' : active.value==='categories' ? 'Категории' : historyMode.value ? 'История списаний' : upcomingMode.value ? 'Ближайшие подписки' : financesMode.value ? 'Финансы' : calendarMode.value ? 'Календарь подписок' : graphMode.value ? 'Взаимосвязь' : active.value === 'all' ? 'Все карточки' : active.value === 'favorites' ? 'Избранное' : category(active.value)?.name ?? 'Все карточки')
+  const title = computed(() => active.value==='categories' ? 'Категории' : historyMode.value ? 'История списаний' : upcomingMode.value ? 'Ближайшие подписки' : financesMode.value ? 'Финансы' : calendarMode.value ? 'Календарь подписок' : graphMode.value ? 'Взаимосвязь' : active.value === 'all' ? 'Все карточки' : active.value === 'favorites' ? 'Избранное' : category(active.value)?.name ?? 'Все карточки')
   const filtered = computed(() => entries.value.filter(e => (active.value === 'all' || (active.value === 'favorites' ? e.favorite : (e.vaultIds??[e.vaultId]).some(vaultId=>entryCategoryIds(e).some(id=>categoryFilterId(vaultId,id)===active.value)))) && [e.title, ...credentialAccounts(e).flatMap(account=>[account.label,account.username]), e.url, e.notes, ...(e.vaultNames??[e.vaultName]), ...(e.customFields ?? []).filter(f => f.type !== 'secret').map(f => `${f.label} ${f.value}`)].some(v => v.toLowerCase().includes(query.value.toLowerCase()))).sort((a, b) => sort.value === 'title' ? a.title.localeCompare(b.title, 'ru') : b.updatedAt.localeCompare(a.updatedAt)))
   const categoryMode = computed(() => active.value === 'categories')
   function copyData(id: string): VaultData | null {
@@ -113,7 +113,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string }) 
   }
   function select(id: string) {
     mobileOpen.value = false
-    if (id==='team'||id==='profile') { navigateTo(id==='team'?'/password/team':'/password/profile'); return }
+    if (id==='team'||id==='profile') { navigateTo(id==='team'?'/team':'/profile'); return }
     if (props.embedded) { active.value = id; return }
     const path = ({ categories: '/password/categories', upcoming: '/password/subscriptions', finances: '/password/finances' } as Record<string, string>)[id]
     if (path) { navigateTo(path); return }
