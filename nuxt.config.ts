@@ -17,6 +17,7 @@ export default defineNuxtConfig({
     '/_nuxt/**': { security: { rateLimiter: false } },
     '/fonts/**': { security: { rateLimiter: false } },
     '/api/profile/avatar': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 2113536, maxUploadFileRequestInBytes: 2113536 } } },
+    '/api/projects/*/estimate': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 12582912, maxUploadFileRequestInBytes: 12582912 } } },
     '/team': { ssr:false }, '/team/**': { ssr:false }, '/profile': { ssr:false },
     '/api/auth/brand': { security: { rateLimiter: { tokensPerInterval: 60, interval: 60000 } } },
     '/api/**': { headers: { 'Cache-Control': 'no-store' } },

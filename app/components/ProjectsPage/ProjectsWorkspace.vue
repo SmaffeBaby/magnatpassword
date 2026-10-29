@@ -2,6 +2,7 @@
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import UserPicker from '../UserPicker.vue'
 import PersonAvatar from '../PersonAvatar.vue'
+import ProjectEstimate from './ProjectEstimate.vue'
 import type { Project, ProjectPermission } from '~~/shared/types/projects'
 import type { TeamPerson } from '~~/shared/types/team'
 
@@ -85,7 +86,8 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
       <template v-else-if="projectId">
         <template v-if="currentProject">
           <header class="projects-heading project-page-heading"><div><span class="eyebrow">{{ activeStage?`ЭТАП ${activeStage.number}`:'ПРОЕКТ' }}</span><h1>{{ activeStage?activeStage.label:currentProject.name }}<span class="title-dot">.</span></h1><p>{{ activeStage?currentProject.name:'Рабочее пространство проекта и его участники.' }}</p></div><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></header>
-          <section v-if="activeStage" class="project-documents-empty" :aria-label="`${activeStage.label} проекта`"><span class="project-documents-icon"><UIcon :name="activeStage.icon"/></span><h2>{{ activeStage.label }} проекта</h2><p>{{ activeStage.description }}</p><NuxtLink :to="`/projects/${currentProject.id}`" class="subscription-card-link">Вернуться к проекту →</NuxtLink></section>
+          <ProjectEstimate v-if="section === 'estimate'" :key="currentProject.id" :project="currentProject" />
+          <section v-else-if="activeStage" class="project-documents-empty" :aria-label="`${activeStage.label} проекта`"><span class="project-documents-icon"><UIcon :name="activeStage.icon"/></span><h2>{{ activeStage.label }} проекта</h2><p>{{ activeStage.description }}</p><NuxtLink :to="`/projects/${currentProject.id}`" class="subscription-card-link">Вернуться к проекту →</NuxtLink></section>
           <template v-else>
           <div class="project-overview" aria-label="Информация о проекте"><div><UIcon name="i-lucide-user-round-check"/><small>Ваши права</small><strong>{{ labels[currentProject.permission] }}</strong></div><div><UIcon name="i-lucide-users-round"/><small>Участников</small><strong>{{ currentProject.members.length }}</strong></div><div><UIcon name="i-lucide-calendar-days"/><small>Создан</small><strong>{{ projectDate(currentProject.createdAt) }}</strong></div><div><UIcon name="i-lucide-clock-3"/><small>Обновлён</small><strong>{{ projectDate(currentProject.updatedAt) }}</strong></div></div>
           <section class="project-business-stages" aria-label="Бизнес-этапы проекта"><div class="project-page-section-heading"><h2>Этапы проекта</h2></div><ol class="project-stages-grid project-stages-sequence"><li v-for="stage in projectStages" :key="stage.key"><NuxtLink :to="`/projects/${currentProject.id}/${stage.key}`" class="password-glass password-launch-card project-stage-link" :aria-label="`${stage.label} проекта: ${currentProject.name}`"><span class="project-stage-icon"><UIcon :name="stage.icon"/></span><span class="project-stage-copy"><small>Этап {{ stage.number }}</small><strong>{{ stage.label }}</strong></span><UIcon name="i-lucide-arrow-up-right" class="project-stage-arrow"/></NuxtLink></li></ol></section>
