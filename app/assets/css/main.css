@@ -253,3 +253,13 @@
 .project-member-profile{display:block;overflow-wrap:anywhere;color:#475569;font-size:13px;font-weight:500}
 .project-member-profile:hover{color:var(--ui-primary);text-decoration:underline;text-underline-offset:3px}
 @media(max-width:767px){.home-section{padding-top:32px}}
+
+/* Navigation between Password and Finances keeps both applications visible. */
+.workspace-apps{display:flex;align-items:center;gap:10px}
+.workspace-apps .password-glass{padding:8px 14px;font-size:15px;gap:9px;white-space:nowrap}
+.workspace-apps .password-glass img,.finance-app-icon{width:26px;height:26px;flex-shrink:0}
+.workspace-apps .router-link-active{outline:2px solid var(--ui-primary);outline-offset:2px}
+.password-launch-card .finance-app-icon{width:50px;height:50px;color:var(--ui-primary)}
+@media(max-width:767px){.workspace-apps{gap:6px}.workspace-apps .password-glass{padding:7px 10px;font-size:13px;gap:6px}.workspace-apps .password-glass img,.workspace-apps .finance-app-icon{width:20px;height:20px}.password-launch-card .finance-app-icon{width:44px;height:44px}}
+@media(max-width:767px){.password-topbar{grid-template-columns:auto minmax(0,1fr) auto}.workspace-apps{justify-self:center}}
+@media(max-width:480px){.workspace-apps{gap:4px}.workspace-apps .password-glass{padding:6px 8px;font-size:12px;gap:5px}.workspace-apps .password-glass img,.workspace-apps .finance-app-icon{width:16px;height:16px}}

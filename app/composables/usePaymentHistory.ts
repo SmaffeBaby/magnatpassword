@@ -7,7 +7,7 @@ import { createId } from '~/utils/browser'
 
 export function usePaymentHistory(props: { sources: VaultSource[]; subscriptionKey?: string }) {
   const vault = useVaultStore(), shared = useSharedVaultsStore(), filtersStore = useFiltersStore()
-  const filters = useSubscriptionFilters({ get entries() { return sourceEntries(props.sources) }, get groups() { return props.sources.map(source => ({ id: source.id, name: source.name })) } }, 'history')
+  const filters = useSubscriptionFilters({ get entries() { return sourceEntries(props.sources,true) }, get groups() { return props.sources.map(source => ({ id: source.id, name: source.name })) } }, 'history')
   const { from, to } = toRefs(filtersStore.history)
   const subscription = computed({ get: () => props.subscriptionKey || filtersStore.history.subscription, set: value => { filtersStore.history.subscription = value } })
   const allPayments = computed(() => sourcePayments(props.sources))

@@ -4,7 +4,7 @@ import {nextPaidUntil,subscriptionRows} from '../../../../shared/utils/subscript
 import {paymentForRenewal} from '../../../../shared/utils/subscription-finances'
 export default defineEventHandler(async event=>{
  const context=await requireCard(event),body=await sharedBody(event,z.object({revision:revisionSchema,fieldId:z.uuid()}).strict())
- const entry=structuredClone(context.card.entry),sub=entry.customFields?.find(field=>field.id===body.fieldId)?.subscription
+ const entry=structuredClone(context.card.entry),sub=(entry.financeSubscription?.id===body.fieldId?entry.financeSubscription:entry.customFields?.find(field=>field.id===body.fieldId))?.subscription
  if(!sub)throw createError({statusCode:404,message:'Подписка не найдена'})
  const until=nextPaidUntil(sub)
  if(!until)throw createError({statusCode:400,message:'Не удалось рассчитать срок подписки'})

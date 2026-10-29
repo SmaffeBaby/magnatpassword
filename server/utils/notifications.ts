@@ -21,7 +21,7 @@ export async function reminderSources(event: Parameters<typeof requireSharedUser
 }
 export async function generateSubscriptionReminders(context: Awaited<ReturnType<typeof requireSharedUser>>, sources: Awaited<ReturnType<typeof reminderSources>>['sources'], settings: NotificationSettings) {
   const { sourceEntries } = await import('../../shared/utils/vault-sources')
-  const today = todayDate(), rows = subscriptionRows(sourceEntries(sources),today), inserts = []
+  const today = todayDate(), rows = subscriptionRows(sourceEntries(sources,true),today), inserts = []
   for (const row of rows) {
     const scheduled = dueReminder(row.subscription,row.subscription.reminders || settings,today)
     if (!scheduled) continue

@@ -10,7 +10,7 @@ export default defineEventHandler(async event => {
     const payment = body.payment
     if (payment.entryId !== context.card.entry.id) throw createError({ statusCode: 400, message: 'Оплата относится к другой карточке' })
     const index = payments.findIndex(item => item.id === payment.id)
-    const field = context.card.entry.customFields?.find(field => field.id === payment.fieldId && field.type === 'subscription')
+    const field = (context.card.entry.financeSubscription?.id === payment.fieldId ? context.card.entry.financeSubscription : context.card.entry.customFields?.find(field => field.id === payment.fieldId && field.type === 'subscription'))
     if (index < 0 && !field) throw createError({ statusCode: 404, message: 'Подписка не найдена' })
     if (index >= 0 && payments[index]!.fieldId !== payment.fieldId) throw createError({ statusCode: 400, message: 'Нельзя перенести оплату в другую подписку' })
     if (index >= 0) payments[index] = payment

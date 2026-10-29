@@ -1,10 +1,24 @@
-const legacySections = new Set(['/categories', '/subscriptions', '/finances'])
+const legacySections: Record<string, string> = {
+  '/categories': '/password/categories',
+  '/subscriptions': '/finances/subscriptions',
+  '/password/subscriptions': '/finances/subscriptions',
+  '/password/finances': '/finances'
+}
+const financeViews: Record<string, string> = {
+  subscriptions: '/finances/calendar', upcoming: '/finances/subscriptions',
+  finances: '/finances', history: '/finances/history'
+}
 
 export default defineNuxtRouteMiddleware(to => {
   const path = to.path.replace(/\/$/, '') || '/'
-  const destination = path === '/password/profile' ? '/profile'
+  const financeView = path === '/password' && typeof to.query.view === 'string' ? financeViews[to.query.view] : undefined
+  const destination = financeView ?? (path === '/password/profile' ? '/profile'
     : path === '/password/team' || path.startsWith('/password/team/') ? path.slice('/password'.length)
-    : legacySections.has(path) ? `/password${path}`
-    : path === '/admin' ? '/admin/password' : undefined
-  if (destination) return navigateTo({ path: destination, query: to.query, hash: to.hash }, { redirectCode: 301, replace: true })
+    : legacySections[path]
+    ?? (path === '/admin' ? '/admin/password' : undefined))
+  if (destination) {
+    const query = { ...to.query }
+    if (financeView) delete query.view
+    return navigateTo({ path: destination, query, hash: to.hash }, { redirectCode: 301, replace: true })
+  }
 })

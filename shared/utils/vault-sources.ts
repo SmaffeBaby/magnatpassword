@@ -3,9 +3,10 @@ import type { VaultSource } from '../types/sharing'
 export interface ScopedCredential extends Credential { vaultId: string; vaultName: string; vaultIds?:string[];vaultNames?:string[] }
 export interface ScopedCategory extends Category { vaultId: string; vaultName: string; filterId: string }
 export const categoryFilterId = (vaultId: string, categoryId: string) => `${vaultId}/${categoryId}`
-export function sourceEntries(sources: VaultSource[]): ScopedCredential[] {
+export function sourceEntries(sources: VaultSource[], includeFinance = false): ScopedCredential[] {
   const result:ScopedCredential[]=[],linked=new Map<string,ScopedCredential>()
   for(const source of sources)for(const entry of source.data.entries){
+    if(entry.kind==='subscription'&&!includeFinance)continue
     if(entry.sharedCardId&&linked.has(entry.sharedCardId)){const existing=linked.get(entry.sharedCardId)!;existing.vaultIds!.push(source.id);existing.vaultNames!.push(source.name);continue}
     const value={...entry,vaultId:source.id,vaultName:source.name,vaultIds:[source.id],vaultNames:[source.name]};result.push(value);if(entry.sharedCardId)linked.set(entry.sharedCardId,value)
   }

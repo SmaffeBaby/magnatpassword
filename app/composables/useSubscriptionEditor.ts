@@ -12,13 +12,13 @@ export function useSubscriptionEditor(props:{field:CustomField;cards?:ScopedCred
   return refs
  })
  const cardOptions=computed(()=>[...cardReferences.value.keys()].map(value=>{const card=props.cards?.find(card=>subscriptionCardKey({vaultId:card.vaultId,entryId:card.id,sharedCardId:card.sharedCardId})===value);return {value,label:card?`${card.title} · ${card.vaultName}`:'Недоступная карточка'}}))
- const primaryOptions=computed(()=>[{label:props.ownerTitle||'Текущая карточка',value:'__current'},...cardOptions.value])
+ const primaryOptions=computed(()=>[{label:props.ownerTitle||'Без привязки',value:'__current'},...cardOptions.value])
  const primaryCard=computed({get:()=>sub.value.primaryCard?subscriptionCardKey(sub.value.primaryCard):'__current',set:(value:string)=>{
   sub.value.primaryCard=value==='__current'?undefined:cardReferences.value.get(value)
   sub.value.linkedCards=sub.value.linkedCards?.filter(card=>subscriptionCardKey(card)!==value)
  }})
  const linkedCardOptions=computed(()=>cardOptions.value.filter(option=>option.value!==primaryCard.value))
- const linkedCards=computed({get:()=>(sub.value.linkedCards??[]).map(subscriptionCardKey),set:(values:string[])=>{sub.value.linkedCards=[...new Set(values)].slice(0,50).flatMap(value=>{const card=cardReferences.value.get(value);return card?[card]:[]})}})
+ const linkedCards=computed({get:()=>(sub.value.linkedCards??[]).map(subscriptionCardKey),set:(values:string[])=>{sub.value.linkedCards=[...new Set(values)].slice(0,100).flatMap(value=>{const card=cardReferences.value.get(value);return card?[card]:[]})}})
  const currencies=[{label:'Рубли · RUB',value:'RUB'},{label:'Доллары · USD',value:'USD'},{label:'Евро · EUR',value:'EUR'},{label:'Юани · CNY',value:'CNY'}]
  const units=[{label:'Дней',value:'day'},{label:'Месяцев',value:'month'},{label:'Лет',value:'year'}]
  function updatePeriod(){if(!sub.value)return;const next=addPeriod(sub.value.startsOn,sub.value.periodCount,sub.value.periodUnit);if(next){sub.value.paidUntil=next;sub.value.paidFrom=sub.value.startsOn}}

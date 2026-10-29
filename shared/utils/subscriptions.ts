@@ -24,7 +24,7 @@ export function nextPaidUntil(value: Subscription) {
   return addPeriod(value.paidUntil, value.periodCount, value.periodUnit)
 }
 export function subscriptionRows(entries: ScopedCredential[], today = todayDate()) {
-  return entries.flatMap(entry => (entry.customFields ?? []).filter(field => field.type === 'subscription' && field.subscription).map(field => {
+  return entries.flatMap(entry => (entry.kind === 'subscription' ? (entry.financeSubscription ? [entry.financeSubscription] : []) : entry.customFields ?? []).filter(field => field.type === 'subscription' && field.subscription).map(field => {
     const subscription = field.subscription!, daysLeft = dayDifference(today, subscription.paidUntil), from = subscription.paidFrom || subscription.startsOn
     return { key: `${entry.vaultId}/${entry.id}/${field.id}`, entry, field, subscription, daysLeft, progress: Math.max(0, Math.min(100, dayDifference(from, today) / Math.max(1,dayDifference(from, subscription.paidUntil)) * 100)) }
   })).sort((a,b) => a.subscription.paidUntil.localeCompare(b.subscription.paidUntil) || a.entry.title.localeCompare(b.entry.title, 'ru'))
