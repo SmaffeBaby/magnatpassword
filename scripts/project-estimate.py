@@ -50,6 +50,16 @@ def build_sheet():
     width = len(layout['headers'])
     def row(number, values, styles=None, height=23, formulas=None):
         entries.append({'number': number, 'values': values, 'styles': styles or [0]*len(values), 'height': height, 'formulas': formulas or {}})
+    if data.get('target') == 'contracts':
+        layout={'headers':['Код','Номер','Продавец / исполнитель','Покупатель / заказчик','Дата','Срок','Сумма с НДС, ₽','НДС, ₽'],'widths':[8,25,30,30,17,17,23,21]}
+        title='РЕЕСТР ДОГОВОРОВ'+(' · '+details['code'] if details['code'] else '')
+        row(1,[title]+['']*7,[52]*8,36);merges.append('A1:H1')
+        row(3,layout['headers'],[55]*8,32)
+        for index,contract in enumerate(data['contracts']):
+            values=[contract['code'],contract['number'],contract['seller'],contract['buyer'],local_date(contract['date']),local_date(contract['deadline']),contract['amount'],contract['vatAmount']]
+            height=max(25,max(math.ceil(len(str(values[i]))/max(8,layout['widths'][i]-2)) for i in range(6))*14+8)
+            row(index+4,values,[0]*6+[38]*2,height)
+        return {'name':'Договора','entries':entries,'merges':merges,'layout':layout,'header':3,'title':title}
     if is_parties:
         title = data.get('counterpartyTitle') or ('КОНТРАГЕНТЫ · ТЕСТОВЫЕ РЕКВИЗИТЫ' if details['notice'] else 'КОНТРАГЕНТЫ')
         row(1, [title]+['']*5, [52]*6, 36)
@@ -207,7 +217,8 @@ def pdf(sheet):
     title.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#16344c')),('LEFTPADDING',(0,0),(-1,-1),12),('TOPPADDING',(0,0),(-1,-1),10),('BOTTOMPADDING',(0,0),(-1,-1),10)]))
     content.extend([title,Spacer(1,12)])
     is_parties = data.get('target') == 'counterparties'
-    if not is_parties:
+    is_registry = data.get('target') in ['counterparties','contracts']
+    if not is_registry:
         details = data['details']
         if details['notice']:
             content.extend([para(details['notice'],note),Spacer(1,8)])
@@ -220,7 +231,7 @@ def pdf(sheet):
     for entry in sheet['entries']:
         if entry['number'] <= sheet['header']:
             continue
-        if not is_parties and (len(entry['values'])<9 or entry['values'][0]==''):
+        if not is_registry and (len(entry['values'])<9 or entry['values'][0]==''):
             continue
         if is_parties and len(entry['values']) and not entry['number'] < len(data['counterparties'])+4:
             continue
@@ -233,10 +244,10 @@ def pdf(sheet):
     total_width = sum(sheet['layout']['widths'])
     widths = [doc.width*w/total_width for w in sheet['layout']['widths']]
     table = Table(rows,colWidths=widths,repeatRows=1,hAlign='LEFT',splitByRow=1,splitInRow=1)
-    padding = 8 if is_parties else 5
+    padding = 8 if is_registry else 5
     table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#dde9f1')),('VALIGN',(0,0),(-1,-1),'TOP'),('LINEBELOW',(0,0),(-1,-1),.35,colors.HexColor('#d5dfe7')),('TOPPADDING',(0,0),(-1,-1),padding),('BOTTOMPADDING',(0,0),(-1,-1),padding),('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5)]))
     content.append(table)
-    if not is_parties:
+    if not is_registry:
         f = data['financials']
         money = lambda value: f'{value:,.2f}'.replace(',',' ').replace('.',',')+' ₽'
         summary_rows = [
@@ -250,7 +261,7 @@ def pdf(sheet):
         content.extend([Spacer(1,12),KeepTogether([summary])])
         for text in data['details']['notes']:
             content.extend([Spacer(1,10),para(text,note)])
-    elif data['details']['counterpartyNote']:
+    elif is_parties and data['details']['counterpartyNote']:
         content.extend([Spacer(1,16),para(data['details']['counterpartyNote'],note)])
     def footer(canvas,document):
         canvas.setFont('Estimate',8);canvas.setFillColor(colors.HexColor('#64727e'));canvas.drawRightString(doc.pagesize[0]-24,14,f'Страница {document.page}')

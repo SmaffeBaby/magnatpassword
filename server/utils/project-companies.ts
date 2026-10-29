@@ -5,8 +5,10 @@ import type { ProjectCounterparty } from '../../shared/types/estimate'
 import type { DirectoryCompany } from '../../shared/types/project-companies'
 import { counterpartySchema } from '../../shared/utils/estimate'
 import { sealSharedVault, openSharedVault } from './shared-crypto'
+import { contractFailure } from './project-contracts'
 type Context = Awaited<ReturnType<typeof requireProjectsUser>>
 export function companyFailure(error: { message: string; code?: string }) {
+  if(error.message.includes('CONTRACT_BOTH_OWN')||error.message.includes('COMPANY_CONTRACT_IN_USE'))contractFailure(error)
   if (error.code === '23505') throw createError({ statusCode:409, message:'Компания с таким ИНН или названием уже есть в общей базе.' })
   if (error.message.includes('COMPANY_NOT_FOUND')) throw createError({ statusCode:404, message:'Компания не найдена или недоступна.' })
   if (error.message.includes('COMPANY_IN_USE')) throw createError({ statusCode:409, message:'Компания используется в проектах. Сначала уберите её из проектов.' })

@@ -19,6 +19,7 @@ export async function projectEstimate(event: H3Event, write?: { revision: number
     const parsed = estimateContentSchema.safeParse({ ...content, ...patch })
     if (!parsed.success) throw createError({ statusCode: 400, message: parsed.error.issues[0]?.message || 'Проверьте данные сметы' })
     content = parsed.data
+    await checkProjectContractReferences(event,context,id,content)
     if (JSON.stringify(content).length > 12_000_000) throw createError({ statusCode: 413, message: 'Смета слишком большая. Уменьшите изображения.' })
     const result = await context.client.rpc('project_estimate', { ...args, p_revision: revision, p_data: sealSharedVault(content, sharedSecret(event), `project-estimate:${id}`, 1) })
     if (result.error) projectFailure(result.error)
