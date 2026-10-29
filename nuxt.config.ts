@@ -18,6 +18,7 @@ export default defineNuxtConfig({
     '/fonts/**': { security: { rateLimiter: false } },
     '/api/profile/avatar': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 2113536, maxUploadFileRequestInBytes: 2113536 } } },
     '/team': { ssr:false }, '/team/**': { ssr:false }, '/profile': { ssr:false },
+    '/api/auth/brand': { security: { rateLimiter: { tokensPerInterval: 60, interval: 60000 } } },
     '/api/**': { headers: { 'Cache-Control': 'no-store' } },
     '/supabase/**': { headers: { 'Cache-Control': 'no-store' } }
   },
