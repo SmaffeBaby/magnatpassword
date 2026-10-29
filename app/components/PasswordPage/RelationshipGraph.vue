@@ -14,7 +14,7 @@ watch(services,cards=>{if(!cards.some(card=>card.id===selectedId.value))selected
 watch(selectedId,()=>{suggestionsOpen.value=false})
 const suggestions = computed(()=>suggestionsOpen.value&&selected.value?serviceSuggestions(props.entries,selected.value.id):[])
 const lanes = computed(()=>selected.value?[
-  {id:'password',label:'Пароли',product:'Password',icon:'i-lucide-key-round',rows:selected.value.passwords,empty:'Пароли пока не привязаны.'},
+  {id:'password',label:'Пароли',product:'Пароли',icon:'i-lucide-key-round',rows:selected.value.passwords,empty:'Пароли пока не привязаны.'},
   {id:'finance',label:'Подписки',product:'Финансы',icon:'i-lucide-wallet',rows:selected.value.subscriptions,empty:'Подписки пока не привязаны.'},
   {id:'service',label:'Связанные сервисы',product:'Взаимосвязи',icon:'i-lucide-network',rows:selected.value.services,empty:'Прямых связей с другими сервисами нет.'}
 ]:[])
@@ -41,6 +41,6 @@ function toggleSuggestions(event:Event){suggestionsOpen.value=(event.target as H
         <details :key="selected.id" class="service-map-suggestions" @toggle="toggleSuggestions"><summary><UIcon name="i-lucide-scan-search"/>Возможные совпадения</summary><p>Совпадения названий, сайтов и полей — подсказки. Они не добавляют привязки на карту.</p><button v-for="suggestion in suggestions" :key="suggestion.id" @click="choose(suggestion.id)"><strong>{{ suggestion.entry.title }}</strong><span>{{ suggestion.reasons.join(' · ') }}</span><UIcon name="i-lucide-arrow-right"/></button><p v-if="suggestionsOpen&&!suggestions.length">Дополнительных совпадений нет.</p></details>
       </div>
     </div>
-    <details v-if="model.unlinked.length" class="service-map-unlinked"><summary>{{ word(model.unlinked.length,'запись без привязки','записи без привязки','записей без привязки') }} к сервисам</summary><p>Эти записи остаются в Password и «Финансах». Привяжите их через карточку сервиса во «Взаимосвязях».</p><div><button v-for="entry in model.unlinked" :key="serviceEntryKey(entry)" @click="emit('edit',entry)"><UIcon :name="entry.kind==='subscription'?'i-lucide-wallet':'i-lucide-key-round'"/><strong>{{ entry.title }}</strong><span>{{ entry.kind==='subscription'?'Финансы':'Password' }} · {{ vaultNames(entry) }}</span><UIcon name="i-lucide-arrow-up-right"/></button></div></details>
+    <details v-if="model.unlinked.length" class="service-map-unlinked"><summary>{{ word(model.unlinked.length,'запись без привязки','записи без привязки','записей без привязки') }} к сервисам</summary><p>Эти записи остаются в «Паролях» и «Финансах». Привяжите их через карточку сервиса во «Взаимосвязях».</p><div><button v-for="entry in model.unlinked" :key="serviceEntryKey(entry)" @click="emit('edit',entry)"><UIcon :name="entry.kind==='subscription'?'i-lucide-wallet':'i-lucide-key-round'"/><strong>{{ entry.title }}</strong><span>{{ entry.kind==='subscription'?'Финансы':'Пароли' }} · {{ vaultNames(entry) }}</span><UIcon name="i-lucide-arrow-up-right"/></button></div></details>
   </section>
 </template>

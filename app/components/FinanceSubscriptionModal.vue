@@ -18,5 +18,5 @@ const finance = reactive(props.controller)
     </form></template>
     <template #footer><UButton v-if="finance.recordId && finance.editable" color="error" variant="ghost" label="Удалить подписку" :disabled="busy" @click="finance.archiveOpen=true" /><UButton color="neutral" variant="outline" :label="finance.editable ? 'Отмена' : 'Закрыть'" :disabled="busy" @click="finance.open=false" /><UButton v-if="finance.editable" type="submit" form="finance-subscription-form" label="Сохранить подписку" :loading="busy" /></template>
   </UModal>
-  <UModal v-model:open="finance.archiveOpen" title="Удалить подписку?" description="Подписка исчезнет из плана и календаря. История оплат и карточки Password сохранятся."><template #footer><UButton color="neutral" variant="outline" label="Отмена" @click="finance.archiveOpen=false" /><UButton color="error" label="Удалить подписку" :loading="busy" @click="finance.archive" /></template></UModal>
+  <UModal v-model:open="finance.archiveOpen" title="Удалить подписку?" description="Подписка исчезнет из плана и календаря. История оплат и карточки «Паролей» сохранятся."><template #footer><UButton color="neutral" variant="outline" label="Отмена" @click="finance.archiveOpen=false" /><UButton color="error" label="Удалить подписку" :loading="busy" @click="finance.archive" /></template></UModal>
 </template>

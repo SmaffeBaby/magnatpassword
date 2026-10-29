@@ -11,7 +11,7 @@ const normalize = (value: string) => value.normalize('NFKC').toLocaleLowerCase('
 const baseFields: Record<string, string> = { title: 'Название', url: 'Сайт', username: 'Логин', password: 'Пароль', notes: 'Заметка' }
 const fieldLabel = (entry: ScopedCredential, id?: string) => id ? baseFields[id] || entry.accounts?.find(account=>account.id===id)?.label || entry.customFields?.find(f => f.id === id)?.label : undefined
 export function buildRelationships(entries: ScopedCredential[], mode: RelationshipMode = 'all') {
-  const nodes: RelationNode[] = entries.map(e => ({ id: cardKey(e.vaultId, e.id), label: e.kind==='relationship'?e.title:`${e.kind==='subscription'?'Финансы':'Password'} · ${e.title}`, kind: 'card', vaultName: e.vaultName }))
+  const nodes: RelationNode[] = entries.map(e => ({ id: cardKey(e.vaultId, e.id), label: e.kind==='relationship'?e.title:`${e.kind==='subscription'?'Финансы':'Пароли'} · ${e.title}`, kind: 'card', vaultName: e.vaultName }))
   const edges: RelationEdge[] = [], lookup = new Map(entries.map(e => [cardKey(e.vaultId, e.id), e]))
   const groups = new Map<string, { kind: 'title' | 'site' | 'field'; label: string; members: Set<string> }>()
   function group(kind: 'title' | 'site', label: string, id: string) {
