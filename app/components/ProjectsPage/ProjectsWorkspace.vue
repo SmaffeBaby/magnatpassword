@@ -5,7 +5,7 @@ import PersonAvatar from '../PersonAvatar.vue'
 import type { Project, ProjectPermission } from '~~/shared/types/projects'
 import type { TeamPerson } from '~~/shared/types/team'
 
-const props = defineProps<{ projectId?: string }>()
+const props = defineProps<{ projectId?: string; section?: 'input-documents' }>()
 const auth = useAuthStore(), access = useProjectAccess(), client = useQueryClient()
 const projects = useQuery({
   queryKey: computed(() => ['account', auth.user?.id, 'projects']),
@@ -69,7 +69,7 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
 
 <template>
   <section class="projects-workspace">
-    <NuxtLink v-if="projectId" to="/projects" class="project-list-back"><UIcon name="i-lucide-arrow-left"/>Все проекты</NuxtLink>
+    <NuxtLink v-if="projectId" :to="section==='input-documents'?`/projects/${projectId}`:'/projects'" class="project-list-back"><UIcon name="i-lucide-arrow-left"/>{{ section==='input-documents'?'К проекту':'Все проекты' }}</NuxtLink>
     <div v-if="!projectId" class="projects-heading"><div><span class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</span><h1>Проекты<span class="title-dot">.</span></h1><p>Ваши проекты и люди, с которыми вы работаете.</p></div><UButton v-if="access.data.value?.allowed" label="Создать проект" icon="i-lucide-plus" size="lg" @click="showCreate" /></div>
     <p v-if="access.isPending.value" class="projects-state"><UIcon name="i-lucide-loader-circle" class="animate-spin" /> Проверяем доступ…</p>
     <UAlert v-else-if="access.error.value" color="error" title="Не удалось проверить доступ" :actions="[{ label: 'Повторить', onClick: () => access.refetch() }]" />
@@ -79,9 +79,13 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
       <p v-if="projects.isPending.value" class="projects-state">Загружаем проекты…</p>
       <template v-else-if="projectId">
         <template v-if="currentProject">
-          <header class="projects-heading project-page-heading"><div><span class="eyebrow">ПРОЕКТ</span><h1>{{ currentProject.name }}<span class="title-dot">.</span></h1><p>Рабочее пространство проекта и его участники.</p></div><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></header>
+          <header class="projects-heading project-page-heading"><div><span class="eyebrow">{{ section==='input-documents'?'ЭТАП 01':'ПРОЕКТ' }}</span><h1>{{ section==='input-documents'?'Входные документы':currentProject.name }}<span class="title-dot">.</span></h1><p>{{ section==='input-documents'?currentProject.name:'Рабочее пространство проекта и его участники.' }}</p></div><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></header>
+          <section v-if="section==='input-documents'" class="project-documents-empty" aria-label="Входные документы проекта"><span class="project-documents-icon"><UIcon name="i-lucide-files"/></span><h2>Входные документы проекта</h2><p>Здесь будут собраны исходные документы и материалы, необходимые для начала работы над проектом.</p><NuxtLink :to="`/projects/${currentProject.id}`" class="subscription-card-link">Вернуться к проекту →</NuxtLink></section>
+          <template v-else>
           <div class="project-overview" aria-label="Информация о проекте"><div><UIcon name="i-lucide-user-round-check"/><small>Ваши права</small><strong>{{ labels[currentProject.permission] }}</strong></div><div><UIcon name="i-lucide-users-round"/><small>Участников</small><strong>{{ currentProject.members.length }}</strong></div><div><UIcon name="i-lucide-calendar-days"/><small>Создан</small><strong>{{ projectDate(currentProject.createdAt) }}</strong></div><div><UIcon name="i-lucide-clock-3"/><small>Обновлён</small><strong>{{ projectDate(currentProject.updatedAt) }}</strong></div></div>
+          <section class="project-business-stages" aria-label="Бизнес-этапы проекта"><div class="project-page-section-heading"><h2>Этапы проекта</h2></div><div class="project-stages-grid"><NuxtLink :to="`/projects/${currentProject.id}/input-documents`" class="password-glass password-launch-card project-stage-link" :aria-label="`Входные документы проекта: ${currentProject.name}`"><span class="project-stage-icon"><UIcon name="i-lucide-file-input"/></span><span class="project-stage-copy"><small>Этап 01</small><strong>Входные документы</strong></span><UIcon name="i-lucide-arrow-up-right" class="project-stage-arrow"/></NuxtLink></div></section>
           <section class="project-page-members" aria-label="Участники проекта"><div class="project-page-section-heading"><h2>Участники проекта</h2><span>{{ currentProject.members.length }}</span></div><div class="project-members"><div v-for="member in currentProject.members" :key="member.userId" class="project-member"><PersonAvatar :name="member.fullName || member.email"/><div class="project-member-person"><NuxtLink :to="`/team/${member.userId}`" class="project-member-profile">{{ member.fullName || member.email }}</NuxtLink><small>{{ member.email }}</small><small v-if="!member.hasAccess">Доступ к разделу отозван администратором</small></div><span class="project-member-role">{{ labels[member.permission] }}</span></div></div></section>
+          </template>
         </template>
         <div v-else-if="!projects.error.value" class="projects-empty"><UIcon name="i-lucide-folder-lock"/><h1>Проект недоступен</h1><p>Проверьте ссылку или попросите создателя проекта предоставить доступ.</p><UButton to="/projects" label="Все проекты" color="neutral" variant="outline"/></div>
       </template>
