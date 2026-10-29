@@ -4,6 +4,7 @@ import UserPicker from '../UserPicker.vue'
 import PersonAvatar from '../PersonAvatar.vue'
 import ProjectEstimate from './ProjectEstimate.vue'
 import ProjectCounterparties from './ProjectCounterparties.vue'
+import ProjectCompanyDirectory from './ProjectCompanyDirectory.vue'
 import type { Project, ProjectPermission } from '~~/shared/types/projects'
 import type { TeamPerson } from '~~/shared/types/team'
 
@@ -12,6 +13,9 @@ const projectStages = [
   { key: 'input-documents', number: '01', label: 'Входные документы', icon: 'i-lucide-file-input', description: 'Здесь будут собраны исходные документы и материалы, необходимые для начала работы над проектом.' },
   { key: 'estimate', number: '02', label: 'Смета', icon: 'i-lucide-calculator', description: 'Здесь будет подготовлена смета проекта: состав работ и их стоимость.' }
 ] as const
+const route = useRoute()
+const directoryTab = computed(() => ['counterparties','legal-entities'].includes(String(route.query.tab)) ? String(route.query.tab) : 'projects')
+const directoryTitle = computed(() => directoryTab.value === 'counterparties' ? 'Контрагенты' : directoryTab.value === 'legal-entities' ? 'Наши Юр. лица' : 'Проекты')
 const activeStage = computed(() => projectStages.find(stage => stage.key === props.section))
 const auth = useAuthStore(), access = useProjectAccess(), client = useQueryClient()
 const projects = useQuery({
@@ -77,12 +81,14 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
 <template>
   <section class="projects-workspace">
     <NuxtLink v-if="projectId" :to="activeStage?`/projects/${projectId}`:'/projects'" class="project-list-back"><UIcon name="i-lucide-arrow-left"/>{{ activeStage?'К проекту':'Все проекты' }}</NuxtLink>
-    <div v-if="!projectId" class="projects-heading"><div><span class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</span><h1>Проекты<span class="title-dot">.</span></h1><p>Ваши проекты и люди, с которыми вы работаете.</p></div><UButton v-if="access.data.value?.allowed" label="Создать проект" icon="i-lucide-plus" size="lg" @click="showCreate" /></div>
+    <div v-if="!projectId" class="projects-heading"><div><span class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</span><h1>{{ directoryTitle }}<span class="title-dot">.</span></h1><p>{{ directoryTab === 'projects' ? 'Ваши проекты и люди, с которыми вы работаете.' : 'Общая база компаний для ваших проектов.' }}</p></div><UButton v-if="access.data.value?.allowed && directoryTab === 'projects'" label="Создать проект" icon="i-lucide-plus" size="lg" @click="showCreate" /></div>
     <p v-if="access.isPending.value" class="projects-state"><UIcon name="i-lucide-loader-circle" class="animate-spin" /> Проверяем доступ…</p>
     <UAlert v-else-if="access.error.value" color="error" title="Не удалось проверить доступ" :actions="[{ label: 'Повторить', onClick: () => access.refetch() }]" />
     <UAlert v-else-if="!access.data.value?.allowed" color="neutral" title="Доступ к проектам закрыт" description="Администратор может выдать доступ через панель управления." />
     <template v-else>
-      <UAlert v-if="projects.error.value" color="error" title="Не удалось загрузить проекты" :actions="[{ label: 'Повторить', onClick: refresh }]" class="mb-5" />
+      <nav v-if="!projectId" class="projects-directory-tabs" aria-label="Разделы проектов"><NuxtLink to="/projects" :aria-current="directoryTab === 'projects' ? 'page' : undefined">Проекты</NuxtLink><NuxtLink to="/projects?tab=counterparties" :aria-current="directoryTab === 'counterparties' ? 'page' : undefined">Контрагенты</NuxtLink><NuxtLink to="/projects?tab=legal-entities" :aria-current="directoryTab === 'legal-entities' ? 'page' : undefined">Наши Юр. лица</NuxtLink></nav>
+      <ProjectCompanyDirectory v-if="!projectId && directoryTab !== 'projects'" :key="directoryTab" :own-only="directoryTab === 'legal-entities'"/>
+      <template v-else><UAlert v-if="projects.error.value" color="error" title="Не удалось загрузить проекты" :actions="[{ label: 'Повторить', onClick: refresh }]" class="mb-5" />
       <p v-if="projects.isPending.value" class="projects-state">Загружаем проекты…</p>
       <template v-else-if="projectId">
         <template v-if="currentProject">
@@ -92,7 +98,8 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
           <template v-else>
           <div class="project-overview" aria-label="Информация о проекте"><div><UIcon name="i-lucide-user-round-check"/><small>Ваши права</small><strong>{{ labels[currentProject.permission] }}</strong></div><div><UIcon name="i-lucide-users-round"/><small>Участников</small><strong>{{ currentProject.members.length }}</strong></div><div><UIcon name="i-lucide-calendar-days"/><small>Создан</small><strong>{{ projectDate(currentProject.createdAt) }}</strong></div><div><UIcon name="i-lucide-clock-3"/><small>Обновлён</small><strong>{{ projectDate(currentProject.updatedAt) }}</strong></div></div>
           <section class="project-business-stages" aria-label="Бизнес-этапы проекта"><div class="project-page-section-heading"><h2>Этапы проекта</h2></div><ol class="project-stages-grid project-stages-sequence"><li v-for="stage in projectStages" :key="stage.key"><NuxtLink :to="`/projects/${currentProject.id}/${stage.key}`" class="password-glass password-launch-card project-stage-link" :aria-label="`${stage.label} проекта: ${currentProject.name}`"><span class="project-stage-icon"><UIcon :name="stage.icon"/></span><span class="project-stage-copy"><small>Этап {{ stage.number }}</small><strong>{{ stage.label }}</strong></span><UIcon name="i-lucide-arrow-up-right" class="project-stage-arrow"/></NuxtLink></li></ol></section>
-          <ProjectCounterparties :key="currentProject.id" :project="currentProject"/>
+          <ProjectCounterparties :key="currentProject.id+'-counterparties'" :project="currentProject"/>
+          <ProjectCounterparties :key="currentProject.id+'-legal-entities'" :project="currentProject" own-only/>
           <section class="project-page-members" aria-label="Участники проекта"><div class="project-page-section-heading"><h2>Участники проекта</h2><span>{{ currentProject.members.length }}</span></div><div class="project-members"><div v-for="member in currentProject.members" :key="member.userId" class="project-member"><PersonAvatar :name="member.fullName || member.email"/><div class="project-member-person"><NuxtLink :to="`/team/${member.userId}`" class="project-member-profile">{{ member.fullName || member.email }}</NuxtLink><small>{{ member.email }}</small><small v-if="!member.hasAccess">Доступ к разделу отозван администратором</small></div><span class="project-member-role">{{ labels[member.permission] }}</span></div></div></section>
           </template>
         </template>
@@ -102,6 +109,7 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
         <article v-for="project in projects.data.value" :key="project.id" class="project-tile project-tile-with-settings"><NuxtLink :to="`/projects/${project.id}`" class="project-tile-link" :aria-label="`Открыть проект: ${project.name}`"><span class="project-tile-icon"><UIcon name="i-lucide-folder-kanban" /></span><span class="project-tile-role">{{ labels[project.permission] }}</span><h2>{{ project.name }}</h2><span class="project-tile-footer"><span><UIcon name="i-lucide-users-round" />{{ project.members.length }} участн.</span><UIcon name="i-lucide-arrow-up-right" /></span></NuxtLink><UButton class="project-tile-settings" icon="i-lucide-settings" color="neutral" variant="ghost" :aria-label="`Настройки проекта: ${project.name}`" title="Настройки проекта" @click="open(project)"/></article>
       </div>
       <div v-else-if="!projects.error.value" class="projects-empty"><UIcon name="i-lucide-folder-plus" /><h2>Первый проект начинается здесь</h2><p>Создайте проект, добавьте участников и настройте их права.</p><UButton label="Создать проект" icon="i-lucide-plus" @click="showCreate" /></div>
+      </template>
     </template>
     <UModal v-model:open="createOpen" title="Создать проект" description="Участников и их права можно добавить после создания." :dismissible="!busy">
       <template #body><form class="space-y-5" @submit.prevent="create"><UFormField label="Название проекта" required><UInput v-model="name" class="w-full" placeholder="Например, Обновление сайта" :maxlength="120" required :disabled="busy" /></UFormField><UAlert v-if="error" color="error" :description="error" /><UButton type="submit" label="Создать проект" :loading="busy" :disabled="!name.trim()" /></form></template>
@@ -120,3 +128,7 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
     </UModal>
   </section>
 </template>
+
+<style scoped>
+.projects-directory-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:6px;background:#edf0f5;border:1px solid #e2e8f0;border-radius:16px;width:fit-content;max-width:100%;margin:0 0 28px}.projects-directory-tabs a{padding:12px 20px;color:#8292a8;font-size:14px;font-weight:600;border-radius:11px}.projects-directory-tabs a[aria-current=page]{background:white;color:#334155;box-shadow:0 2px 8px #0f172a08}@media(max-width:600px){.projects-directory-tabs{width:100%}.projects-directory-tabs a{flex:1;white-space:nowrap;text-align:center;padding:12px 9px;font-size:12px}}
+</style>

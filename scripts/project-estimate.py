@@ -51,7 +51,7 @@ def build_sheet():
     def row(number, values, styles=None, height=23, formulas=None):
         entries.append({'number': number, 'values': values, 'styles': styles or [0]*len(values), 'height': height, 'formulas': formulas or {}})
     if is_parties:
-        title = 'КОНТРАГЕНТЫ · ТЕСТОВЫЕ РЕКВИЗИТЫ' if details['notice'] else 'КОНТРАГЕНТЫ'
+        title = data.get('counterpartyTitle') or ('КОНТРАГЕНТЫ · ТЕСТОВЫЕ РЕКВИЗИТЫ' if details['notice'] else 'КОНТРАГЕНТЫ')
         row(1, [title]+['']*5, [52]*6, 36)
         merges.append('A1:F1')
         row(3, layout['headers'], [54]*6, 28)
@@ -73,29 +73,51 @@ def build_sheet():
     row(1, [title]+['']*8, [4]*9, 36)
     row(2, [details['notice']]+['']*8, [9]*9, 26)
     merges.extend(['A1:I1','A2:I2','C4:E4'])
-    for number, label, value in [(4,'Проект',details['description']), (5,'Тираж, компл.',details['batchQuantity']), (6,'Цена набора для клиента, ₽',details['clientUnitPrice']), (7,'Финишная дата',local_date(details['finishDate']))]:
+    meta = [('Проект',details['description'])]
+    field_cells = {}
+    for field in details['fields']:
+        value = field['value']
+        if field['type'] in ['money','number'] and value:
+            value = float(value)
+        elif field['type'] == 'date':
+            value = local_date(value)
+        field_cells[field['id']] = 'C'+str(4+len(meta))
+        meta.append((field['label'],value))
+    meta.append(('Финишная дата',local_date(details['finishDate'])))
+    if details['revenueMode'] == 'markup':
+        markup_cell = 'C'+str(4+len(meta))
+        meta.append(('Наценка к затратам, %',details['markupPercent']))
+    for number, (label,value) in enumerate(meta,4):
         row(number, ['',label,value], [12,58,14], 25 if number==4 else 20)
-    row(9, layout['headers'], [19]*9, 36)
+    header = 5+len(meta)
+    start = header+1
+    row(header, layout['headers'], [19]*9, 36)
     items = data['items']
     for index, (item, amounts) in enumerate(zip(items, data['amounts'])):
-        n = index+10
+        n = index+start
         rate = item['vatRate']
         vat_formula = f'ROUND(G{n}*{rate}/{100+rate},2)' if rate else '0'
         group = [i for i, candidate in enumerate(items) if item['vatGroup'] and candidate['counterpartyId'] == item['counterpartyId'] and candidate['vatGroup'] == item['vatGroup'] and candidate['vatRate'] == rate]
         if len(group)>1 and index == group[-1]:
-            totals = ','.join('G'+str(i+10) for i in group)
-            taxes = ','.join('H'+str(i+10) for i in group[:-1])
+            totals = ','.join('G'+str(i+start) for i in group)
+            taxes = ','.join('H'+str(i+start) for i in group[:-1])
             vat_formula = f'ROUND(SUM({totals})*{rate}/{100+rate},2)-SUM({taxes})'
         values = [index+1,item['name'],'Внутренние затраты' if item['internalCost'] else party_names.get(item['counterpartyId'],''),item['unit'],item['quantity'],item['price'],amounts['total'],amounts['vat'],amounts['net']]
         height = max(23, max(math.ceil(len(str(values[i])) / max(8, layout['widths'][i]-2)) for i in [1,2,3])*15+8)
         quantity_style = 47 if item['quantity'] == int(item['quantity']) else 60
         row(n, values, [46,46,46,46,quantity_style,48,48,48,48], height, {6:f'ROUND(E{n}*F{n},2)',7:vat_formula,8:f'G{n}-H{n}'})
-    end = max(10, len(items)+9)
+    end = max(start, len(items)+header)
     total, revenue = end+2, end+5
     f = data['financials']
-    row(total, ['', 'ИТОГО ЗАТРАТЫ','','','','',f['cost'],f['inputVat'],f['netCost']], [25]*6+[39]*3, 25, {i:f'SUM({col(i+1)}10:{col(i+1)}{end})' for i in [6,7,8]})
+    row(total, ['', 'ИТОГО ЗАТРАТЫ','','','','',f['cost'],f['inputVat'],f['netCost']], [25]*6+[39]*3, 25, {i:f'SUM({col(i+1)}{start}:{col(i+1)}{end})' for i in [6,7,8]})
     rate = details['revenueVatRate']
-    row(revenue, ['', 'ВЫРУЧКА ПО ДОГОВОРУ','','','','',f['revenue'],f['outputVat'],f['netRevenue']], [29]*6+[40]*3, 27, {6:'ROUND(C5*C6,2)',7:f'ROUND(G{revenue}*{rate}/{100+rate},2)',8:f'G{revenue}-H{revenue}'})
+    revenue_formulas = {7:f'ROUND(G{revenue}*{rate}/{100+rate},2)',8:f'G{revenue}-H{revenue}'}
+    if details['revenueMode'] == 'markup':
+        revenue_formulas[6] = f'ROUND(G{total}*(1+{markup_cell}/100),2)'
+    elif details['revenueMode'] == 'formula':
+        factors = [field_cells[id] for id in details['revenueFactors'] if id in field_cells]
+        revenue_formulas[6] = 'IF(AND('+','.join('ISNUMBER('+cell+')' for cell in factors)+'),ROUND('+'*'.join(factors)+',2),0)' if factors else '0'
+    row(revenue, ['', 'ВЫРУЧКА ПО ДОГОВОРУ','','','','',f['revenue'],f['outputVat'],f['netRevenue']], [29]*6+[40]*3, 27, revenue_formulas)
     row(revenue+2, ['', 'Разница выручка − расходы (с НДС)','','','','',f['difference']], [0]*6+[38], 23, {6:f'G{revenue}-G{total}'})
     row(revenue+3, ['', 'Результат без НДС, после прямых затрат','','','','','','',f['profit']], [0]*8+[38], 23, {8:f'I{revenue}-I{total}'})
     row(revenue+4, ['', 'Рентабельность по выручке без НДС','','','','','','',f['profitability']], [0]*8+[32], 23, {8:f'IF(I{revenue}=0,"",I{revenue+3}/I{revenue})'})
@@ -103,7 +125,7 @@ def build_sheet():
         n = revenue+6+index
         row(n, ['',note]+['']*7, [0]+[35]*8, max(35,math.ceil(len(note)/150)*14+8))
         merges.append(f'B{n}:I{n}')
-    return {'name':'Смета','entries':entries,'merges':merges,'layout':layout,'header':9,'title':title}
+    return {'name':'Смета','entries':entries,'merges':merges,'layout':layout,'header':header,'title':title,'meta':meta}
 
 
 def xlsx(sheet):
@@ -189,7 +211,9 @@ def pdf(sheet):
         details = data['details']
         if details['notice']:
             content.extend([para(details['notice'],note),Spacer(1,8)])
-        for label,value in [('Проект',details['description']),('Тираж, компл.',details['batchQuantity']),('Цена набора для клиента, ₽',f'{details["clientUnitPrice"]:,.2f}'.replace(',',' ').replace('.',',')),('Финишная дата',local_date(details['finishDate']))]:
+        for label,value in sheet['meta']:
+            if isinstance(value,(int,float)):
+                value = f'{value:,g}'.replace(',',' ').replace('.',',')
             meta = Table([[para(label,strong),para(value)]],colWidths=[160,doc.width-160]);meta.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('BOTTOMPADDING',(0,0),(-1,-1),3)]));content.append(meta)
         content.append(Spacer(1,8))
     rows = [[para(header,column_header) for header in sheet['layout']['headers']]]

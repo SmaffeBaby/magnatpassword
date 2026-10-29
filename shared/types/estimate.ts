@@ -6,10 +6,11 @@ export interface EstimateItem {
   quantity: number; price: number; currency: EstimateCurrency; deadline: string; fields: EstimateField[]
   unit: string; counterpartyId: string; internalCost: boolean; vatRate: number; vatGroup: string
 }
-export interface ProjectCounterparty { id: string; company: string; inn: string; kpp: string; director: string; address: string; bankAccount: string }
+export interface ProjectCounterparty { id: string; company: string; inn: string; kpp: string; director: string; address: string; bankAccount: string; catalogId?: string; isOwnLegalEntity?: boolean }
 export interface EstimateDetails {
   title: string; code: string; description: string; batchQuantity: number; clientUnitPrice: number; finishDate: string; revenueVatRate: number
   notice: string; notes: string[]; counterpartyNote: string
+  fields: EstimateField[]; revenueMode: 'formula' | 'manual' | 'markup'; revenueAmount: number; markupPercent: number; revenueFactors: string[]
 }
 export interface EstimateContent { items: EstimateItem[]; details: EstimateDetails; counterparties: ProjectCounterparty[] }
 export interface ProjectEstimate extends EstimateContent { revision: number; updatedAt: string | null }
