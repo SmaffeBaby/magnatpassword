@@ -1,48 +1,46 @@
 <script setup lang="ts">
-import { useRelationshipGraph } from '../../composables/useRelationshipGraph'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
-
+import { buildServiceMap, searchServiceCards, serviceSuggestions, serviceEntryKey } from '~~/shared/utils/service-map'
+import { moneyLabel, periodLabel, dateLabel } from '~~/shared/utils/subscriptions'
 const props = defineProps<{ entries: ScopedCredential[] }>()
 const emit = defineEmits<{ edit: [entry: ScopedCredential] }>()
-const { mode, query, linkedOnly, modes, graph, selected, selectedEntry, connected, cards, allCards, cardList, isolated, degrees, focusOnly, zoomPercent, bundles, kindLabels, limited, openSelected, clearSelection, focusSelected, selectFromList, reset, changeZoom } = useRelationshipGraph(props, entry => emit('edit', entry))
+const filters = useFiltersStore()
+const query = computed({get:()=>filters.relationships.query,set:(value:string)=>{filters.relationships.query=value}})
+const selectedId = ref(''), overview = ref(false), suggestionsOpen = ref(false)
+const model = computed(()=>buildServiceMap(props.entries))
+const services = computed(()=>searchServiceCards(model.value.cards,query.value))
+const selected = computed(()=>services.value.find(card=>card.id===selectedId.value))
+watch(services,cards=>{if(!cards.some(card=>card.id===selectedId.value))selectedId.value=cards[0]?.id??''},{immediate:true})
+watch(selectedId,()=>{suggestionsOpen.value=false})
+const suggestions = computed(()=>suggestionsOpen.value&&selected.value?serviceSuggestions(props.entries,selected.value.id):[])
+const lanes = computed(()=>selected.value?[
+  {id:'password',label:'Пароли',product:'Password',icon:'i-lucide-key-round',rows:selected.value.passwords,empty:'Пароли пока не привязаны.'},
+  {id:'finance',label:'Подписки',product:'Финансы',icon:'i-lucide-wallet',rows:selected.value.subscriptions,empty:'Подписки пока не привязаны.'},
+  {id:'service',label:'Связанные сервисы',product:'Взаимосвязи',icon:'i-lucide-network',rows:selected.value.services,empty:'Прямых связей с другими сервисами нет.'}
+]:[])
+const vaultNames = (entry:ScopedCredential)=>(entry.vaultNames??[entry.vaultName]).join(' · ')
+const otherOwners = (id:string)=>(model.value.usage.get(id)??[]).filter(card=>card.id!==selected.value?.id)
+const word=(n:number,one:string,few:string,many:string)=>`${n} ${n%100>=11&&n%100<=14?many:n%10===1?one:n%10>=2&&n%10<=4?few:many}`
+function choose(id:string){if(!services.value.some(card=>card.id===id))query.value='';selectedId.value=id;overview.value=false}
+function open(entry:ScopedCredential){if(entry.kind==='relationship')choose(serviceEntryKey(entry));else emit('edit',entry)}
+function toggleSuggestions(event:Event){suggestionsOpen.value=(event.target as HTMLDetailsElement).open}
 </script>
 <template>
-  <section class="relationships" aria-label="Взаимосвязь карточек">
-    <div class="relationship-heading"><div><h2>Карта связей</h2><p>Выберите карточку — её связи подсветятся, а пояснения появятся справа.</p></div><span class="relationship-total">{{ allCards.length }} карточек · {{ bundles.length }} линий</span></div>
-    <div class="relationship-toolbar">
-      <USelect v-model="mode" :items="modes" aria-label="Тип связей" />
-      <UInput v-model="query" icon="i-lucide-search" placeholder="Найти карточку, сайт или значение поля" aria-label="Поиск на графе" />
-      <UButton color="neutral" variant="outline" icon="i-lucide-scan" label="Вписать карту" @click="reset" />
-    </div>
-    <div class="relationship-options"><UCheckbox v-model="linkedOnly" label="Только карточки со связями"/><span>{{ cards.length }} карточек на карте · {{ graph.edges.length }} связей<template v-if="isolated"> · {{ isolated }} без связей</template></span></div>
-    <div class="relationship-legend"><span><i class="legend-manual"/>Подписки и ручные связи</span><span><i class="legend-title"/>Общее название</span><span><i class="legend-site"/>Общий сайт</span><span><i class="legend-field"/>Общее поле</span><span class="relationship-legend-note">Число на линии — несколько связей между карточками</span></div>
-    <UAlert v-if="limited" class="m-4" color="warning" description="На карте отображается до 300 карточек. Уточните поиск или выберите отдельное хранилище." />
-    <div v-if="focusOnly && selected" class="relationship-focus-bar"><UIcon name="i-lucide-focus"/><span>Окружение: <strong>{{ selected.label }}</strong></span><UButton size="xs" color="neutral" variant="outline" label="Вернуться ко всей карте" icon="i-lucide-arrow-left" @click="clearSelection"/></div>
-    <div v-else-if="query.trim()" class="relationship-search-note"><UIcon name="i-lucide-search"/><span>Показаны совпадения и их связи — соседние карточки остаются на карте.</span><UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-x" aria-label="Сбросить поиск" @click="query=''"/></div>
-    <div class="relationship-layout">
-      <div ref="relationship-container" class="relationship-canvas">
-        <svg ref="relationship-canvas" role="group" aria-label="Карта связей карточек. Выберите карточку мышью или клавишей Tab и Enter. Для масштаба используйте кнопки." />
-        <div v-if="!graph.nodes.length" class="relationship-no-results"><UIcon name="i-lucide-network"/><strong>{{ query.trim() ? 'Совпадений не найдено' : 'Связей пока нет' }}</strong><p>{{ query.trim() ? 'Измените запрос или сбросьте поиск.' : 'Свяжите карточки в их настройках или покажите карточки без связей.' }}</p><UButton v-if="query.trim()" size="sm" color="neutral" variant="outline" label="Сбросить поиск" @click="query=''"/><UButton v-else-if="linkedOnly && allCards.length" size="sm" color="neutral" variant="outline" label="Показать все карточки" @click="linkedOnly=false"/></div>
-        <div class="relationship-map-controls"><UButton color="neutral" variant="outline" icon="i-lucide-minus" aria-label="Уменьшить карту" @click="changeZoom(1 / 1.25)"/><span aria-live="polite">{{ zoomPercent }}%</span><UButton color="neutral" variant="outline" icon="i-lucide-plus" aria-label="Увеличить карту" @click="changeZoom(1.25)"/><UButton color="neutral" variant="outline" icon="i-lucide-scan" aria-label="Вписать всю карту" @click="reset"/></div>
-        <p class="relationship-hint">Перетаскивайте карточки и фон · Ctrl / ⌘ + колесо — масштаб</p>
+  <section class="service-map" aria-label="Карта связей сервисов">
+    <header class="service-map-header"><div><span class="service-map-eyebrow">ВЗАИМОСВЯЗИ</span><h2>Карта связей</h2><p>Один сервис — его пароли, подписки и связанные карточки.</p></div><div class="service-map-view" role="group" aria-label="Режим карты"><button :aria-pressed="!overview" :class="{selected:!overview}" @click="overview=false"><UIcon name="i-lucide-focus"/>По сервису</button><button :aria-pressed="overview" :class="{selected:overview}" @click="overview=true"><UIcon name="i-lucide-layout-grid"/>Обзор</button></div></header>
+    <div class="service-map-toolbar"><UInput v-model="query" icon="i-lucide-search" placeholder="Найти сервис, пароль или подписку…" aria-label="Поиск сервисов на карте" class="service-map-search"/><UButton v-if="query" color="neutral" variant="ghost" label="Сбросить поиск" @click="query=''"/><span>{{ word(model.cards.length,'сервис','сервиса','сервисов') }}<template v-if="query"> · найдено {{ services.length }}</template></span></div>
+    <div v-if="!services.length" class="service-map-empty"><UIcon name="i-lucide-network"/><h3>{{ query?'Ничего не найдено':'Добавьте первый сервис' }}</h3><p>{{ query?'Попробуйте другое название сервиса, пароля или подписки.':'Создайте карточку во «Взаимосвязях» и привяжите к ней доступы и подписки.' }}</p><UButton v-if="query" color="neutral" variant="outline" label="Сбросить поиск" @click="query=''"/><NuxtLink v-else to="/relationships" class="subscription-card-link">Перейти к карточкам →</NuxtLink></div>
+    <div v-else-if="overview" class="service-map-overview" aria-label="Обзор сервисов"><button v-for="card in services" :key="card.id" class="service-overview-card" :aria-label="`Показать связи: ${card.entry.title}`" @click="choose(card.id)"><div><span class="service-map-avatar"><UIcon name="i-lucide-network"/></span><strong>{{ card.entry.title }}</strong><UIcon name="i-lucide-arrow-up-right"/></div><small>{{ vaultNames(card.entry) }}</small><div class="service-overview-counts"><span><UIcon name="i-lucide-key-round"/>{{ word(card.passwords.length,'пароль','пароля','паролей') }}</span><span><UIcon name="i-lucide-wallet"/>{{ word(card.subscriptions.length,'подписка','подписки','подписок') }}</span><span v-if="card.services.length"><UIcon name="i-lucide-network"/>{{ word(card.services.length,'сервис','сервиса','сервисов') }}</span></div><p>{{ card.subscriptions.slice(0,2).map(row=>row.entry.financeSubscription?.label||row.entry.title).join(' · ') || 'Открыть схему сервиса' }}</p></button></div>
+    <div v-else-if="selected" class="service-map-layout">
+      <aside class="service-map-catalog" aria-label="Сервисы на карте"><h3>Сервисы <span>{{ services.length }}</span></h3><div class="service-map-service-list"><button v-for="card in services" :key="card.id" :aria-label="`Показать связи: ${card.entry.title}`" :aria-pressed="card.id===selectedId" :class="{selected:card.id===selectedId}" @click="choose(card.id)"><span class="service-catalog-name">{{ card.entry.title }}</span><small>{{ vaultNames(card.entry) }}</small><span class="service-catalog-counts"><span><UIcon name="i-lucide-key-round"/>{{ card.passwords.length }}</span><span><UIcon name="i-lucide-wallet"/>{{ card.subscriptions.length }}</span><span v-if="card.services.length"><UIcon name="i-lucide-network"/>{{ card.services.length }}</span></span></button></div></aside>
+      <div class="service-map-stage" aria-label="Схема выбранного сервиса" aria-live="polite">
+        <div class="service-map-anchor"><div class="service-map-anchor-main"><span class="service-map-avatar"><UIcon name="i-lucide-network"/></span><div><span class="service-map-eyebrow">СЕРВИС</span><h3>{{ selected.entry.title }}</h3><p>{{ vaultNames(selected.entry) }}</p></div></div><UButton color="neutral" variant="outline" icon="i-lucide-pencil" label="Открыть карточку" @click="emit('edit',selected.entry)"/></div>
+        <p class="service-map-explanation">Сохранённые привязки к выбранному сервису</p>
+        <div class="service-map-lanes"><section v-for="lane in lanes" :key="lane.id" :class="['service-map-lane',lane.id]" :aria-label="`${lane.label} сервиса ${selected.entry.title}`"><div class="service-lane-heading"><span><UIcon :name="lane.icon"/>{{ lane.label }}</span><strong>{{ lane.rows.length }}</strong></div><p class="service-lane-product">{{ lane.product }}</p><div v-if="!lane.rows.length" class="service-lane-empty">{{ lane.empty }}</div><article v-for="row in lane.rows" :key="row.id" class="service-resource"><button :aria-label="`Открыть ${row.entry.kind==='subscription'?'подписку':row.entry.kind==='relationship'?'сервис':'пароль'}: ${row.entry.title}`" @click="open(row.entry)"><strong>{{ row.entry.title }}</strong><UIcon name="i-lucide-arrow-up-right"/><span v-if="row.entry.financeSubscription&&row.entry.financeSubscription.label!==row.entry.title">{{ row.entry.financeSubscription.label }}</span><small>{{ vaultNames(row.entry) }}</small></button><template v-if="row.entry.financeSubscription?.subscription"><p class="service-resource-price">{{ moneyLabel(row.entry.financeSubscription.subscription) }} / {{ periodLabel(row.entry.financeSubscription.subscription) }}</p><p class="service-resource-date">Оплачено до {{ dateLabel(row.entry.financeSubscription.subscription.paidUntil) }}</p></template><details v-if="otherOwners(row.id).length" class="service-resource-shared"><summary>{{ word(otherOwners(row.id).length,'другой сервис','других сервиса','других сервисов') }} {{ otherOwners(row.id).length===1?'использует':'используют' }} эту запись</summary><button v-for="owner in otherOwners(row.id)" :key="owner.id" :aria-label="`Показать общий сервис: ${owner.entry.title}`" @click="choose(owner.id)">{{ owner.entry.title }}<UIcon name="i-lucide-arrow-right"/></button></details><details v-if="row.reasons.some(reason=>!['Пароли сервиса','Подписка сервиса','Связь сервисов','Привязка в карточке сервиса'].includes(reason))" class="service-resource-reasons"><summary>Описание связи</summary><p v-for="reason in row.reasons" :key="reason">{{ reason }}</p></details></article></section></div>
+        <p v-if="selected.unavailable" class="service-map-unavailable">{{ word(selected.unavailable,'привязка недоступна','привязки недоступны','привязок недоступны') }} в текущем наборе хранилищ.</p>
+        <details :key="selected.id" class="service-map-suggestions" @toggle="toggleSuggestions"><summary><UIcon name="i-lucide-scan-search"/>Возможные совпадения</summary><p>Совпадения названий, сайтов и полей — подсказки. Они не добавляют привязки на карту.</p><button v-for="suggestion in suggestions" :key="suggestion.id" @click="choose(suggestion.id)"><strong>{{ suggestion.entry.title }}</strong><span>{{ suggestion.reasons.join(' · ') }}</span><UIcon name="i-lucide-arrow-right"/></button><p v-if="suggestionsOpen&&!suggestions.length">Дополнительных совпадений нет.</p></details>
       </div>
-      <aside class="relationship-detail" aria-label="Информация о связях">
-        <template v-if="selected">
-          <div class="relationship-detail-top"><span :class="['relationship-kind',selected.kind]">{{ kindLabels[selected.kind] }}</span><UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-x" aria-label="Снять выделение карточки" @click="clearSelection"/></div>
-          <h2>{{ selected.label }}</h2><p v-if="selected.vaultName">{{ selected.vaultName }}</p>
-          <div class="relationship-detail-actions"><UButton v-if="selectedEntry" block color="neutral" variant="outline" icon="i-lucide-arrow-up-right" label="Открыть карточку" @click="openSelected"/><UButton block :variant="focusOnly ? 'soft' : 'solid'" icon="i-lucide-focus" :label="focusOnly ? 'Показать всю карту' : 'Только эти связи'" @click="focusSelected"/></div>
-          <h3>Связанные узлы <span>{{ connected.length }}</span></h3>
-          <button v-for="edge in connected" :key="edge.id" class="relation-detail-item" @click="selectFromList(edge.other.id)"><span :class="['relationship-kind',edge.other.kind]">{{ kindLabels[edge.other.kind] }}</span><strong>{{ edge.other.label }}</strong><small v-if="edge.other.vaultName">{{ edge.other.vaultName }}</small><span class="relation-reasons"><span v-for="label in edge.labels" :key="label">{{ label }}</span></span></button>
-          <p v-if="!connected.length" class="relationship-detail-empty">У этой карточки пока нет связей. Добавьте связь или привяжите подписку в её настройках.</p>
-        </template>
-        <template v-else>
-          <div class="relationship-detail-intro"><span class="relationship-intro-icon"><UIcon name="i-lucide-mouse-pointer-2"/></span><h2>Что с чем связано?</h2><p>Нажмите на карточку, чтобы увидеть её подписки, ручные связи и общие значения.</p><p>Кнопка «Только эти связи» оставит на карте выбранную карточку и её окружение.</p></div>
-          <h3>{{ query.trim() ? 'Результаты поиска' : 'Больше всего связей' }}</h3>
-          <button v-for="card in cardList.slice(0,8)" :key="card.id" class="relation-card-option" @click="selectFromList(card.id)"><span><strong>{{ card.label }}</strong><small>{{ card.vaultName }}</small></span><span class="relation-degree">{{ degrees.get(card.id) ?? 0 }}</span></button>
-          <p v-if="!cardList.length" class="relationship-detail-empty">Карточки не найдены.</p>
-        </template>
-        <details v-if="cardList.length" class="relationship-card-directory"><summary>Все карточки ({{ cardList.length }})</summary><button v-for="card in cardList" :key="card.id" class="relation-card-option" @click="selectFromList(card.id)"><span><strong>{{ card.label }}</strong><small>{{ card.vaultName }}</small></span><span class="relation-degree">{{ degrees.get(card.id) ?? 0 }}</span></button></details>
-      </aside>
     </div>
+    <details v-if="model.unlinked.length" class="service-map-unlinked"><summary>{{ word(model.unlinked.length,'запись без привязки','записи без привязки','записей без привязки') }} к сервисам</summary><p>Эти записи остаются в Password и «Финансах». Привяжите их через карточку сервиса во «Взаимосвязях».</p><div><button v-for="entry in model.unlinked" :key="serviceEntryKey(entry)" @click="emit('edit',entry)"><UIcon :name="entry.kind==='subscription'?'i-lucide-wallet':'i-lucide-key-round'"/><strong>{{ entry.title }}</strong><span>{{ entry.kind==='subscription'?'Финансы':'Password' }} · {{ vaultNames(entry) }}</span><UIcon name="i-lucide-arrow-up-right"/></button></div></details>
   </section>
 </template>

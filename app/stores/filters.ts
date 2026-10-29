@@ -3,7 +3,7 @@ import type { Currency } from '~~/shared/types/subscriptions'
 import type { RelationshipMode } from '~~/shared/utils/relationships'
 import { todayDate } from '~~/shared/utils/subscriptions'
 
-const structureFilters = () => ({ categories: { query: '', linkedOnly: false }, vaults: { query: '', linkedOnly: false } })
+const structureFilters = () => ({ categories: { query: '', linkedOnly: false, selectedId: '' }, vaults: { query: '', linkedOnly: false, selectedId: '' } })
 const subscriptionFilters = () => ({ group: 'all', currency: 'all', search: '', statusFilter: 'all' })
 export const useFiltersStore = defineStore('filters', () => {
   const collapsedFolders=ref<string[]>([])
