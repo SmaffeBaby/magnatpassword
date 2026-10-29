@@ -1,18 +1,28 @@
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
 import type { H3Event } from 'h3'
-import type { EstimateItem } from '../../shared/types/estimate'
+import type { EstimateContent } from '../../shared/types/estimate'
+import { normalizeEstimate, estimateContentSchema } from '../../shared/utils/estimate'
 import { openSharedVault, sealSharedVault } from './shared-crypto'
 
-export async function projectEstimate(event: H3Event, write?: { revision: number; items: EstimateItem[] }) {
+export async function projectEstimate(event: H3Event, write?: { revision: number } & Partial<EstimateContent>) {
   const context = await requireProjectsUser(event), id = projectId(event)
-  const { data, error } = await context.client.rpc('project_estimate', {
-    p_actor: context.user.id, p_id: id, p_revision: write?.revision ?? null,
-    p_data: write ? sealSharedVault(write.items, sharedSecret(event), `project-estimate:${id}`, 1) : null
-  })
+  const args = { p_actor: context.user.id, p_id: id, p_revision: null as number | null, p_data: null as unknown }
+  let { data, error } = await context.client.rpc('project_estimate', args)
   if (error) projectFailure(error)
+  let content = normalizeEstimate(data.encryptedData ? openSharedVault(data.encryptedData, sharedSecret(event), `project-estimate:${id}`, 1) : {})
+  if (write) {
+    const { revision, ...patch } = write
+    const parsed = estimateContentSchema.safeParse({ ...content, ...patch })
+    if (!parsed.success) throw createError({ statusCode: 400, message: parsed.error.issues[0]?.message || 'Проверьте данные сметы' })
+    content = parsed.data
+    if (JSON.stringify(content).length > 12_000_000) throw createError({ statusCode: 413, message: 'Смета слишком большая. Уменьшите изображения.' })
+    const result = await context.client.rpc('project_estimate', { ...args, p_revision: revision, p_data: sealSharedVault(content, sharedSecret(event), `project-estimate:${id}`, 1) })
+    if (result.error) projectFailure(result.error)
+    data = result.data
+  }
   return { revision: data.revision as number, updatedAt: data.updatedAt as string | null, projectName: data.projectName as string,
-    items: data.encryptedData ? openSharedVault<EstimateItem[]>(data.encryptedData, sharedSecret(event), `project-estimate:${id}`, 1) : [] }
+    ...content }
 }
 export async function renderEstimate(snapshot: unknown, format: 'xlsx' | 'pdf'): Promise<Buffer> {
   return new Promise((done, reject) => {
