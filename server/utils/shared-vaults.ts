@@ -13,12 +13,13 @@ const subscriptionSchema = z.object({ price: z.number().finite().min(0).max(1_00
 export const paymentSchema = z.object({id:z.uuid(),entryId:z.uuid(),fieldId:z.uuid(),service:z.string().min(1).max(120),label:z.string().min(1).max(60),amount:z.number().finite().min(0).max(1_000_000_000),currency:z.enum(['USD','EUR','RUB','CNY']),paidAt:z.iso.datetime(),periodFrom:subscriptionDateSchema,periodUntil:subscriptionDateSchema}).strict().refine(p=>p.periodUntil>p.periodFrom,'Invalid payment period')
 export const credentialSchema = z.object({
   id:z.uuid(), title:z.string().trim().min(1).max(120),url:z.string().max(2000),username:z.string().max(300),password:z.string().max(1024),notes:z.string().max(10000),categoryId:z.string().max(128),categoryIds:z.array(z.string().min(1).max(128)).max(50).optional(),favorite:z.boolean(),createdAt:z.iso.datetime(),updatedAt:z.iso.datetime(),
-  kind:z.literal('subscription').optional(),
+  kind:z.enum(['subscription','relationship']).optional(),
+  relationshipCardId:z.uuid().optional(),
   financeSubscription:z.object({id:z.uuid(),label:z.string().trim().min(1).max(60),value:z.literal(''),type:z.literal('subscription'),subscription:subscriptionSchema}).strict().optional(),
   accounts:z.array(z.object({id:z.uuid(),label:z.string().trim().min(1).max(80),username:z.string().max(300),password:z.string().max(1024)}).strict()).max(30).optional(),
   images:z.array(z.object({id:z.uuid(),name:z.string().min(1).max(160),data:z.string().max(360000).refine(validRasterImage,'Invalid image')}).strict()).max(5).optional(),
   customFields:z.array(z.object({id:z.uuid(),label:z.string().trim().min(1).max(60),value:z.string().max(4000),type:z.enum(['text','secret','url','subscription']),subscription:subscriptionSchema.optional()}).strict().refine(f=>f.type!=='subscription'||!!f.subscription,'Subscription details required')).max(24).optional(),
-  links:z.array(z.object({id:z.uuid(),targetVaultId:z.union([z.literal('personal'),z.uuid()]),targetEntryId:z.uuid(),sourceFieldId:z.union([z.enum(['card','title','url','username','password','notes']),z.uuid()]).optional(),targetFieldId:z.union([z.enum(['card','title','url','username','password','notes']),z.uuid()]).optional(),label:z.string().max(100).optional()}).strict()).max(50).optional()
+  links:z.array(z.object({id:z.uuid(),targetVaultId:z.union([z.literal('personal'),z.uuid()]),targetEntryId:z.uuid(),sourceFieldId:z.union([z.enum(['card','title','url','username','password','notes']),z.uuid()]).optional(),targetFieldId:z.union([z.enum(['card','title','url','username','password','notes']),z.uuid()]).optional(),label:z.string().max(100).optional()}).strict()).max(500).optional()
 }).strict().refine(entry=>entry.kind==='subscription'?!!entry.financeSubscription:!entry.financeSubscription,'Invalid finance subscription')
 export const svgSchema=z.string().max(65000).transform(value=>sanitizeSvg(value)).refine(Boolean,'Invalid SVG')
 export const categoryIdsSchema=z.array(z.string().min(1).max(128)).max(500).nullable()

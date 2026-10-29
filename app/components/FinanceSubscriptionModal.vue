@@ -4,7 +4,7 @@ const props = defineProps<{ controller: ReturnType<typeof useFinanceSubscription
 const finance = reactive(props.controller)
 </script>
 <template>
-  <UModal v-model:open="finance.open" :title="!finance.editable ? 'Подписка' : finance.recordId ? 'Изменить подписку' : 'Новая подписка'" description="Отдельная запись в «Финансах», связанная с карточками Password." :dismissible="!busy" :ui="{content:'sm:max-w-2xl',body:'min-w-0 overflow-y-auto',footer:'justify-end flex-wrap'}">
+  <UModal v-model:open="finance.open" :title="!finance.editable ? 'Подписка' : finance.recordId ? 'Изменить подписку' : 'Новая подписка'" description="Сроки, стоимость и оплаты подписки. Привязки к сервисам настраиваются во «Взаимосвязях»." :dismissible="!busy" :ui="{content:'sm:max-w-2xl',body:'min-w-0 overflow-y-auto',footer:'justify-end flex-wrap'}">
     <template #body><form v-if="finance.draft && finance.field" id="finance-subscription-form" class="space-y-5" @submit.prevent="finance.save">
       <fieldset :disabled="!finance.editable || busy" class="space-y-5">
       <UFormField label="Название / сервис" required><UInput v-model="finance.draft.title" required :maxlength="120" class="w-full" placeholder="Например, TimeWeb" /></UFormField>

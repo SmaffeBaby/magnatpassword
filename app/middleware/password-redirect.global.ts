@@ -1,10 +1,12 @@
 const legacySections: Record<string, string> = {
+  '/password/relationships': '/relationships/map',
   '/categories': '/password/categories',
   '/subscriptions': '/finances/subscriptions',
   '/password/subscriptions': '/finances/subscriptions',
   '/password/finances': '/finances'
 }
 const financeViews: Record<string, string> = {
+  relationships: '/relationships/map',
   subscriptions: '/finances/calendar', upcoming: '/finances/subscriptions',
   finances: '/finances', history: '/finances/history'
 }

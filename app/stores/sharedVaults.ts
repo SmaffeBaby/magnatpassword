@@ -68,6 +68,7 @@ export const useSharedVaultsStore = defineStore('shared-vaults', () => {
   async function deletePayment(id:string,paymentId:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}/payments`,{method:'PUT',body:{action:'delete',revision:cards.value.find(card=>card.id===id)?.revision,paymentId}}))}
   async function deleteCard(id:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}`,{method:'DELETE',body:{revision:cards.value.find(card=>card.id===id)?.revision}}))}
   async function migrateSubscriptions(){return await mutate(()=>sharedRequest<{migrated:number}>('/api/finance-subscriptions/migrate',{method:'POST'}))}
+  async function migrateRelationships(){return await mutate(()=>sharedRequest<{migrated:number}>('/api/relationship-cards/migrate',{method:'POST'}))}
   function lock() { generation++; groups.value = []; cards.value=[]; busy.value = false; loading.value = false; error.value = '' }
-  return { migrateSubscriptions, permissions, savePayment, deletePayment, cards, saveCard, renewCard, deleteCard, groups, loading, busy, error, refresh, create, save, invite, revoke, rename, lock }
+  return { migrateRelationships, migrateSubscriptions, permissions, savePayment, deletePayment, cards, saveCard, renewCard, deleteCard, groups, loading, busy, error, refresh, create, save, invite, revoke, rename, lock }
 })

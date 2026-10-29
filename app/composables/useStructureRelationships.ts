@@ -15,7 +15,7 @@ export function useStructureRelationships(props: { sources: VaultSource[]; mode:
   const diagram = computed(() => filterStructureDiagram(full.value, query.value, linkedOnly.value, focused.value ? selectedId.value : ''))
   const selected = computed(() => full.value.tables.find(table => table.id === selectedId.value))
   const selectedRow = computed(() => selected.value?.rows.find(row => row.id === selectedRowId.value))
-  const entries = computed(() => new Map(sourceEntries(props.sources).map(entry => [cardKey(entry.vaultId, entry.id), entry])))
+  const entries = computed(() => new Map(sourceEntries(props.sources,true).map(entry => [cardKey(entry.vaultId, entry.id), entry])))
   const selectedEntry = computed(() => selectedRow.value?.entryKey ? entries.value.get(selectedRow.value.entryKey) : undefined)
   const connections = computed(() => full.value.links.filter(link => (link.source === selectedId.value && (!selectedRowId.value || link.sourceRow === selectedRowId.value)) || (link.target === selectedId.value && (!selectedRowId.value || link.targetRow === selectedRowId.value))).map(link => ({ ...link, other: full.value.tables.find(table => table.id === (link.source === selectedId.value ? link.target : link.source))! })))
   const labels = { category: 'Категория', folder: 'Папка категорий', vault: 'Хранилище' }

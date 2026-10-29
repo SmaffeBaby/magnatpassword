@@ -16,7 +16,7 @@ const cardCount = (count: number) => `${count} ${count % 100 >= 11 && count % 10
 
 /** Build only from already-authorized sources; labels never imply membership. */
 export function buildStructureDiagram(sources: VaultSource[], view: StructureView): StructureDiagram {
-  const entries = sourceEntries(sources), categories = sourceCategories(sources), folders = sourceCategoryFolders(sources)
+  const entries = sourceEntries(sources,true), categories = sourceCategories(sources), folders = sourceCategoryFolders(sources)
   const canonical = new Map(entries.map(entry => [identity(entry, entry.vaultId), entry]))
   const tables: StructureTable[] = [], links = new Map<string, StructureLink>()
   const occurrences = new Map<string, { table: string; row: string }[]>()

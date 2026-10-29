@@ -6,7 +6,7 @@ export const categoryFilterId = (vaultId: string, categoryId: string) => `${vaul
 export function sourceEntries(sources: VaultSource[], includeFinance = false): ScopedCredential[] {
   const result:ScopedCredential[]=[],linked=new Map<string,ScopedCredential>()
   for(const source of sources)for(const entry of source.data.entries){
-    if(entry.kind==='subscription'&&!includeFinance)continue
+    if(entry.kind&&!includeFinance)continue
     if(entry.sharedCardId&&linked.has(entry.sharedCardId)){const existing=linked.get(entry.sharedCardId)!;existing.vaultIds!.push(source.id);existing.vaultNames!.push(source.name);continue}
     const value={...entry,vaultId:source.id,vaultName:source.name,vaultIds:[source.id],vaultNames:[source.name]};result.push(value);if(entry.sharedCardId)linked.set(entry.sharedCardId,value)
   }
