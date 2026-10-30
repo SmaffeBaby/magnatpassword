@@ -5,17 +5,20 @@ import PersonAvatar from '../PersonAvatar.vue'
 import ProjectEstimate from './ProjectEstimate.vue'
 import ProjectContracts from './ProjectContracts.vue'
 import ProjectExecution from './ProjectExecution.vue'
+import ProjectClosing from './ProjectClosing.vue'
 import ProjectCounterparties from './ProjectCounterparties.vue'
 import ProjectCompanyDirectory from './ProjectCompanyDirectory.vue'
+import { timelineLabel,type TrackedStage } from '~~/shared/utils/project-timeline'
 import type { Project, ProjectPermission } from '~~/shared/types/projects'
 import type { TeamPerson } from '~~/shared/types/team'
 
-const props = defineProps<{ projectId?: string; section?: 'input-documents' | 'estimate' | 'contracts' | 'execution' }>()
+const props = defineProps<{ projectId?: string; section?: 'input-documents' | 'estimate' | 'contracts' | 'execution' | 'closing' }>()
 const projectStages = [
   { key: 'input-documents', number: '01', label: 'Входные документы', icon: 'i-lucide-file-input', description: 'Здесь будут собраны исходные документы и материалы, необходимые для начала работы над проектом.' },
   { key: 'estimate', number: '02', label: 'Смета', icon: 'i-lucide-calculator', description: 'Здесь будет подготовлена смета проекта: состав работ и их стоимость.' },
   { key: 'contracts', number: '03', label: 'Договора', icon: 'i-lucide-file-signature', description: 'Реестр договоров проекта с суммами из сметы.' },
-  { key: 'execution', number: '04', label: 'Исполнение', icon: 'i-lucide-files', description: 'Документы, приложения и предоплата по договорам проекта.' }
+  { key: 'execution', number: '04', label: 'Исполнение', icon: 'i-lucide-files', description: 'Документы, приложения и предоплата по договорам проекта.' },
+  { key: 'closing', number: '05', label: 'Подтверждение и закрывающие акты', icon: 'i-lucide-clipboard-check', description: 'Акты, УПД и подтверждение исполнения договоров.' }
 ] as const
 const route = useRoute()
 const directoryTab = computed(() => ['counterparties','legal-entities'].includes(String(route.query.tab)) ? String(route.query.tab) : 'projects')
@@ -31,6 +34,9 @@ const projects = useQuery({
 })
 const createOpen = ref(false), name = ref(''), busy = ref(false), error = ref('')
 const currentProject = computed(() => projects.data.value?.find(project => project.id === props.projectId))
+const timeline=useProjectTimeline(()=>props.projectId,()=>!!currentProject.value&&!props.section)
+const stageProgress=(key:string)=>timeline.data.value?.stages[key as TrackedStage]
+const dueLabel=(date:string)=>date?date.split('-').reverse().join('.'):'Без срока'
 const selectedId = ref(''), selected = computed(() => projects.data.value?.find(project => project.id === selectedId.value))
 const detailsOpen = computed({ get: () => !!selectedId.value, set: (open: boolean) => { if (!open) selectedId.value = '' } })
 const person = ref<TeamPerson | null>(null), permission = ref<ProjectPermission>('viewer'), editName = ref('')
@@ -100,10 +106,13 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
           <ProjectEstimate v-if="section === 'estimate'" :key="currentProject.id" :project="currentProject" />
           <ProjectContracts v-else-if="section === 'contracts'" :key="currentProject.id" :project="currentProject"/>
           <ProjectExecution v-else-if="section === 'execution'" :key="currentProject.id" :project="currentProject"/>
+          <ProjectClosing v-else-if="section === 'closing'" :key="currentProject.id" :project="currentProject"/>
           <section v-else-if="activeStage" class="project-documents-empty" :aria-label="`${activeStage.label} проекта`"><span class="project-documents-icon"><UIcon :name="activeStage.icon"/></span><h2>{{ activeStage.label }} проекта</h2><p>{{ activeStage.description }}</p><NuxtLink :to="`/projects/${currentProject.id}`" class="subscription-card-link">Вернуться к проекту →</NuxtLink></section>
           <template v-else>
           <div class="project-overview" aria-label="Информация о проекте"><div><UIcon name="i-lucide-user-round-check"/><small>Ваши права</small><strong>{{ labels[currentProject.permission] }}</strong></div><div><UIcon name="i-lucide-users-round"/><small>Участников</small><strong>{{ currentProject.members.length }}</strong></div><div><UIcon name="i-lucide-calendar-days"/><small>Создан</small><strong>{{ projectDate(currentProject.createdAt) }}</strong></div><div><UIcon name="i-lucide-clock-3"/><small>Обновлён</small><strong>{{ projectDate(currentProject.updatedAt) }}</strong></div></div>
-          <section class="project-business-stages" aria-label="Бизнес-этапы проекта"><div class="project-page-section-heading"><h2>Этапы проекта</h2></div><ol class="project-stages-grid project-stages-sequence"><li v-for="stage in projectStages" :key="stage.key"><NuxtLink :to="`/projects/${currentProject.id}/${stage.key}`" class="password-glass password-launch-card project-stage-link" :aria-label="`${stage.label} проекта: ${currentProject.name}`"><span class="project-stage-icon"><UIcon :name="stage.icon"/></span><span class="project-stage-copy"><small>Этап {{ stage.number }}</small><strong>{{ stage.label }}</strong></span><UIcon name="i-lucide-arrow-up-right" class="project-stage-arrow"/></NuxtLink></li></ol></section>
+          <section class="project-business-stages" aria-label="Бизнес-этапы проекта"><div class="project-page-section-heading"><h2>Этапы проекта</h2></div><ol class="project-stages-grid project-stages-sequence"><li v-for="stage in projectStages" :key="stage.key"><NuxtLink :to="`/projects/${currentProject.id}/${stage.key}`" class="password-glass password-launch-card project-stage-link" :class="`timeline-${stageProgress(stage.key)?.status??'pending'}`" :aria-label="`${stage.label} проекта: ${currentProject.name}`"><span class="project-stage-icon"><UIcon :name="stage.icon"/></span><span class="project-stage-copy"><small>Этап {{ stage.number }}</small><strong>{{ stage.label }}</strong><small v-if="stageProgress(stage.key)?.total" class="project-stage-status timeline-status">{{timelineLabel(stageProgress(stage.key)!)}}</small></span><UIcon name="i-lucide-arrow-up-right" class="project-stage-arrow"/></NuxtLink></li></ol></section>
+          <UAlert v-if="timeline.error.value" color="error" title="Не удалось загрузить сроки проекта" :actions="[{label:'Повторить',onClick:()=>timeline.refetch()}]" class="mb-5"/>
+          <section v-if="timeline.data.value?.contracts.length" class="project-timeline" aria-label="Сроки и подтверждения договоров"><div class="project-page-section-heading"><h2>Сроки и подтверждения договоров</h2></div><p class="project-timeline-legend"><span>Зелёный — все пункты закрыты</span><span>Красный — есть незакрытые просроченные пункты</span></p><div class="project-timeline-grid"><template v-for="c in timeline.data.value.contracts" :key="c.id"><NuxtLink :to="`/projects/${currentProject.id}/closing?contract=${c.id}`" class="project-timeline-card" :class="[`timeline-${c.status}`,{'customer-timeline-card':c.source==='revenue'}]"><span v-if="c.source==='revenue'" class="project-timeline-customer">Заказчик</span><strong>Договор № {{c.number}}</strong><span>{{c.seller}} → {{c.buyer}}</span><b class="timeline-status">{{timelineLabel(c)}}</b><small>{{c.nextDue?'Ближайший срок: '+dueLabel(c.nextDue):c.status==='complete'?'Все этапы подтверждены':'Нет сроков для открытых пунктов'}}</small><span class="project-timeline-link">Открыть подтверждения →</span></NuxtLink><hr v-if="c.source==='revenue'" class="project-customer-divider" aria-label="Поставщики"/></template></div></section>
           <ProjectCounterparties :key="currentProject.id+'-counterparties'" :project="currentProject"/>
           <ProjectCounterparties :key="currentProject.id+'-legal-entities'" :project="currentProject" own-only/>
           <section class="project-page-members" aria-label="Участники проекта"><div class="project-page-section-heading"><h2>Участники проекта</h2><span>{{ currentProject.members.length }}</span></div><div class="project-members"><div v-for="member in currentProject.members" :key="member.userId" class="project-member"><PersonAvatar :name="member.fullName || member.email"/><div class="project-member-person"><NuxtLink :to="`/team/${member.userId}`" class="project-member-profile">{{ member.fullName || member.email }}</NuxtLink><small>{{ member.email }}</small><small v-if="!member.hasAccess">Доступ к разделу отозван администратором</small></div><span class="project-member-role">{{ labels[member.permission] }}</span></div></div></section>
@@ -137,4 +146,5 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
 
 <style scoped>
 .projects-directory-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:6px;background:#edf0f5;border:1px solid #e2e8f0;border-radius:16px;width:fit-content;max-width:100%;margin:0 0 28px}.projects-directory-tabs a{padding:12px 20px;color:#8292a8;font-size:14px;font-weight:600;border-radius:11px}.projects-directory-tabs a[aria-current=page]{background:white;color:#334155;box-shadow:0 2px 8px #0f172a08}@media(max-width:600px){.projects-directory-tabs{width:100%}.projects-directory-tabs a{flex:1;white-space:nowrap;text-align:center;padding:12px 9px;font-size:12px}}
+.project-timeline{margin:32px 0}.project-timeline-legend{display:flex;gap:20px;flex-wrap:wrap;color:#8292a8;font-size:12px;margin:12px 0 20px}.project-timeline-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:20px}.project-timeline-card{display:flex;flex-direction:column;gap:10px;padding:24px;border:1px solid #dce2ea;border-radius:20px;background:white;font-size:13px;color:#8292a8}.project-timeline-card>strong{font-size:17px;color:#334155}.project-timeline-card>b{font-size:13px}.project-timeline-customer{width:fit-content;padding:5px 8px;background:#f1f0f6;color:#475569;border-radius:7px;font-size:11px}.customer-timeline-card{grid-column:1/-1;max-width:560px;width:100%}.project-customer-divider{grid-column:1/-1;border:0;border-top:1px solid #cbd5e1;margin:2px 0;width:100%}.project-timeline-link{margin-top:auto;padding-top:8px;color:var(--ui-primary)}.project-stage-copy>small.project-stage-status{letter-spacing:0;font-size:11px;line-height:1.5}
 </style>

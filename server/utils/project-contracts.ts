@@ -6,7 +6,7 @@ import { projectContractSchema, contractFigures, contractConflict } from '../../
 import { sealSharedVault, openSharedVault } from './shared-crypto'
 type Context=Awaited<ReturnType<typeof requireProjectsUser>>
 export function contractFailure(error:{message:string;code?:string}){
- if(error.code==='23503')throw createError({statusCode:409,message:'У договора есть документы этапа «Исполнение». Сначала сбросьте его комплект документов.'})
+ if(error.code==='23503')throw createError({statusCode:409,message:'У договора есть документы исполнения или закрытия. Сначала сбросьте соответствующие комплекты документов.'})
  if(error.code==='23505')throw createError({statusCode:409,message:'Договор на выручку или одна из позиций уже используются в другом договоре.'})
  const messages:Record<string,string>={CONTRACT_BOTH_OWN:'Договор между двумя нашими юридическими лицами запрещён. Сначала измените стороны или удалите договор.',CONTRACT_SAME_PARTY:'Стороны договора должны различаться',CONTRACT_PARTY_NOT_LINKED:'Выберите стороны из компаний проекта',COMPANY_CONTRACT_IN_USE:'Компания используется в договоре. Сначала измените или удалите договор.'}
  const match=Object.entries(messages).find(([key])=>error.message.includes(key))
