@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import UserPicker from '../UserPicker.vue'
 import PersonAvatar from '../PersonAvatar.vue'
 import ProjectEstimate from './ProjectEstimate.vue'
+import ProjectInputData from './ProjectInputData.vue'
 import ProjectContracts from './ProjectContracts.vue'
 import ProjectExecution from './ProjectExecution.vue'
 import ProjectClosing from './ProjectClosing.vue'
@@ -17,7 +18,7 @@ import type { TeamPerson } from '~~/shared/types/team'
 
 const props = defineProps<{ projectId?: string; section?: 'input-documents' | 'estimate' | 'contracts' | 'execution' | 'closing' | 'relationships' }>()
 const projectStages = [
-  { key: 'input-documents', number: '01', label: 'Входные документы', icon: 'i-lucide-file-input', description: 'Здесь будут собраны исходные документы и материалы, необходимые для начала работы над проектом.' },
+  { key: 'input-documents', number: '01', label: 'Входные данные', icon: 'i-lucide-file-input', description: 'Информация о проекте, данные заказчика и вложения.' },
   { key: 'estimate', number: '02', label: 'Смета', icon: 'i-lucide-calculator', description: 'Здесь будет подготовлена смета проекта: состав работ и их стоимость.' },
   { key: 'contracts', number: '03', label: 'Договора', icon: 'i-lucide-file-signature', description: 'Реестр договоров проекта с суммами из сметы.' },
   { key: 'execution', number: '04', label: 'Исполнение', icon: 'i-lucide-files', description: 'Документы, приложения и предоплата по договорам проекта.' },
@@ -108,7 +109,8 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
       <template v-else-if="projectId">
         <template v-if="currentProject">
           <header class="projects-heading project-page-heading"><div><span class="eyebrow">{{ activeStage?`ЭТАП ${activeStage.number}`:'ПРОЕКТ' }}</span><h1>{{ isProcessPage?'Взаимосвязь':activeStage?activeStage.label:currentProject.name }}<span class="title-dot">.</span></h1><p>{{ section?currentProject.name:'Рабочее пространство проекта и его участники.' }}</p></div><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></header>
-          <ProjectEstimate v-if="section === 'estimate'" :key="currentProject.id" :project="currentProject" />
+          <ProjectInputData v-if="section === 'input-documents'" :key="currentProject.id" :project="currentProject"/>
+          <ProjectEstimate v-else-if="section === 'estimate'" :key="currentProject.id" :project="currentProject" />
           <ProjectContracts v-else-if="section === 'contracts'" :key="currentProject.id" :project="currentProject"/>
           <ProjectExecution v-else-if="section === 'execution'" :key="currentProject.id" :project="currentProject"/>
           <ProjectClosing v-else-if="section === 'closing'" :key="currentProject.id" :project="currentProject"/>

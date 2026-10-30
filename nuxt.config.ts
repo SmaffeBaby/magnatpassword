@@ -16,6 +16,7 @@ export default defineNuxtConfig({
     '/': { ssr: false }, '/categories': { ssr: false }, '/subscriptions': { ssr: false }, '/finances': { ssr: false }, '/admin': { ssr: false }, '/admin/**': { ssr: false },
     '/_nuxt/**': { security: { rateLimiter: false } },
     '/fonts/**': { security: { rateLimiter: false } },
+    '/api/projects/*/input-data/upload': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
     '/api/profile/avatar': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 2113536, maxUploadFileRequestInBytes: 2113536 } } },
     '/api/projects/*/estimate': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 12582912, maxUploadFileRequestInBytes: 12582912 } } },
     '/team': { ssr:false }, '/team/**': { ssr:false }, '/profile': { ssr:false },
@@ -25,7 +26,7 @@ export default defineNuxtConfig({
   },
   runtimeConfig: { sharedVaultKey: '', supabaseUrl: 'http://localhost:8003', supabaseServiceRoleKey: '', public: { supabaseUrl: '/supabase', supabaseAnonKey: '' } },
   security: {
-    headers: { contentSecurityPolicy: { 'upgrade-insecure-requests': false, 'connect-src': ["'self'"], 'img-src': ["'self'", 'data:'], 'frame-ancestors': ["'none'"] }, strictTransportSecurity: false, crossOriginOpenerPolicy: false, originAgentCluster: false },
+    headers: { contentSecurityPolicy: { 'upgrade-insecure-requests': false, 'connect-src': ["'self'"], 'img-src': ["'self'", 'data:', 'blob:'], 'frame-ancestors': ["'none'"] }, strictTransportSecurity: false, crossOriginOpenerPolicy: false, originAgentCluster: false },
     rateLimiter: { tokensPerInterval: 300, interval: 300000, driver: { name: 'lruCache' } }
   },
   content: { experimental: { sqliteConnector: 'native' } },
