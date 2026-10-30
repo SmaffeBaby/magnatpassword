@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
 import ExecutionVariables from './ExecutionVariables.vue'
+import DocumentTemplateLibrary from './DocumentTemplateLibrary.vue'
+import type { DocumentTemplateApplication } from '~~/shared/types/document-templates'
 import { timelineLabel } from '~~/shared/utils/project-timeline'
 import type { Project } from '~~/shared/types/projects'
 import type { ExecutionDocument, ExecutionKind, ProjectExecution } from '~~/shared/types/project-execution'
@@ -10,7 +12,9 @@ const query=useQuery({queryKey:computed(()=>['account',auth.user?.id,'project-ex
 const timeline=useProjectTimeline(()=>props.project.id)
 const timelineRow=(id:string)=>timeline.data.value?.contracts.find(c=>c.id===id)
 const state=ref(defaultExecutionState()),base=ref(''),revision=ref(0),estimateRevision=ref(0),loaded=ref(false)
-const selected=ref(''),active=ref('contract'),tab=ref('legal'),search=ref(''),busy=ref(false),exporting=ref(''),error=ref(''),templatesOpen=ref(false),templateKind=ref<ExecutionKind>('contract'),previewOpen=ref(true),resetOpen=ref(false)
+const selected=ref(''),active=ref('contract'),tab=ref('legal'),search=ref(''),busy=ref(false),exporting=ref(''),error=ref(''),templatesOpen=ref(false),previewOpen=ref(true),resetOpen=ref(false)
+const templateNotice=ref('')
+function applyTemplate(value:DocumentTemplateApplication){if(!editable.value||!['contract','appendix','invoice'].includes(value.kind))return;const key=value.kind as ExecutionKind;if(value.target==='document'){if(key!==kind.value||!document.value)return;editDoc('title',value.template.title);editDoc('body',value.template.body)}else{if(JSON.stringify(state.value.templates[key])===JSON.stringify(value.template)){templateNotice.value='Этот шаблон уже используется в проекте.';return}state.value.templates[key]=value.template}templateNotice.value='Шаблон применён. Сохраните изменения на странице этапа.'}
 const dirty=computed(()=>loaded.value&&JSON.stringify(state.value)!==base.value)
 const editable=computed(()=>props.project.permission!=='viewer')
 function load(data:ProjectExecution){state.value=JSON.parse(JSON.stringify(data.state));base.value=JSON.stringify(data.state);revision.value=data.revision;estimateRevision.value=data.estimateRevision;loaded.value=true;if(!data.contracts.some(row=>row.id===selected.value))selected.value=data.contracts[0]?.id??''}
@@ -51,7 +55,7 @@ const kindOptions=[{label:'Договор',value:'contract'},{label:'Прило�
 <template>
  <section class="execution-workspace" aria-label="Исполнение проекта">
   <div class="execution-toolbar"><div><h2>Документы проекта</h2><p>Комплект заказчика — первым. Суммы и реквизиты связаны со сметой и договорами.</p></div><div class="execution-actions"><UButton color="neutral" variant="outline" icon="i-lucide-refresh-cw" label="Обновить" :disabled="busy" @click="reload"/><UButton color="neutral" variant="outline" icon="i-lucide-file-pen-line" label="Шаблоны документов" :disabled="!loaded||busy" @click="templatesOpen=true"/><UButton :to="`/projects/${project.id}/closing`" label="Сроки и подтверждения" color="neutral" variant="outline"/><UButton v-if="editable" label="Сохранить изменения" :loading="busy" :disabled="!dirty||!loaded" @click="save"/></div></div>
-  <UAlert v-if="timeline.error.value" color="error" title="Не удалось загрузить сроки и подтверждения" :actions="[{label:'Повторить',onClick:()=>timeline.refetch()}]" class="mb-4"/><UAlert v-if="error" color="error" :description="error" class="mb-4"/>
+  <UAlert v-if="templateNotice" color="neutral" :description="templateNotice" class="mb-4"/><UAlert v-if="timeline.error.value" color="error" title="Не удалось загрузить сроки и подтверждения" :actions="[{label:'Повторить',onClick:()=>timeline.refetch()}]" class="mb-4"/><UAlert v-if="error" color="error" :description="error" class="mb-4"/>
   <p v-if="query.isPending.value">Загружаем документы…</p><UAlert v-else-if="query.error.value" color="error" title="Не удалось загрузить исполнение" :actions="[{label:'Повторить',onClick:reload}]"/>
   <template v-else-if="loaded">
    <div v-if="!contracts.length" class="execution-empty"><UIcon name="i-lucide-files"/><h2>Начните с договора заказчика</h2><p>Добавьте договоры с суммами из сметы — здесь появятся комплекты документов.</p><UButton :to="`/projects/${project.id}/contracts`" label="Открыть договоры"/></div>
@@ -78,7 +82,7 @@ const kindOptions=[{label:'Договор',value:'contract'},{label:'Прило�
     </div>
    </template>
   </template>
-  <UModal v-model:open="templatesOpen" title="Шаблоны документов" description="Общие шаблоны этого проекта. Изменения применяются к документам без индивидуального текста." :ui="{content:'sm:max-w-3xl'}"><template #body><div class="execution-template-form"><USelect v-model="templateKind" :items="kindOptions" aria-label="Тип шаблона"/><UFormField label="Заголовок"><UInput v-model="state.templates[templateKind].title" :disabled="!editable||busy" :maxlength="200" class="w-full"/></UFormField><UFormField label="Текст шаблона"><UTextarea v-model="state.templates[templateKind].body" :rows="16" :maxlength="20000" :disabled="!editable||busy" class="w-full"/></UFormField><p class="execution-muted">positions — таблица позиций; requisites — реквизиты; amount и vat — сумма и НДС документа; contractAmount — полная сумма договора; percent — процент предоплаты. Счёт автоматически использует сумму предоплаты.</p><ExecutionVariables :disabled="!editable||busy" @insert="state.templates[templateKind].body+='\n{{'+$event+'}}'"/><UButton label="Готово" @click="templatesOpen=false"/><p class="execution-muted">После закрытия нажмите «Сохранить изменения».</p></div></template></UModal>
+  <DocumentTemplateLibrary v-model:open="templatesOpen" stage="execution" :project-templates="state.templates" :current-kind="kind" :can-apply="editable&&!busy" :has-document="!!document" :current-template="document?{title,body}:null" @apply="applyTemplate"/>
   <UModal v-model:open="resetOpen" title="Сбросить комплект документов?" description="Приложения, настройки предоплаты и индивидуальный текст будут удалены. Сам договор в реестре сохранится."><template #body><div class="execution-actions"><UButton label="Сбросить" color="error" @click="resetKit"/><UButton label="Отмена" color="neutral" variant="outline" @click="resetOpen=false"/></div><p class="execution-muted mt-4">Для применения сброса сохраните изменения.</p></template></UModal>
  </section>
 </template>
