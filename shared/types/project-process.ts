@@ -1,0 +1,11 @@
+import type { ProjectCounterparty,EstimateField } from './estimate'
+import type { ClosingCheck } from './project-closing'
+import type { TimelineProgress,TimelineStatus } from '../utils/project-timeline'
+export type ProcessPhase='parties'|'estimate'|'contracts'|'execution'|'closing'
+export type ProcessDocumentKind='contract'|'appendix'|'invoice'|'act'|'upd'
+export interface ProcessItem {id:string;name:string;kind:'product'|'service';quantity:number;unit:string;price:number;total:number;vat:number;deadline:string;counterpartyId:string;counterparty:string;internalCost:boolean;link:string;fields:EstimateField[]}
+export interface ProcessDocument {id:string;kind:ProcessDocumentKind;title:string;number:string;date:string;stage:'execution'|'closing';appendixId?:string;automatic:boolean;confirmed:boolean;status:TimelineStatus;deadline:string;confirmedAt:string;confirmedBy:string;issue:string}
+export interface ProcessCheck {key:ClosingCheck;label:string;action:string;confirmed:boolean;deadline:string;status:TimelineStatus;at:string;by:string}
+export interface ProcessStep {id:string;phase:ProcessPhase;label:string;status:TimelineStatus;summary:string;detail:string}
+export interface ProcessContract extends TimelineProgress {id:string;source:'revenue'|'expenses';number:string;code:string;date:string;deadline:string;amount:number|null;vat:number|null;net:number|null;issue:string;seller:ProjectCounterparty|null;buyer:ProjectCounterparty|null;sellerName:string;buyerName:string;payerId:string;payeeId:string;scopeBasis:string;scope:ProcessItem[];documents:ProcessDocument[];checks:ProcessCheck[];steps:ProcessStep[];edges:{from:string;to:string}[];prepayment:{enabled:boolean;percent:number;amount:number|null;vat:number|null};needsReview:boolean}
+export interface ProjectProcess {name:string;today:string;generatedAt:string;sourceRevisions:{estimate:number;execution:number;closing:number};inputDocuments:{available:false;count:null};estimate:{itemCount:number;cost:number;inputVat:number;netCost:number;revenue:number;outputVat:number;netRevenue:number;difference:number;profit:number;profitability:number|null;fields:EstimateField[]};parties:ProjectCounterparty[];contracts:ProcessContract[];internalItems:ProcessItem[];unallocatedItems:ProcessItem[];stages:Record<'contracts'|'execution'|'closing',TimelineProgress>;documentCount:number}
