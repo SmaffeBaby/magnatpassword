@@ -265,7 +265,13 @@
 @media(max-width:480px){.workspace-apps{gap:4px}.workspace-apps .password-glass{padding:6px 8px;font-size:12px;gap:5px}.workspace-apps .password-glass img,.workspace-apps .finance-app-icon{width:16px;height:16px}}
 .relationship-cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
 .relationship-service-card{display:flex;flex-direction:column;gap:12px;min-width:0;padding:24px;border:1px solid #e2e8f0;border-radius:16px;background:white}
-.relationship-service-title{display:flex;align-items:center;gap:10px;text-align:left;font-size:17px;color:#334155}
+.relationship-service-title{display:flex;align-items:flex-start;gap:10px;min-width:0;max-width:100%;text-align:left;font-size:17px;line-height:1.5;color:#334155}
+.relationship-service-title>strong{min-width:0;overflow-wrap:anywhere}
+.relationship-service-url{display:flex;align-items:flex-start;gap:6px;min-width:0;font-size:12px;line-height:1.6;color:#8794a5}
+.relationship-service-url>span{min-width:0;overflow-wrap:anywhere}
+.relationship-service-url>.iconify{flex-shrink:0;margin-top:3px}
+.relationship-service-url:hover{color:var(--ui-primary);text-decoration:underline}
+.relationship-service-url:focus-visible{outline:2px solid var(--ui-primary);outline-offset:4px;border-radius:3px}
 .relationship-service-title>.iconify{color:var(--ui-primary);flex-shrink:0}
 .relationship-service-card>small,.relationship-service-card>p{font-size:12px;color:#8794a5;overflow-wrap:anywhere}
 .relationship-service-links{display:flex;flex-direction:column;gap:8px;flex:1}
@@ -306,7 +312,7 @@
 @media(min-width:768px) and (max-width:1000px){.workspace-apps .password-glass{font-size:12px;padding:7px;gap:5px}.workspace-apps .projects-app-icon{width:20px;height:20px;font-size:18px}}
 @media(min-width:768px) and (max-width:1000px){.home-applications:not(.has-projects){grid-template-columns:minmax(0,1fr);max-width:400px}}
 @media(max-width:767px){.workspace-apps{width:100%;max-width:440px}.workspace-apps .password-glass{flex:1;min-width:0;flex-direction:column;padding:6px 4px;font-size:11px;gap:4px;border-radius:12px}.workspace-apps .password-glass img,.workspace-apps .finance-app-icon,.workspace-apps .projects-app-icon{width:14px;height:14px;font-size:14px}}
-.projects-topbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:16px;padding-inline:24px}.projects-topbar .projects-back{justify-self:start}.projects-topbar .home-account{justify-self:end;gap:14px}
+.projects-topbar{position:sticky;top:0;z-index:30;flex-shrink:0;backdrop-filter:blur(16px);transform:translateY(0);transition:transform .24s ease,box-shadow .24s ease;box-shadow:0 2px 12px #17233204;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:16px;padding-inline:24px}.projects-topbar .projects-back{justify-self:start}.projects-topbar .home-account{justify-self:end;gap:14px}
 @media(max-width:1250px){.projects-topbar .password-profile-name{display:none}}
 @media(max-width:767px){.projects-topbar{grid-template-rows:44px auto;padding:6px 16px 10px;gap:8px}.projects-topbar .projects-back{grid-row:1;grid-column:1}.projects-topbar .home-account{grid-row:1;grid-column:3}.projects-topbar .workspace-apps{grid-row:2;grid-column:1 / -1}}
 /* Project cards open a page; the separate gear opens project settings. */
@@ -324,3 +330,7 @@
 @media(max-width:900px){.project-stages-sequence>li:nth-child(3)::after{content:"";position:absolute;left:50%;top:100%;height:36px;width:0;border-left:2px solid #cbd5e1;pointer-events:none}}
 /* Shared progress colors keep project stages and contract cards consistent. */
 .timeline-complete{background:#f0fdf4!important;border-color:#22c55e!important}.timeline-overdue{background:#fff1f2!important;border-color:#ef4444!important}.timeline-complete .timeline-status{color:#15803d!important}.timeline-overdue .timeline-status{color:#b91c1c!important}.project-stage-link.timeline-complete{box-shadow:0 0 0 1px #22c55e40,0 12px 35px #16a34a0d!important}.project-stage-link.timeline-overdue{box-shadow:0 0 0 1px #ef444460,0 12px 35px #dc26260d!important}
+
+.projects-topbar.is-hidden{transform:translateY(-100%);pointer-events:none}
+.projects-topbar:focus-within{transform:translateY(0);pointer-events:auto}
+@media(prefers-reduced-motion:reduce){.projects-topbar{transition:none}}
