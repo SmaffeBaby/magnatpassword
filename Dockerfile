@@ -12,6 +12,7 @@ ENV NODE_ENV=production NITRO_HOST=0.0.0.0 NITRO_PORT=3000
 COPY --from=build --chown=node:node /app/.output ./.output
 COPY --from=build --chown=node:node /app/scripts/finance-report.py ./scripts/finance-report.py
 COPY --from=build --chown=node:node /app/scripts/project-estimate.py ./scripts/project-estimate.py
+COPY --from=build --chown=node:node /app/scripts/project-execution.py ./scripts/project-execution.py
 COPY --from=build --chown=node:node /app/scripts/templates ./scripts/templates
 USER node
 EXPOSE 3000

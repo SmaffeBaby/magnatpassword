@@ -4,16 +4,18 @@ import UserPicker from '../UserPicker.vue'
 import PersonAvatar from '../PersonAvatar.vue'
 import ProjectEstimate from './ProjectEstimate.vue'
 import ProjectContracts from './ProjectContracts.vue'
+import ProjectExecution from './ProjectExecution.vue'
 import ProjectCounterparties from './ProjectCounterparties.vue'
 import ProjectCompanyDirectory from './ProjectCompanyDirectory.vue'
 import type { Project, ProjectPermission } from '~~/shared/types/projects'
 import type { TeamPerson } from '~~/shared/types/team'
 
-const props = defineProps<{ projectId?: string; section?: 'input-documents' | 'estimate' | 'contracts' }>()
+const props = defineProps<{ projectId?: string; section?: 'input-documents' | 'estimate' | 'contracts' | 'execution' }>()
 const projectStages = [
   { key: 'input-documents', number: '01', label: 'Входные документы', icon: 'i-lucide-file-input', description: 'Здесь будут собраны исходные документы и материалы, необходимые для начала работы над проектом.' },
   { key: 'estimate', number: '02', label: 'Смета', icon: 'i-lucide-calculator', description: 'Здесь будет подготовлена смета проекта: состав работ и их стоимость.' },
-  { key: 'contracts', number: '03', label: 'Договора', icon: 'i-lucide-file-signature', description: 'Реестр договоров проекта с суммами из сметы.' }
+  { key: 'contracts', number: '03', label: 'Договора', icon: 'i-lucide-file-signature', description: 'Реестр договоров проекта с суммами из сметы.' },
+  { key: 'execution', number: '04', label: 'Исполнение', icon: 'i-lucide-files', description: 'Документы, приложения и предоплата по договорам проекта.' }
 ] as const
 const route = useRoute()
 const directoryTab = computed(() => ['counterparties','legal-entities'].includes(String(route.query.tab)) ? String(route.query.tab) : 'projects')
@@ -97,6 +99,7 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
           <header class="projects-heading project-page-heading"><div><span class="eyebrow">{{ activeStage?`ЭТАП ${activeStage.number}`:'ПРОЕКТ' }}</span><h1>{{ activeStage?activeStage.label:currentProject.name }}<span class="title-dot">.</span></h1><p>{{ activeStage?currentProject.name:'Рабочее пространство проекта и его участники.' }}</p></div><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></header>
           <ProjectEstimate v-if="section === 'estimate'" :key="currentProject.id" :project="currentProject" />
           <ProjectContracts v-else-if="section === 'contracts'" :key="currentProject.id" :project="currentProject"/>
+          <ProjectExecution v-else-if="section === 'execution'" :key="currentProject.id" :project="currentProject"/>
           <section v-else-if="activeStage" class="project-documents-empty" :aria-label="`${activeStage.label} проекта`"><span class="project-documents-icon"><UIcon :name="activeStage.icon"/></span><h2>{{ activeStage.label }} проекта</h2><p>{{ activeStage.description }}</p><NuxtLink :to="`/projects/${currentProject.id}`" class="subscription-card-link">Вернуться к проекту →</NuxtLink></section>
           <template v-else>
           <div class="project-overview" aria-label="Информация о проекте"><div><UIcon name="i-lucide-user-round-check"/><small>Ваши права</small><strong>{{ labels[currentProject.permission] }}</strong></div><div><UIcon name="i-lucide-users-round"/><small>Участников</small><strong>{{ currentProject.members.length }}</strong></div><div><UIcon name="i-lucide-calendar-days"/><small>Создан</small><strong>{{ projectDate(currentProject.createdAt) }}</strong></div><div><UIcon name="i-lucide-clock-3"/><small>Обновлён</small><strong>{{ projectDate(currentProject.updatedAt) }}</strong></div></div>
