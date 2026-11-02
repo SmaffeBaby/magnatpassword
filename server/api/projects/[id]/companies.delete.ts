@@ -2,6 +2,7 @@ import { companyLinkSchema } from '../../../../shared/utils/project-companies'
 export default defineEventHandler(async event => {
   const context = await requireProjectsUser(event), body = await sharedBody(event,companyLinkSchema), id = projectId(event)
   const current = await projectEstimate(event)
+  if (current.counterparties.some(party => party.catalogId === body.catalogId && party.isOwnLegalEntity)) throw createError({statusCode:400,message:'Наши юридические лица подключаются к проекту автоматически.'})
   const localIds = new Set(current.counterparties.filter(party => party.catalogId === body.catalogId).map(party => party.id))
   if (!localIds.size) throw createError({statusCode:404,message:'Компания не выбрана в этом проекте.'})
   if (current.items.some(item => localIds.has(item.counterpartyId))) throw createError({statusCode:409,message:'Компания используется в смете. Сначала измените привязки позиций.'})
