@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createId } from '~/utils/browser'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import type { Project } from '~~/shared/types/projects'
 import type { InputCard, InputField, InputFieldType, InputAttachment, ProjectInputs } from '~~/shared/types/project-inputs'
@@ -13,8 +14,8 @@ const rows=computed(()=>(query.data.value?.cards??[]).filter(card=>`${card.title
 const date=(value:string)=>new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeZone:'Europe/Moscow'}).format(new Date(value))
 const size=(value:number)=>value>=1048576?`${(value/1048576).toFixed(1)} МБ`:`${Math.ceil(value/1024)} КБ`
 const image=(file:InputAttachment)=>['image/png','image/jpeg','image/gif','image/webp'].includes(file.type)
-function edit(card?:InputCard){error.value='';files.value=[];draftRevision.value=query.data.value?.revision??0;draft.value=card?{id:card.id,title:card.title,description:card.description,fields:structuredClone(toRaw(card.fields))}:{id:crypto.randomUUID(),title:'',description:'',fields:[]};existing.value=card?.attachments??[];open.value=true}
-function addField(){draft.value.fields.push({id:crypto.randomUUID(),label:'',type:'text',value:''})}
+function edit(card?:InputCard){error.value='';files.value=[];draftRevision.value=query.data.value?.revision??0;draft.value=card?{id:card.id,title:card.title,description:card.description,fields:structuredClone(toRaw(card.fields))}:{id:createId(),title:'',description:'',fields:[]};existing.value=card?.attachments??[];open.value=true}
+function addField(){draft.value.fields.push({id:createId(),label:'',type:'text',value:''})}
 function fieldType(field:InputField,type:InputFieldType){field.type=type;field.value=type==='checkbox'?'false':''}
 function chooseFiles(event:Event){const chosen=Array.from((event.target as HTMLInputElement).files??[]);if(chosen.some(f=>f.size>20971520||!f.size)){error.value='Выберите непустые файлы до 20 МБ каждый.'}else if(existing.value.length+files.value.length+chosen.length>50){error.value='В карточке можно сохранить до 50 файлов.'}else{files.value.push(...chosen);error.value=''};(event.target as HTMLInputElement).value=''}
 async function refreshRelated(){await client.invalidateQueries({queryKey:['account',auth.user?.id,'project-process-map',props.project.id]})}

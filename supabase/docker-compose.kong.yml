@@ -18,7 +18,8 @@ services:
       timeout: 5s
       retries: 5
     ports: !override
-      - 127.0.0.1:${API_GW_HTTP_PORT:-8002}:8000/tcp
+      # Studio is protected by Kong basic-auth; allow office LAN access.
+      - ${API_GW_HTTP_BIND:-0.0.0.0}:${API_GW_HTTP_PORT:-8002}:8000/tcp
       - 127.0.0.1:${KONG_HTTPS_PORT:-8445}:8443/tcp
     volumes: !override
       - ./volumes/api/kong.yml:/home/kong/temp.yml:ro,z

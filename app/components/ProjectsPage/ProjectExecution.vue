@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createId } from '~/utils/browser'
 import { useQuery } from '@tanstack/vue-query'
 import ExecutionVariables from './ExecutionVariables.vue'
 import DocumentTemplateLibrary from './DocumentTemplateLibrary.vue'
@@ -34,7 +35,7 @@ function ensure(){let row=state.value.kits.find(row=>row.contractId===selected.v
 function editDoc(key:keyof ExecutionDocument,value:string|null){if(!editable.value||!selected.value)return;const k=ensure(),doc=kind.value==='contract'?k.contract:kind.value==='invoice'?k.prepayment.document:k.appendices.find(row=>row.id===active.value);if(doc)doc[key]=value as never}
 function select(id:string){selected.value=id;active.value='contract';error.value=''}
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow'}).format(new Date())
-function addAppendix(){const k=ensure();let n=1;while(k.appendices.some(row=>row.number===String(n)))n++;const id=crypto.randomUUID();k.appendices.push({id,number:String(n),date:today(),title:null,body:null});active.value=id}
+function addAppendix(){const k=ensure();let n=1;while(k.appendices.some(row=>row.number===String(n)))n++;const id=createId();k.appendices.push({id,number:String(n),date:today(),title:null,body:null});active.value=id}
 function setPrepayment(enabled:boolean){const k=ensure();k.prepayment.enabled=enabled;if(enabled){if(!k.prepayment.document.number)k.prepayment.document.number=`АВ-${contract.value?.number??''}`;if(!k.prepayment.document.date)k.prepayment.document.date=today();active.value='invoice'}else if(active.value==='invoice')active.value='contract'}
 function removeAppendix(){const k=ensure();k.appendices=k.appendices.filter(row=>row.id!==active.value);active.value='contract'}
 function resetKit(){state.value.kits=state.value.kits.filter(row=>row.contractId!==selected.value);active.value='contract';resetOpen.value=false}

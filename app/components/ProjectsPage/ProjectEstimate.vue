@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createId } from '~/utils/browser'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import type { Project } from '~~/shared/types/projects'
 import type { EstimateItem, EstimateView, EstimateFieldType, ProjectEstimate } from '~~/shared/types/estimate'
@@ -17,7 +18,7 @@ const amounts = computed(() => estimateAmounts(items.value)), selectedAmounts = 
 const formOpen = ref(false), deleteOpen = ref(false), settingsOpen = ref(false), editing = ref(false)
 const view = ref<EstimateView>({ hiddenRows: [], hiddenColumns: ['kind','image','link','deadline','vatRate'] }), draftView = ref<EstimateView>({ hiddenRows: [], hiddenColumns: [] })
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
-const fresh = (): EstimateItem => ({ id: crypto.randomUUID(), kind: 'product', name: '', image: '', link: '', quantity: 1, price: 0, currency: 'RUB', deadline: '', fields: [], unit: 'шт.', counterpartyId: '', internalCost: false, vatRate: 0, vatGroup: '' })
+const fresh = (): EstimateItem => ({ id: createId(), kind: 'product', name: '', image: '', link: '', quantity: 1, price: 0, currency: 'RUB', deadline: '', fields: [], unit: 'шт.', counterpartyId: '', internalCost: false, vatRate: 0, vatGroup: '' })
 const draft = ref<EstimateItem>(fresh()), baseItems = ref<EstimateItem[]>([]), baseRevision = ref(0)
 const media = useMediaUploads(), formError = ref(''), deleteTarget = ref<EstimateItem | null>(null)
 const partySelection = computed({ get: () => draft.value.internalCost ? 'internal' : draft.value.counterpartyId, set: (value: string) => { draft.value.internalCost = value === 'internal'; draft.value.counterpartyId = value === 'internal' ? '' : value } })
@@ -54,7 +55,7 @@ function openItem(item?: EstimateItem) {
   if (!editable.value) return
   capture(); draft.value = item ? clone(item) : fresh(); editing.value = !!item; formError.value = ''; media.mediaError.value = ''; formOpen.value = true
 }
-function addField() { draft.value.fields.push({ id: crypto.randomUUID(), label: '', type: 'text', value: '', currency: 'RUB' }) }
+function addField() { draft.value.fields.push({ id: createId(), label: '', type: 'text', value: '', currency: 'RUB' }) }
 async function upload(event: Event) { const images = await media.readImages(event, 1); if (images[0]) draft.value.image = images[0].data }
 function message(failure: any) { return failure?.data?.message || failure?.message || 'Не удалось сохранить смету' }
 async function write(nextItems: EstimateItem[]) {

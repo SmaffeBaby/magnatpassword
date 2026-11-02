@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createId } from '~/utils/browser'
 import type { Project } from '~~/shared/types/projects'
 import { estimateFinancials, estimateDetailsSchema, estimateRevenue } from '~~/shared/utils/estimate'
 const props = defineProps<{ project: Project }>()
@@ -8,7 +9,7 @@ const financials = computed(() => estimateFinancials({ items: query.data.value?.
 const open = ref(false), busy = ref(false), error = ref(''), revision = ref(0), draft = ref(estimateDetailsSchema.parse({})), notes = ref('')
 const numericFields = computed(() => draft.value.fields.filter(field => ['number','money'].includes(field.type)))
 const preview = computed(() => estimateRevenue({ ...draft.value, revenueFactors: draft.value.revenueFactors.filter(Boolean) }, financials.value.cost))
-function addField() { draft.value.fields.push({id:crypto.randomUUID(),label:'',type:'text',value:'',currency:'RUB'}) }
+function addField() { draft.value.fields.push({id:createId(),label:'',type:'text',value:'',currency:'RUB'}) }
 function removeField(index: number) { const [field] = draft.value.fields.splice(index,1); draft.value.revenueFactors = draft.value.revenueFactors.filter(id => id !== field?.id) }
 function changeField(index: number) { const field = draft.value.fields[index]!; field.value = ''; if (!['number','money'].includes(field.type)) draft.value.revenueFactors = draft.value.revenueFactors.filter(id => id !== field.id) }
 const editable = computed(() => props.project.permission !== 'viewer')
