@@ -42,7 +42,7 @@ export async function projectCompanies(event: H3Event, context: Context, id: str
 export async function listProjectCompanies(event: H3Event, context: Context, project?: string): Promise<DirectoryCompany[]> {
   const {data,error} = await context.client.rpc('project_company_list',{p_actor:context.user.id,p_project:project ?? null})
   if (error) companyFailure(error)
-  return (data as any[]).map(row => ({...decodeCompany(event,row),ownerId:row.ownerId,revision:row.revision,canEdit:row.canEdit,projectCount:row.projectCount,isOwnLegalEntity:row.isOwnLegalEntity})).sort((a,b)=>a.company.localeCompare(b.company,'ru'))
+  return (data as any[]).map(row => ({...decodeCompany(event,row),ownerId:row.ownerId,revision:row.revision,canEdit:row.canEdit,projectCount:row.projectCount,isOwnLegalEntity:row.isOwnLegalEntity,projects:row.projects??[],updatedAt:row.updatedAt})).sort((a,b)=>a.company.localeCompare(b.company,'ru'))
 }
 export async function saveProjectCompany(event: H3Event, context: Context, id: string, revision: number, value: Omit<ProjectCounterparty,'id'>, remove = false) {
   const {error} = await context.client.rpc('project_company_mutate',{p_actor:context.user.id,p_id:id,p_revision:revision,p_data:sealSharedVault({...value,id},sharedSecret(event),`project-company:${id}`,1),p_hash:companyIdentity(event,value),p_own:value.isOwnLegalEntity ?? false,p_delete:remove})

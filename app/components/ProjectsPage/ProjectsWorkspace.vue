@@ -11,6 +11,7 @@ import ProjectProcessMap from './ProjectProcessMap.vue'
 import ProjectCompanyDirectory from './ProjectCompanyDirectory.vue'
 import ProjectTemplateDirectory from './ProjectTemplateDirectory.vue'
 import ProjectOverview from './ProjectOverview.vue'
+import ProjectDirectory from './ProjectDirectory.vue'
 import ProjectDashboardSettings from './ProjectDashboardSettings.vue'
 import { projectStages } from '~~/shared/utils/project-dashboard'
 import type { Project, ProjectPermission } from '~~/shared/types/projects'
@@ -105,9 +106,7 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
         </template>
         <div v-else-if="!projects.error.value" class="projects-empty"><UIcon name="i-lucide-folder-lock"/><h1>Проект недоступен</h1><p>Проверьте ссылку или попросите создателя проекта предоставить доступ.</p><UButton to="/projects" label="Все проекты" color="neutral" variant="outline"/></div>
       </template>
-      <div v-else-if="projects.data.value?.length" class="projects-grid">
-        <article v-for="project in projects.data.value" :key="project.id" class="project-tile project-tile-with-settings"><NuxtLink :to="`/projects/${project.id}`" class="project-tile-link" :aria-label="`Открыть проект: ${project.name}`"><span class="project-tile-icon"><UIcon name="i-lucide-folder-kanban" /></span><span class="project-tile-role">{{ labels[project.permission] }}</span><h2>{{ project.name }}</h2><span class="project-tile-footer"><span><UIcon name="i-lucide-users-round" />{{ project.members.length }} участн.</span><UIcon name="i-lucide-arrow-up-right" /></span></NuxtLink><UButton class="project-tile-settings" icon="i-lucide-settings" color="neutral" variant="ghost" :aria-label="`Настройки проекта: ${project.name}`" title="Настройки проекта" @click="open(project)"/></article>
-      </div>
+      <ProjectDirectory v-else-if="projects.data.value?.length" :projects="projects.data.value" @settings="open"/>
       <div v-else-if="!projects.error.value" class="projects-empty"><UIcon name="i-lucide-folder-plus" /><h2>Первый проект начинается здесь</h2><p>Создайте проект, добавьте участников и настройте их права.</p><UButton label="Создать проект" icon="i-lucide-plus" @click="showCreate" /></div>
       </template>
     </template>

@@ -17,3 +17,13 @@ export interface Project {
   members: ProjectMember[]
 }
 export interface ProjectAccessUser { id: string; fullName: string; email: string; grantedAt: string }
+export interface ProjectFinancialSummary {
+  projectId: string
+  status: 'ready' | 'empty' | 'error'
+  updatedAt: string | null
+  title?: string
+  code?: string
+  finishDate?: string
+  itemCount?: number
+  financials?: { cost: number; revenue: number; profit: number; profitability: number | null }
+}
