@@ -59,6 +59,32 @@ try {
   current = await project()
   assert.equal((await project(viewer)).permission, 'viewer')
   assert.equal((await project(editor)).permission, 'editor')
+  const dashboardPath = `/api/projects/${id}/dashboard`
+  await request(null, dashboardPath, 'GET', undefined, 401)
+  await request(admin, dashboardPath, 'GET', undefined, 404)
+  await request(outsider, dashboardPath, 'GET', undefined, 403)
+  const initialDashboard = await request(owner, dashboardPath)
+  assert.equal(initialDashboard.revision, 0)
+  assert.equal(initialDashboard.blocks.length, 8)
+  assert.ok(initialDashboard.blocks.every(block => block.visible))
+  const personalBlocks = [...initialDashboard.blocks].reverse().map(block => ({ ...block, visible: block.key === 'members' }))
+  const savedDashboard = await request(viewer, dashboardPath, 'PUT', { revision: 0, blocks: personalBlocks })
+  assert.equal(savedDashboard.revision, 1)
+  assert.deepEqual((await request(viewer, dashboardPath)).blocks, personalBlocks)
+  assert.deepEqual((await request(owner, dashboardPath)).blocks, initialDashboard.blocks)
+  assert.deepEqual((await request(editor, dashboardPath)).blocks, initialDashboard.blocks)
+  assert.equal((await project()).revision, current.revision, 'Personal settings must not change the project revision')
+  await request(viewer, dashboardPath, 'PUT', { revision: 0, blocks: initialDashboard.blocks }, 409)
+  await request(viewer, dashboardPath, 'PUT', { revision: 1, blocks: [] }, 400)
+  await request(viewer, dashboardPath, 'PUT', { revision: 1, blocks: Array(8).fill(initialDashboard.blocks[0]) }, 400)
+  await request(viewer, dashboardPath, 'PUT', { revision: 1, blocks: initialDashboard.blocks, userId: owner.id }, 400)
+  await request(viewer, dashboardPath, 'PUT', { revision: 1, blocks: initialDashboard.blocks.map(block => ({ ...block, visible: false })) })
+  assert.ok((await request(viewer, dashboardPath)).blocks.every(block => !block.visible))
+  const resetDashboard = await request(viewer, dashboardPath, 'PUT', { revision: 2, blocks: initialDashboard.blocks })
+  assert.deepEqual(resetDashboard.blocks, initialDashboard.blocks)
+  const { id: secondId } = await request(owner, '/api/projects', 'POST', { name: `${marker} second` })
+  assert.equal((await request(owner, `/api/projects/${secondId}/dashboard`)).revision, 0)
+  await request(viewer, `/api/projects/${secondId}/dashboard`, 'GET', undefined, 404)
   await request(viewer, `/api/projects/${id}`, 'PUT', { name: 'Denied', revision: current.revision }, 403)
   await request(viewer, `/api/projects/${id}/members`, 'PUT', { userId: viewer.id, permission: 'editor', revision: current.revision }, 403)
   await request(editor, `/api/projects/${id}/members`, 'PUT', { userId: viewer.id, permission: 'hidden', revision: current.revision }, 403)
@@ -69,6 +95,8 @@ try {
   await request(owner, `/api/projects/${id}/members`, 'PUT', { userId: viewer.id, permission: 'owner', revision: current.revision }, 400)
   await request(owner, `/api/projects/${id}/members`, 'PUT', { userId: viewer.id, permission: 'hidden', revision: current.revision })
   assert.equal(await project(viewer), undefined)
+  await request(viewer, dashboardPath, 'GET', undefined, 404)
+  await request(viewer, dashboardPath, 'PUT', { revision: 3, blocks: initialDashboard.blocks }, 404)
   current = await project()
   assert.equal(current.members.find(member => member.userId === viewer.id).permission, 'hidden')
   assert.ok(!(await project(editor)).members.some(member => member.userId === viewer.id))
@@ -77,6 +105,7 @@ try {
   await request(admin, '/api/admin/projects/access', 'PUT', { userId: viewer.id, enabled: false })
   assert.equal((await request(viewer, '/api/projects/access')).allowed, false)
   await request(viewer, '/api/projects', 'GET', undefined, 403)
+  await request(viewer, dashboardPath, 'GET', undefined, 403)
   await request(viewer, '/api/projects', 'POST', { name: 'Revoked create' }, 403)
   await request(viewer, `/api/projects/people?q=${marker}`, 'GET', undefined, 403)
   const eligible = await request(owner, `/api/projects/people?q=${marker}`)
@@ -88,10 +117,11 @@ try {
   assert.equal(await project(editor), undefined)
   await request(editor, `/api/projects/${id}`, 'PUT', { name: 'Removed edit', revision: current.revision + 1 }, 404)
   // Neither signed-in clients nor guessed actor IDs can bypass the API using PostgREST.
-  for (const table of ['projects', 'project_access', 'project_members']) {
+  for (const table of ['projects', 'project_access', 'project_members', 'project_dashboard_preferences']) {
     assert.ok((await viewer.client.from(table).select('*')).error, `Direct ${table} read must fail`); checks++
   }
   assert.ok((await viewer.client.rpc('list_projects', { p_actor: owner.id })).error); checks++
+  assert.ok((await viewer.client.rpc('project_dashboard', { p_actor: owner.id, p_id: id })).error); checks++
   assert.ok((await viewer.client.rpc('set_project_access', { p_actor: admin.id, p_user: outsider.id, p_enabled: true })).error); checks++
   assert.ok((await viewer.client.rpc('project_mutate', { p_actor: owner.id, p_action: 'rename', p_id: id, p_revision: current.revision, p_payload: { name: 'Bypass' } })).error); checks++
   await request(admin, '/api/admin/projects/access', 'PUT', { userId: owner.id, enabled: false })
