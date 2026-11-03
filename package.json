@@ -24,7 +24,10 @@
     "macos:build": "tauri build --bundles app",
     "ios:init": "node scripts/ios-init.mjs",
     "ios:dev": "tauri ios dev",
-    "ios:build": "tauri ios build"
+    "ios:build": "tauri ios build",
+    "android:init": "node scripts/android.mjs init",
+    "android:build": "node scripts/android.mjs build",
+    "android:dev": "node scripts/android.mjs dev"
   },
   "dependencies": {
     "@nuxt/content": "3.16.2",

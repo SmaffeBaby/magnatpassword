@@ -3,7 +3,7 @@
 export default defineEventHandler(event => {
   if (!/^\/(?:api|supabase)(?:\/|$)/.test(getRequestURL(event).pathname)) return
   const origin = getHeader(event, 'origin')
-  if (!origin || !['tauri://localhost', 'http://localhost:3004'].includes(origin)) return
+  if (!origin || !['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost', 'http://localhost:3004'].includes(origin)) return
   setResponseHeaders(event, {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',

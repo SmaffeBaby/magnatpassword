@@ -2,8 +2,10 @@ import tailwindcss from '@tailwindcss/vite'
 
 const native = process.env.MAGNAT_NATIVE === '1'
 const nativeBuildRoot = process.env.MAGNAT_NATIVE_BUILD_ROOT
+const webBuildRoot = !native && process.env.MAGNAT_WEB_BUILD_ROOT
 
 export default defineNuxtConfig({
+  ...(webBuildRoot ? { buildDir: `${webBuildRoot}/.nuxt`, nitro: { output: { dir: `${webBuildRoot}/.output` } } } : {}),
   ...(native ? { ssr: false, buildDir: nativeBuildRoot ? `${nativeBuildRoot}/.nuxt-native` : '.nuxt-native', nitro: { output: { dir: nativeBuildRoot ? `${nativeBuildRoot}/.output-native` : '.output-native' }, prerender: { crawlLinks: false, routes: ['/'] } } } : {}),
   compatibilityDate: '2026-10-15',
   srcDir: 'app/', serverDir: 'server/',

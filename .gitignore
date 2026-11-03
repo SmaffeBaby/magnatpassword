@@ -27,3 +27,12 @@ src-tauri/gen/apple/build
 src-tauri/gen/apple/Externals
 src-tauri/gen/apple/assets/
 dist
+src-tauri/gen/android/.gradle
+src-tauri/gen/android/build
+src-tauri/gen/android/app/build
+src-tauri/gen/android/buildSrc/.gradle
+src-tauri/gen/android/buildSrc/build
+src-tauri/gen/android/app/src/main/assets
+src-tauri/gen/android/app/src/main/jniLibs
+src-tauri/gen/android/buildSrc/.kotlin
+src-tauri/gen/android/app/src/debug/res/xml/network_security_config.xml
