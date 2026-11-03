@@ -16,7 +16,15 @@
     "test": "node --test tests/*.test.mjs",
     "admin:create": "node --env-file=.env scripts/create-admin.mjs",
     "test:projects": "node --env-file=.env tests/projects.integration.mjs",
-    "test:estimates": "node --env-file=.env tests/estimates.integration.mjs"
+    "test:estimates": "node --env-file=.env tests/estimates.integration.mjs",
+    "tauri": "tauri",
+    "native:dev": "node scripts/native.mjs dev",
+    "native:generate": "node scripts/native.mjs generate",
+    "macos:dev": "tauri dev",
+    "macos:build": "tauri build --bundles app",
+    "ios:init": "node scripts/ios-init.mjs",
+    "ios:dev": "tauri ios dev",
+    "ios:build": "tauri ios build"
   },
   "dependencies": {
     "@nuxt/content": "3.16.2",
@@ -30,6 +38,7 @@
     "nodemailer": "10.1.1",
     "nuxt": "4.6.1",
     "nuxt-security": "2.6.0",
+    "ofetch": "^1.5.1",
     "pinia": "4.1.0",
     "vue": "3.5.44",
     "vue-router": "5.4.0",
@@ -42,6 +51,7 @@
   "devDependencies": {
     "@iconify-json/lucide": "1.2.144",
     "@tailwindcss/vite": "4.3.3",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/d3": "7.4.3",
     "@types/node": "^24.0.0",
     "@types/nodemailer": "8.0.2",

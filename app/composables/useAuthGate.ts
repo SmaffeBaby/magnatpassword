@@ -15,7 +15,7 @@ export function useAuthGate(props: { admin?: boolean }) {
     const controller = new AbortController()
     const timer = setTimeout(async () => {
       try {
-        const result = await $fetch<{ brand: AccountBrand }>('/api/auth/brand', { method: 'POST', body: { email: value }, signal: controller.signal, timeout: 4000, retry: 0 })
+        const result = await backendFetch<{ brand: AccountBrand }>('/api/auth/brand', { method: 'POST', body: { email: value }, signal: controller.signal, timeout: 4000, retry: 0 })
         if (!controller.signal.aborted && !auth.user && !register.value && email.value.trim().toLowerCase() === value) previewBrand.value = result.brand
       } catch { /* Keep the local preview if the lookup is unavailable or was cancelled. */ }
     }, 350)

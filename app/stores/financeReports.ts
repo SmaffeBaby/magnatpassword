@@ -37,7 +37,7 @@ export const useFinanceReportsStore = defineStore('finance-reports', () => {
     try{
       const {data}=await useNuxtApp().$supabase.auth.getSession()
       if(!data.session)throw new Error('Войдите в аккаунт')
-      const pdf=await $fetch<Blob>(`/api/finance-reports/${report.id}`,{responseType:'blob',headers:{Authorization:`Bearer ${data.session.access_token}`}})
+      const pdf=await backendFetch<Blob, 'blob'>(`/api/finance-reports/${report.id}`,{responseType:'blob',headers:{Authorization:`Bearer ${data.session.access_token}`}})
       if(attempt!==generation)return false
       const url=URL.createObjectURL(pdf),link=document.createElement('a')
       link.href=url;link.download=report.filename;document.body.appendChild(link);link.click();link.remove()

@@ -1,0 +1,9 @@
+/* Keep controls clear of the iPhone status bar and home indicator. */
+body {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  min-height: 100dvh;
+  overscroll-behavior: none;
+}
+@media (pointer: coarse) {
+  input, textarea, select { font-size: max(16px, 1em); }
+}

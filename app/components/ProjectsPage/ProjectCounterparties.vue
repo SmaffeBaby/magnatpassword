@@ -31,7 +31,7 @@ async function download(format: 'xlsx' | 'pdf') {
   try {
     const { data } = await supabase.auth.getSession()
     if (!data.session || data.session.user.id !== userId) throw Error('Войдите в аккаунт')
-    const blob = await $fetch<Blob>(`/api/projects/${props.project.id}/estimate-export`, { method: 'POST', retry: 0, responseType: 'blob', headers: { Authorization: `Bearer ${data.session.access_token}` }, body: { target: 'counterparties', companyKind: props.ownOnly ? 'legal-entities' : 'counterparties', format, view: { hiddenRows: [], hiddenColumns: [] } } })
+    const blob = await backendFetch<Blob, 'blob'>(`/api/projects/${props.project.id}/estimate-export`, { method: 'POST', retry: 0, responseType: 'blob', headers: { Authorization: `Bearer ${data.session.access_token}` }, body: { target: 'counterparties', companyKind: props.ownOnly ? 'legal-entities' : 'counterparties', format, view: { hiddenRows: [], hiddenColumns: [] } } })
     if (auth.user?.id !== userId) return
     const url = URL.createObjectURL(blob), link = document.createElement('a')
     link.href = url; link.download = `${props.ownOnly ? 'Наши юр. лица' : 'Контрагенты'} — ${props.project.name.replace(/[\\/:*?"<>|]/g, '-')}.${format}`; document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 10000)

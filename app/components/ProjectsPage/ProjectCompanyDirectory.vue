@@ -50,7 +50,7 @@ async function submit(remove=false){
 }
 async function download(format:'xlsx'|'pdf'){
  if(exporting.value)return;exporting.value=format;error.value='';const userId=auth.user?.id
- try{const{data}=await supabase.auth.getSession();if(!data.session||data.session.user.id!==userId)throw Error('Войдите в аккаунт');const blob=await $fetch<Blob>('/api/projects/companies/export',{method:'POST',retry:0,responseType:'blob',headers:{Authorization:`Bearer ${data.session.access_token}`},body:{format,isOwnLegalEntity:props.ownOnly}});if(auth.user?.id!==userId)return;const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`${props.ownOnly?'Наши юр. лица':'Контрагенты'}.${format}`;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),10000)}
+ try{const{data}=await supabase.auth.getSession();if(!data.session||data.session.user.id!==userId)throw Error('Войдите в аккаунт');const blob=await backendFetch<Blob, 'blob'>('/api/projects/companies/export',{method:'POST',retry:0,responseType:'blob',headers:{Authorization:`Bearer ${data.session.access_token}`},body:{format,isOwnLegalEntity:props.ownOnly}});if(auth.user?.id!==userId)return;const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`${props.ownOnly?'Наши юр. лица':'Контрагенты'}.${format}`;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),10000)}
  catch(failure:any){if(failure?.data instanceof Blob){try{error.value=JSON.parse(await failure.data.text()).message}catch{error.value='Не удалось скачать файл'}}else error.value=failure?.data?.message||failure.message}
  finally{exporting.value=''}
 }

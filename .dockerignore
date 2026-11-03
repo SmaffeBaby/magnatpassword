@@ -13,3 +13,6 @@ artifacts/
 
 .local
 tests
+.nuxt-native
+.output-native
+src-tauri
