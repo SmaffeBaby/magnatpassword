@@ -27,7 +27,8 @@
     "ios:build": "tauri ios build",
     "android:init": "node scripts/android.mjs init",
     "android:build": "node scripts/android.mjs build",
-    "android:dev": "node scripts/android.mjs dev"
+    "android:dev": "node scripts/android.mjs dev",
+    "windows:build": "node scripts/windows.mjs"
   },
   "dependencies": {
     "@nuxt/content": "3.16.2",
