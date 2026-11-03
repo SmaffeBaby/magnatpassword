@@ -21,7 +21,7 @@
     "native:dev": "node scripts/native.mjs dev",
     "native:generate": "node scripts/native.mjs generate",
     "macos:dev": "tauri dev",
-    "macos:build": "tauri build --bundles app",
+    "macos:build": "node scripts/macos.mjs",
     "ios:init": "node scripts/ios-init.mjs",
     "ios:dev": "tauri ios dev",
     "ios:build": "tauri ios build",
