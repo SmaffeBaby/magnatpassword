@@ -42,8 +42,9 @@ export async function requireSharedUser(event: H3Event) {
   const client = serverSupabase(event)
   const { data, error } = await client.auth.getUser(token)
   if (error || !data.user) throw createError({ statusCode: 401, statusMessage: 'Shared vault request failed', message: 'Сессия завершена. Войдите снова.' })
+  const sessionId = await assertActiveAccountSession(client, data.user.id, token)
   setHeader(event, 'Cache-Control', 'private, no-store')
-  return { client, user: data.user }
+  return { client, user: data.user, sessionId }
 }
 export function sharedId(event: H3Event) {
   const parsed = z.uuid().safeParse(getRouterParam(event, 'id'))

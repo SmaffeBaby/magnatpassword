@@ -17,7 +17,10 @@ const profileItems = computed(() => [
     ...(!native.value ? [{ label: 'Скачать приложение', icon: 'i-lucide-download', to: '/downloads' }] : []),
     { label: 'Копия личного хранилища', icon: 'i-lucide-download', onSelect: () => vault.exportEncrypted() }
   ],
-  [{ label: 'Выйти из аккаунта', icon: 'i-lucide-log-out', onSelect: () => auth.logout() }]
+  [
+    { label: 'Сменить аккаунт', icon: 'i-lucide-users-round', onSelect: () => auth.logout() },
+    { label: 'Выйти из аккаунта', icon: 'i-lucide-log-out', onSelect: () => auth.logout() }
+  ]
 ])
 </script>
 <template>

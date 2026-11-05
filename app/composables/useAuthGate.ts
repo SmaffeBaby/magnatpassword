@@ -1,12 +1,32 @@
 import { brandForEmail, type AccountBrand } from '~~/shared/utils/branding'
+import type { SavedAccount } from '~/utils/saved-accounts'
 
 export function useAuthGate(props: { admin?: boolean }) {
   const auth = useAuthStore(), vault = useVaultStore()
   const email = ref(''), password = ref(''), register = ref(false), master = ref('')
   const localError = ref('')
+  const remember = ref(true), formVisible = ref(false)
+  const selectedAccount = ref<SavedAccount | null>(null)
+  const showAccounts = computed(() => !register.value && !formVisible.value && auth.savedAccounts.length > 0)
+  async function chooseAccount(account: SavedAccount) {
+    if (auth.pending) return
+    selectedAccount.value = account; email.value = account.email; password.value = ''
+    register.value = false; remember.value = true; auth.error = ''
+    if (auth.hasQuickLogin(account.id) && await auth.resumeAccount(account.id)) return
+    formVisible.value = true
+  }
+  function otherAccount() {
+    selectedAccount.value = null; email.value = ''; password.value = ''
+    register.value = false; remember.value = true; formVisible.value = true; auth.error = ''
+  }
+  function backToAccounts() {
+    selectedAccount.value = null; email.value = ''; password.value = ''
+    register.value = false; formVisible.value = false; auth.error = ''
+  }
+  watch(() => auth.user?.id, (id, previous) => { if (!id && previous) backToAccounts() })
   const { previewBrand } = useAccountBrand()
   const brandOptions = [{ label: 'Magnat', value: 'magnat' }, { label: 'Light', value: 'light' }]
-  function toggleRegistration() { register.value = !register.value; auth.error = '' }
+  function toggleRegistration() { register.value = !register.value; selectedAccount.value = null; password.value = ''; auth.error = '' }
   watch([email, register, () => auth.user?.id], (_value, _previous, onCleanup) => {
     if (auth.user || register.value) return
     const value = email.value.trim().toLowerCase()
@@ -22,10 +42,14 @@ export function useAuthGate(props: { admin?: boolean }) {
     onCleanup(() => { clearTimeout(timer); controller.abort() })
   }, { immediate: true })
   watch(() => auth.user?.id, id => { if (id && !props.admin) vault.check() }, { immediate: true })
-  async function authenticate() { await auth.authenticate(email.value, password.value, register.value, previewBrand.value); password.value = '' }
+  async function authenticate() {
+    const success = await auth.authenticate(email.value, password.value, register.value, previewBrand.value, remember.value)
+    if (success || register.value) password.value = ''
+  }
   async function openVault() {
     localError.value = ''
     await vault.unlock(master.value); master.value = ''
   }
-  return { auth, vault, email, password, register, master, localError, authenticate, openVault, previewBrand, brandOptions, toggleRegistration }
+  return { auth, vault, email, password, register, master, localError, authenticate, openVault, previewBrand, brandOptions, toggleRegistration,
+    remember, selectedAccount, showAccounts, chooseAccount, otherAccount, backToAccounts }
 }
