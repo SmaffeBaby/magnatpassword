@@ -25,6 +25,19 @@ android {
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }
+    signingConfigs {
+        create("release") {
+            val properties = Properties()
+            val propertiesFile = rootProject.file("keystore.properties")
+            if (propertiesFile.exists()) {
+                propertiesFile.inputStream().use { properties.load(it) }
+                keyAlias = properties.getProperty("keyAlias")
+                keyPassword = properties.getProperty("password")
+                storePassword = properties.getProperty("storePassword", keyPassword)
+                storeFile = file(properties.getProperty("storeFile"))
+            }
+        }
+    }
     buildTypes {
         getByName("debug") {
             applicationIdSuffix = ".debug"
@@ -40,6 +53,7 @@ android {
             }
         }
         getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
             optimization {
                enable = true
             }

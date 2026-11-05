@@ -36,3 +36,7 @@ src-tauri/gen/android/app/src/main/assets
 src-tauri/gen/android/app/src/main/jniLibs
 src-tauri/gen/android/buildSrc/.kotlin
 src-tauri/gen/android/app/src/debug/res/xml/network_security_config.xml
+
+src-tauri/gen/android/keystore.properties
+*.jks
+*.keystore

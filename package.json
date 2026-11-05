@@ -24,11 +24,13 @@
     "macos:build": "node scripts/macos.mjs",
     "ios:init": "node scripts/ios-init.mjs",
     "ios:dev": "tauri ios dev",
-    "ios:build": "tauri ios build",
+    "ios:build": "node scripts/ios-build.mjs",
     "android:init": "node scripts/android.mjs init",
     "android:build": "node scripts/android.mjs build",
     "android:dev": "node scripts/android.mjs dev",
-    "windows:build": "node scripts/windows.mjs"
+    "windows:build": "node scripts/windows.mjs",
+    "android:release": "node scripts/android.mjs release",
+    "shell:prepare": "node scripts/prepare-shell.mjs"
   },
   "dependencies": {
     "@nuxt/content": "3.16.2",
@@ -37,6 +39,7 @@
     "@pinia/nuxt": "1.0.3",
     "@supabase/supabase-js": "2.117.3",
     "@tanstack/vue-query": "5.104.5",
+    "@tauri-apps/api": "^2.12.4",
     "d3": "7.9.0",
     "fast-xml-parser": "5.11.2",
     "nodemailer": "10.1.1",

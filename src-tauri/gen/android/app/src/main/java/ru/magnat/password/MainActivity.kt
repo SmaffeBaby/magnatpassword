@@ -18,10 +18,10 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
-    // This debug build connects to the existing server on the local network.
+    // This shell connects to the existing server on the local network.
     // Android 17+ requires explicit permission for apps targeting API 37.
     val permission = "android.permission.ACCESS_LOCAL_NETWORK"
-    if (BuildConfig.DEBUG && Build.VERSION.SDK_INT >= 37 &&
+    if (Build.VERSION.SDK_INT >= 37 &&
         ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED &&
         savedInstanceState == null) {
       localNetworkPermission.launch(permission)

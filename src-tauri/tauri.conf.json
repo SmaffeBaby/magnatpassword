@@ -1,13 +1,13 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Magnat",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "ru.magnat.password",
   "build": {
-    "frontendDist": "../.output-native/public",
+    "frontendDist": "http://192.168.10.162:3003/?native=1",
     "devUrl": "http://localhost:3004",
     "beforeDevCommand": "npm run native:dev",
-    "beforeBuildCommand": "npm run native:generate"
+    "beforeBuildCommand": ""
   },
   "app": {
     "windows": [
@@ -18,7 +18,8 @@
         "resizable": true,
         "fullscreen": false,
         "minWidth": 360,
-        "minHeight": 600
+        "minHeight": 600,
+        "url": "http://192.168.10.162:3003/?native=1"
       }
     ],
     "security": {

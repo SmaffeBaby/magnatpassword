@@ -1,5 +1,6 @@
+import { shellConfig } from './shell-config.mjs'
 import { loadEnvFile } from 'node:process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
@@ -14,9 +15,11 @@ const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inl
 const xml = value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 const exceptions = server.protocol === 'http:' ? `<key>NSExceptionDomains</key><dict><key>${xml(server.hostname)}</key><dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict></dict>` : ''
 writeFileSync('.local/Info.macos-server.plist', `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>NSLocalNetworkUsageDescription</key><string>Подключение к серверу Magnat в вашей локальной сети.</string><key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/>${exceptions}</dict></dict></plist>\n`)
+const shell = shellConfig(server.origin, JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8')).version)
 const config = resolve('.local/tauri.macos-server.json')
 writeFileSync(config, JSON.stringify({
-  app: { security: { csp } },
+  ...shell,
+  app: { ...shell.app, security: { csp } },
   bundle: { macOS: { infoPlist: '../.local/Info.macos-server.plist' } }
 }, null, 2))
 const result = spawnSync(process.execPath, [

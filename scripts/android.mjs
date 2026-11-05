@@ -1,3 +1,4 @@
+import { shellConfig } from './shell-config.mjs'
 import { loadEnvFile } from 'node:process'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync, symlinkSync } from 'node:fs'
@@ -5,7 +6,7 @@ import { resolve } from 'node:path'
 
 try { loadEnvFile('.env') } catch (error) { if (error.code !== 'ENOENT') throw error }
 const mode = process.argv[2]
-if (!['init', 'build', 'dev'].includes(mode)) throw new Error('Expected init, build or dev')
+if (!['init', 'build', 'dev', 'release'].includes(mode)) throw new Error('Expected init, build, release or dev')
 const storage = process.env.MAGNAT_ANDROID_STORAGE_ROOT || '/Volumes/KINGSTON/Developer/Android'
 if (!existsSync(storage)) throw new Error(`Подключите SSD: ${storage}`)
 const sdk = process.env.ANDROID_HOME || resolve(storage, 'sdk')
@@ -33,7 +34,7 @@ function linkBuildFolders() {
     }
   }
 }
-let args = ['android', mode]
+let args = ['android', mode === 'release' ? 'build' : mode]
 if (mode === 'init') args.push('--ci', '--skip-targets-install')
 else {
   linkBuildFolders()
@@ -44,12 +45,18 @@ else {
   mkdirSync('.local', { recursive: true })
   const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${server.origin}; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ${server.origin}; object-src 'none'; base-uri 'self'`
   const config = resolve('.local/tauri.android-device.json')
-  writeFileSync(config, JSON.stringify({ app: { security: { csp } } }, null, 2))
+  const shell = shellConfig(server.origin, JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8')).version)
+  writeFileSync(config, JSON.stringify({ ...shell, app: { ...shell.app, security: { csp } } }, null, 2))
   const xmlDir = 'src-tauri/gen/android/app/src/debug/res/xml'
   mkdirSync(xmlDir, { recursive: true })
   writeFileSync(`${xmlDir}/network_security_config.xml`, `<?xml version="1.0" encoding="utf-8"?>\n<network-security-config>\n  <base-config cleartextTrafficPermitted="false"/>\n${server.protocol === 'http:' ? `  <domain-config cleartextTrafficPermitted="true"><domain includeSubdomains="false">${server.hostname}</domain></domain-config>\n` : ''}</network-security-config>\n`)
   args.push('--config', config)
   if (mode === 'build') args.push('--debug', '--apk', '--target', 'aarch64')
+  if (mode === 'release') {
+    const prepared = spawnSync(process.execPath, ['scripts/prepare-shell.mjs', 'android'], { stdio: 'inherit', env })
+    if (prepared.status !== 0) process.exit(prepared.status ?? 1)
+    args.push('--apk', '--target', 'aarch64', '--config', resolve('.local/tauri.shell.android.json'))
+  }
 }
 args.push(...process.argv.slice(3))
 const result = spawnSync(process.execPath, ['node_modules/@tauri-apps/cli/tauri.js', ...args], { stdio: 'inherit', env })

@@ -1,5 +1,6 @@
+import { shellConfig } from './shell-config.mjs'
 import { loadEnvFile } from 'node:process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
@@ -10,11 +11,13 @@ const server = new URL(process.env.MAGNAT_SERVER_URL)
 if (!['http:', 'https:'].includes(server.protocol) || server.username || server.password || server.pathname !== '/' || server.search || server.hash) throw new Error('MAGNAT_SERVER_URL должен быть http(s) origin без пути и секретов.')
 if (['localhost', '127.0.0.1', '[::1]'].includes(server.hostname)) throw new Error('Укажите сетевой адрес сервера вместо localhost.')
 mkdirSync('.local', { recursive: true })
+const shell = shellConfig(server.origin, JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8')).version)
 const config = resolve('.local/tauri.windows-server.json')
 const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${server.origin}; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ${server.origin}; object-src 'none'; base-uri 'self'`
 writeFileSync(config, JSON.stringify({
+  ...shell,
   ...(process.env.MAGNAT_WINDOWS_PREBUILT === '1' ? { build: { beforeBuildCommand: '' } } : {}),
-  app: { security: { csp } }
+  app: { ...shell.app, security: { csp } }
 }, null, 2))
 const result = spawnSync(process.execPath, [
   'node_modules/@tauri-apps/cli/tauri.js', 'build', '--target', 'x86_64-pc-windows-msvc',

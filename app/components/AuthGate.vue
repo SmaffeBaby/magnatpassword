@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { isNativeShell } from '~/utils/native-shell'
 import BrandLogo from './BrandLogo.vue'
 import { useAuthGate } from '../composables/useAuthGate'
 
+const native = ref(false)
+onMounted(() => { native.value = isNativeShell() })
 const props = defineProps<{ admin?: boolean }>()
 const { auth, vault, email, password, register, master, localError, authenticate, openVault, previewBrand, brandOptions, toggleRegistration } = useAuthGate(props)
 const passwordVisible = ref(false)
@@ -43,6 +46,7 @@ watch(master, () => { if (!master.value) masterVisible.value = false })
         <UButton class="mt-4" color="neutral" variant="ghost" block @click="auth.logout()">Выйти из аккаунта</UButton>
       </template>
     </UCard>
+    <NuxtLink v-if="!admin && !native" to="/downloads" class="text-sm text-primary-600">Скачать приложение для вашего устройства</NuxtLink>
     <p class="gate-note"><UIcon name="i-lucide-shield-check" /> AES-256-GCM · Ваши секреты остаются вашими</p>
     <NuxtLink v-if="!admin" to="/admin/password" class="text-xs text-slate-400 hover:text-primary-600">Панель управления <span aria-hidden="true">↗</span></NuxtLink>
   </div>

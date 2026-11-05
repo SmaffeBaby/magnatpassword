@@ -1,0 +1,67 @@
+name: Build shell installers
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/native-build.yml'
+      - 'scripts/*shell*.mjs'
+      - 'scripts/prepare-release.mjs'
+      - 'scripts/collect-release.mjs'
+      - 'scripts/publish-release.mjs'
+      - 'scripts/android-signing.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: magnat-production-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: [self-hosted, magnat-ssd, macOS]
+    timeout-minutes: 10
+    env:
+      MAGNAT_SERVER_URL: ${{ vars.MAGNAT_SERVER_URL }}
+      RELEASES_BUILD_TOKEN: ${{ secrets.RELEASES_BUILD_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: node scripts/release-storage.mjs
+      - run: node scripts/fetch-release-plan.mjs
+      - run: node scripts/stage-release.mjs save
+  windows:
+    needs: prepare
+    uses: ./.github/workflows/native-build.yml
+    with:
+      platform: windows
+      runner_os: Windows
+    secrets: inherit
+  macos:
+    needs: windows
+    uses: ./.github/workflows/native-build.yml
+    with:
+      platform: macos
+      runner_os: macOS
+    secrets: inherit
+  android:
+    needs: macos
+    uses: ./.github/workflows/native-build.yml
+    with:
+      platform: android
+      runner_os: macOS
+    secrets: inherit
+  ios:
+    needs: android
+    uses: ./.github/workflows/native-build.yml
+    with:
+      platform: ios
+      runner_os: macOS
+    secrets: inherit
+  publish:
+    needs: ios
+    runs-on: [self-hosted, magnat-ssd, macOS]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: node scripts/stage-release.mjs load
+      - run: node scripts/publish-release.mjs
