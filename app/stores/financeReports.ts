@@ -39,10 +39,7 @@ export const useFinanceReportsStore = defineStore('finance-reports', () => {
       if(!data.session)throw new Error('Войдите в аккаунт')
       const pdf=await backendFetch<Blob, 'blob'>(`/api/finance-reports/${report.id}`,{responseType:'blob',headers:{Authorization:`Bearer ${data.session.access_token}`}})
       if(attempt!==generation)return false
-      const url=URL.createObjectURL(pdf),link=document.createElement('a')
-      link.href=url;link.download=report.filename;document.body.appendChild(link);link.click();link.remove()
-      window.setTimeout(()=>URL.revokeObjectURL(url),10000)
-      return true
+      return await saveFile(pdf, report.filename)
     }catch(failure){if(attempt===generation)error.value=message(failure);return false}
     finally{if(attempt===generation)downloadingIds.value=downloadingIds.value.filter(id=>id!==report.id)}
   }

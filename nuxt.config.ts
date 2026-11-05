@@ -36,7 +36,7 @@ export default defineNuxtConfig({
   },
   runtimeConfig: { releasesDirectory: '', releasesBuildToken: '', sharedVaultKey: '', supabaseUrl: 'http://localhost:8003', supabaseServiceRoleKey: '', public: { webBuildId, backendOrigin: native ? process.env.MAGNAT_SERVER_URL || 'http://localhost:3003' : '', supabaseUrl: '/supabase', supabaseAnonKey: '' } },
   security: {
-    headers: { contentSecurityPolicy: { 'upgrade-insecure-requests': false, 'connect-src': ["'self'"], 'img-src': ["'self'", 'data:', 'blob:'], 'frame-ancestors': ["'none'"] }, strictTransportSecurity: false, crossOriginOpenerPolicy: false, originAgentCluster: false },
+    headers: { contentSecurityPolicy: { 'upgrade-insecure-requests': false, 'connect-src': ["'self'", 'ipc:', 'http://ipc.localhost'], 'img-src': ["'self'", 'data:', 'blob:'], 'frame-ancestors': ["'none'"] }, strictTransportSecurity: false, crossOriginOpenerPolicy: false, originAgentCluster: false },
     rateLimiter: { tokensPerInterval: 300, interval: 300000, driver: { name: 'lruCache' } }
   },
   content: { experimental: { sqliteConnector: 'native' } },

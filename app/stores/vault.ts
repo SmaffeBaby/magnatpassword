@@ -44,8 +44,7 @@ export const useVaultStore = defineStore('vault', () => {
   async function exportEncrypted() {
     try {
       const result = await sharedRequest('/api/personal-vault/backup')
-      const url = URL.createObjectURL(new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' }))
-      const a = document.createElement('a'); a.href = url; a.download = `magnat-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(url)
+      await saveFile(new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' }), `magnat-backup-${new Date().toISOString().slice(0, 10)}.json`)
     } catch (e) { error.value = message(e) }
   }
   return { getRevision:()=>revision, data, unlocked, exists, checking, busy, error, migrationRequired, check, unlock, save, lock, exportEncrypted }

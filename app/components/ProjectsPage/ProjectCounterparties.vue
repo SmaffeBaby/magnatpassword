@@ -33,8 +33,7 @@ async function download(format: 'xlsx' | 'pdf') {
     if (!data.session || data.session.user.id !== userId) throw Error('Войдите в аккаунт')
     const blob = await backendFetch<Blob, 'blob'>(`/api/projects/${props.project.id}/estimate-export`, { method: 'POST', retry: 0, responseType: 'blob', headers: { Authorization: `Bearer ${data.session.access_token}` }, body: { target: 'counterparties', companyKind: props.ownOnly ? 'legal-entities' : 'counterparties', format, view: { hiddenRows: [], hiddenColumns: [] } } })
     if (auth.user?.id !== userId) return
-    const url = URL.createObjectURL(blob), link = document.createElement('a')
-    link.href = url; link.download = `${props.ownOnly ? 'Наши юр. лица' : 'Контрагенты'} — ${props.project.name.replace(/[\\/:*?"<>|]/g, '-')}.${format}`; document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 10000)
+    await saveFile(blob, `${props.ownOnly ? 'Наши юр. лица' : 'Контрагенты'} — ${props.project.name.replace(/[\\/:*?"<>|]/g, '-')}.${format}`)
   } catch (failure: any) {
     if (failure?.data instanceof Blob) { try { exportError.value = JSON.parse(await failure.data.text()).message } catch { exportError.value = 'Не удалось скачать файл' } }
     else exportError.value = failure?.data?.message || failure.message

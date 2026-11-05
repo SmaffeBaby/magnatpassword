@@ -46,7 +46,7 @@ else {
   const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${server.origin}; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ${server.origin}; object-src 'none'; base-uri 'self'`
   const config = resolve('.local/tauri.android-device.json')
   const shell = shellConfig(server.origin, JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8')).version)
-  writeFileSync(config, JSON.stringify({ ...shell, app: { ...shell.app, security: { csp } } }, null, 2))
+  writeFileSync(config, JSON.stringify({ ...shell, app: { ...shell.app, security: { ...shell.app.security, csp } } }, null, 2))
   const xmlDir = 'src-tauri/gen/android/app/src/debug/res/xml'
   mkdirSync(xmlDir, { recursive: true })
   writeFileSync(`${xmlDir}/network_security_config.xml`, `<?xml version="1.0" encoding="utf-8"?>\n<network-security-config>\n  <base-config cleartextTrafficPermitted="false"/>\n${server.protocol === 'http:' ? `  <domain-config cleartextTrafficPermitted="true"><domain includeSubdomains="false">${server.hostname}</domain></domain-config>\n` : ''}</network-security-config>\n`)

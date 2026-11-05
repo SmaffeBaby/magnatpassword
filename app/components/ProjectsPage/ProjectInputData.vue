@@ -41,8 +41,7 @@ async function remove(attachmentId?:string){
 async function download(file:InputAttachment,show=false){
  if(loadingFile.value)return;const user=auth.user?.id;loadingFile.value=file.id;error.value=''
  try{const blob=await sharedRequest<Blob>(`${base.value}/file?file=${file.id}`);if(auth.user?.id!==user)return
- const url=URL.createObjectURL(new Blob([blob],{type:show&&image(file)?file.type:'application/octet-stream'}))
- if(show&&image(file)){clearPreview();preview.value=url;previewName.value=file.name}else{const a=document.createElement('a');a.href=url;a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}}
+ if(show&&image(file)){clearPreview();preview.value=URL.createObjectURL(new Blob([blob],{type:file.type}));previewName.value=file.name}else{await saveFile(blob,file.name)}}
  catch(e:any){if(auth.user?.id===user)error.value=e?.data?.message||'Не удалось открыть файл'}finally{loadingFile.value=''}
 }
 function clearPreview(){if(preview.value)URL.revokeObjectURL(preview.value);preview.value=''}

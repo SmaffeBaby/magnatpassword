@@ -19,11 +19,34 @@
         "fullscreen": false,
         "minWidth": 360,
         "minHeight": 600,
-        "url": "http://192.168.10.162:3003/?native=1"
+        "url": "http://192.168.10.162:3003/?native=1",
+        "label": "main"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://localhost:3003; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://localhost:3003; object-src 'none'; base-uri 'self'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://localhost:3003; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://localhost:3003; object-src 'none'; base-uri 'self'",
+      "capabilities": [
+        "default",
+        {
+          "identifier": "native-actions",
+          "windows": [
+            "main"
+          ],
+          "remote": {
+            "urls": [
+              "http://192.168.10.162:3003/*",
+              "http://localhost:3004/*"
+            ]
+          },
+          "permissions": [
+            "allow-open-external",
+            "allow-save-download",
+            "allow-notification-permission",
+            "allow-set-unread-count",
+            "allow-show-unread-notification"
+          ]
+        }
+      ]
     }
   },
   "bundle": {

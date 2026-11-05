@@ -19,7 +19,7 @@ const shell = shellConfig(server.origin, JSON.parse(readFileSync('src-tauri/taur
 const config = resolve('.local/tauri.macos-server.json')
 writeFileSync(config, JSON.stringify({
   ...shell,
-  app: { ...shell.app, security: { csp } },
+  app: { ...shell.app, security: { ...shell.app.security, csp } },
   bundle: { macOS: { infoPlist: '../.local/Info.macos-server.plist' } }
 }, null, 2))
 const result = spawnSync(process.execPath, [

@@ -5,7 +5,10 @@ export function shellConfig(origin, version) {
   return {
     version,
     build: { frontendDist: `${url.origin}/?native=1`, beforeBuildCommand: '' },
-    app: { windows: [{ label: 'main', title: 'Magnat', url: `${url.origin}/?native=1`, width: 1280, height: 850, minWidth: 360, minHeight: 600, resizable: true }] },
+    app: {
+      windows: [{ label: 'main', title: 'Magnat', url: `${url.origin}/?native=1`, width: 1280, height: 850, minWidth: 360, minHeight: 600, resizable: true }],
+      security: { capabilities: ['default', { identifier: 'native-actions', windows: ['main'], remote: { urls: [`${url.origin}/*`] }, permissions: ['allow-open-external', 'allow-save-download', 'allow-notification-permission', 'allow-set-unread-count', 'allow-show-unread-notification'] }] }
+    },
     bundle: { createUpdaterArtifacts: false }
   }
 }

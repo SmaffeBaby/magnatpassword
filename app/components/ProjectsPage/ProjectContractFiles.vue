@@ -45,7 +45,7 @@ async function download(file: ContractFile) {
   try {
     const blob = await sharedRequest<Blob>(`${base(props.contractId)}/${file.id}`)
     if (auth.user?.id !== userId) return
-    const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 10000)
+    await saveFile(blob, file.name)
   } catch (failure: any) { error.value = failure?.data?.message || 'Не удалось скачать файл' }
   finally { busy.value = false }
 }

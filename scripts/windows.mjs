@@ -17,7 +17,7 @@ const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inl
 writeFileSync(config, JSON.stringify({
   ...shell,
   ...(process.env.MAGNAT_WINDOWS_PREBUILT === '1' ? { build: { beforeBuildCommand: '' } } : {}),
-  app: { ...shell.app, security: { csp } }
+  app: { ...shell.app, security: { ...shell.app.security, csp } }
 }, null, 2))
 const result = spawnSync(process.execPath, [
   'node_modules/@tauri-apps/cli/tauri.js', 'build', '--target', 'x86_64-pc-windows-msvc',
