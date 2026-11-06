@@ -1,0 +1,31 @@
+name: Deploy main to Magnat server
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: magnat-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'SmaffeBaby/magnatpassword' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Linux, X64, magnat-production]
+    timeout-minutes: 30
+    steps:
+      # No checkout or repository commands run under the runner's account.
+      # The protected receiver independently fetches and verifies origin/main.
+      - name: Deploy verified main commit
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: sudo -n /usr/local/sbin/magnat-deploy "$DEPLOY_SHA"
+      - name: Deployment summary
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          printf '## Magnat deployment\n\nCommit: `%s`\n\nSite: https://192.168.10.250\n' "$DEPLOY_SHA" >> "$GITHUB_STEP_SUMMARY"
