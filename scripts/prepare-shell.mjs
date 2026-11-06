@@ -1,6 +1,7 @@
 import { loadEnvFile } from 'node:process'
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { shellConfig } from './shell-config.mjs'
+import { writeAndroidNetworkSecurity } from './android-network.mjs'
 try { loadEnvFile('.env') } catch (error) { if (error.code !== 'ENOENT') throw error }
 const platform = process.argv[2] || process.env.RELEASE_PLATFORM
 const base = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'))
@@ -18,8 +19,6 @@ if (platform === 'ios' || platform === 'macos') {
   }
 }
 if (platform === 'android') {
-  const dir = 'src-tauri/gen/android/app/src/main/res/xml'
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(`${dir}/network_security_config.xml`, `<?xml version="1.0" encoding="utf-8"?>\n<network-security-config><base-config cleartextTrafficPermitted="false"/>${server.protocol === 'http:' ? `<domain-config cleartextTrafficPermitted="true"><domain includeSubdomains="false">${xml(server.hostname)}</domain></domain-config>` : ''}</network-security-config>\n`)
+  writeAndroidNetworkSecurity(server, 'src-tauri/gen/android/app/src/main/res/xml')
 }
 writeFileSync(`.local/tauri.shell.${platform}.json`, JSON.stringify(config, null, 2))

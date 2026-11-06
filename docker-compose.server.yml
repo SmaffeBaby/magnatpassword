@@ -1,0 +1,22 @@
+# Windows Server hosts a Linux Hyper-V VM. Keep application data inside its VHDX on E:.
+# Use: docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
+services:
+  app:
+    ports: !override
+      - '127.0.0.1:3003:3000'
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - '172.29.250.2:80:80'
+      - '172.29.250.2:443:443'
+    volumes:
+      - ./deploy/windows-server/Caddyfile:/etc/caddy/Caddyfile:ro
+      - magnat-tls-data:/data
+      - magnat-tls-config:/config
+volumes:
+  magnat-tls-data:
+  magnat-tls-config:

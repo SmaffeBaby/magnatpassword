@@ -14,10 +14,10 @@ services:
       PGHOST: db
       PGUSER: postgres
       PGDATABASE: postgres
-    entrypoint: ['/bin/sh', '-c']
-    command: ['export PGPASSWORD="$$POSTGRES_PASSWORD"; for migration in /migrations/*.sql; do psql -v ON_ERROR_STOP=1 -f "$$migration" || exit 1; done']
+    entrypoint: ['/bin/sh', '/migration-runner.sh']
     volumes:
       - ./supabase/migrations:/migrations:ro
+      - ./supabase/migrate.sh:/migration-runner.sh:ro
     depends_on:
       db:
         condition: service_healthy

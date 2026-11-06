@@ -1,0 +1,21 @@
+{
+	default_sni 192.168.10.250
+}
+
+https://192.168.10.250 {
+	tls internal
+	encode zstd gzip
+	reverse_proxy app:3000
+}
+
+# Only the public root certificate is served here. Private keys stay in /data.
+http://192.168.10.250 {
+	handle /magnat-root.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		file_server
+	}
+	handle {
+		redir https://192.168.10.250{uri} permanent
+	}
+}

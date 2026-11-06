@@ -1,2 +1,2 @@
 <?xml version="1.0" encoding="utf-8"?>
-<network-security-config><base-config cleartextTrafficPermitted="false"/><domain-config cleartextTrafficPermitted="true"><domain includeSubdomains="false">192.168.10.162</domain></domain-config></network-security-config>
+<network-security-config><base-config cleartextTrafficPermitted="false"/><domain-config cleartextTrafficPermitted="false"><domain includeSubdomains="false">192.168.10.250</domain><trust-anchors><certificates src="system"/><certificates src="@raw/magnat_server_ca"/></trust-anchors></domain-config></network-security-config>

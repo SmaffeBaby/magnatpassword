@@ -28,7 +28,7 @@ pub async fn set_unread_count(app: AppHandle, count: u32) -> Result<(), String> 
         }
     }).map_err(|_| "Не удалось обновить значок уведомлений.".to_string());
     #[cfg(not(any(target_os = "windows", target_os = "android", target_os = "ios")))]
-    return window.set_badge_count(Some(i64::from(count))).map_err(|_| "Не удалось обновить значок уведомлений.".into());
+    return window.set_badge_count(if count == 0 { None } else { Some(i64::from(count)) }).map_err(|_| "Не удалось обновить значок уведомлений.".into());
     #[cfg(target_os = "android")]
     { let _ = window; Ok(()) }
 }

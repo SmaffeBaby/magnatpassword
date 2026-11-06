@@ -4,6 +4,8 @@ node_modules
 .output
 .git
 .idea
+.DS_Store
+**/._*
 .env
 .env.*
 supabase

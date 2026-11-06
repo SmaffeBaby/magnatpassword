@@ -15,8 +15,10 @@ supabase/volumes/snippets/
 backups/
 .idea/
 .DS_Store
+**/._*
 
 artifacts/
+releases/
 
 .local/
 
@@ -36,7 +38,12 @@ src-tauri/gen/android/app/src/main/assets
 src-tauri/gen/android/app/src/main/jniLibs
 src-tauri/gen/android/buildSrc/.kotlin
 src-tauri/gen/android/app/src/debug/res/xml/network_security_config.xml
+src-tauri/gen/android/app/src/debug/res/raw/magnat_server_ca.crt
 
 src-tauri/gen/android/keystore.properties
 *.jks
 *.keystore
+*.key
+*.p12
+*.pfx
+*.mobileprovision
