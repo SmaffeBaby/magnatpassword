@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { H3Event } from 'h3'
 import type { KabanTaskData, KabanFile } from '../../shared/types/kaban'
 import { validDate } from '../../shared/utils/subscriptions'
+import { kabanCanEditPlanning, kabanPlanningChanged } from '../../shared/utils/kaban'
 import { openSharedVault, sealSharedVault } from './shared-crypto'
 
 export const kabanDataSchema = z.object({ title: z.string().trim().min(1).max(200), description: z.string().max(20000), dueOn: z.string().refine(value => !value || validDate(value)), todos: z.array(z.object({ id: z.uuid(), text: z.string().trim().min(1).max(500), done: z.boolean() }).strict()).max(100).refine(items => new Set(items.map(item => item.id)).size === items.length) }).strict()
@@ -14,7 +15,7 @@ export function kabanFailure(error: { message: string }) {
   if (text.includes('REVISION_CONFLICT')) throw createError({ statusCode: 409, message: 'Данные изменились. Обновите доску и повторите действие.' })
   if (text.includes('KABAN_NOT_FOUND')) throw createError({ statusCode: 404, message: 'Задача или доска не найдена.' })
   if (text.includes('STAGE_IN_USE')) throw createError({ statusCode: 400, message: 'Сначала перенесите задачи из удаляемой стадии.' })
-  if (text.includes('INVALID_PARTICIPANT')) throw createError({ statusCode: 400, message: 'Участники должны иметь доступ к хранилищу и категориям задачи.' })
+  if (text.includes('INVALID_PARTICIPANT')) throw createError({ statusCode: 400, message: 'Ответственные должны иметь доступ к хранилищу и категориям задачи.' })
   if (text.includes('INVALID_CATEGORY')) throw createError({ statusCode: 400, message: 'Выберите открытую категорию Кабана. Проверьте вложенность подкатегорий.' })
   if (text.includes('CATEGORY_ARCHIVED')) throw createError({ statusCode: 400, message: 'Сначала восстановите родительскую категорию.' })
   if (text.includes('INVALID_STAGE')) throw createError({ statusCode: 400, message: 'Стадия больше не существует. Обновите доску.' })
@@ -29,6 +30,22 @@ export async function writeKabanTask(event: H3Event, id: string, create = false)
   const body = await sharedBody(event, schema)
   const permission = await context.client.rpc('kaban_check', { p_actor: context.user.id, p_board: body.boardId, p_write: true })
   if (permission.error) kabanFailure(permission.error)
+  if (!create) {
+    const current = await context.client.from('kaban_tasks').select('id,creator_id,participant_ids,category_ids,revision,encrypted_data').eq('id', id).eq('board_id', body.boardId).maybeSingle()
+    if (current.error) kabanFailure(current.error)
+    if (!current.data) kabanFailure({ message: 'KABAN_NOT_FOUND' })
+    const row = current.data!
+    const visible = await context.client.rpc('kaban_task_visible', { p_board: body.boardId, p_ids: row.category_ids, p_categories: permission.data.categoryIds })
+    if (visible.error) kabanFailure(visible.error)
+    if (!visible.data) kabanFailure({ message: 'ACCESS_DENIED' })
+    if (row.revision !== body.revision) kabanFailure({ message: 'REVISION_CONFLICT' })
+    if (!kabanCanEditPlanning(context.user.id, { creatorId: row.creator_id })) {
+      if (kabanPlanningChanged({ dueOn: readKabanTaskData(event, row).dueOn, participantIds: row.participant_ids }, { dueOn: body.data.dueOn, participantIds: body.participantIds })) {
+        throw createError({ statusCode: 403, message: 'Только создатель задачи может менять срок и ответственных.' })
+      }
+    }
+    // The mutation checks this same revision under a row lock, so concurrent edits cannot bypass this comparison.
+  }
   const { error } = await context.client.rpc('kaban_task_mutate', { p_actor: context.user.id, p_board: body.boardId, p_id: id, p_revision: body.revision, p_payload: { stageId: body.stageId, participantIds: [...new Set(body.participantIds)], categoryIds: [...new Set(body.categoryIds)], encryptedData: sealSharedVault(body.data, sharedSecret(event), `kaban-task:${id}`, 1) } })
   if (error) kabanFailure(error)
   return { id }
