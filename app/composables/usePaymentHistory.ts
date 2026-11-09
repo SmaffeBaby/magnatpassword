@@ -1,6 +1,6 @@
 import type { VaultSource } from '~~/shared/types/sharing'
 import type { SubscriptionPayment } from '~~/shared/types/subscriptions'
-import { sourcePayments, currencyTotals, amountLabel, paymentRollback } from '~~/shared/utils/subscription-finances'
+import { sourcePayments, currencyTotals, amountLabel, paymentRollback, syncPaymentPeriod } from '~~/shared/utils/subscription-finances'
 import { sourceEntries } from '~~/shared/utils/vault-sources'
 import { validDate, todayDate, dateLabel, addPeriod } from '~~/shared/utils/subscriptions'
 import { createId } from '~/utils/browser'
@@ -76,7 +76,13 @@ export function usePaymentHistory(props: { sources: VaultSource[]; subscriptionK
     next.entries = next.entries.filter(entry => !entry.sharedCardId)
     next.subscriptionPayments = (next.subscriptionPayments ?? []).filter(item => !item.sharedCardId)
     const index = next.subscriptionPayments.findIndex(item => item.id === (payment?.id ?? paymentId))
-    if (payment) { if (index >= 0) next.subscriptionPayments[index] = payment; else next.subscriptionPayments.push(payment) }
+    if (payment) {
+      if (index >= 0) {
+        const entry = next.entries.find(entry => entry.id === payment.entryId)
+        if (entry && syncPaymentPeriod(entry, next.subscriptionPayments, next.subscriptionPayments[index]!, payment)) entry.updatedAt = new Date().toISOString()
+        next.subscriptionPayments[index] = payment
+      } else next.subscriptionPayments.push(payment)
+    }
     else if (index >= 0) {
       if (undoRenewal.value) {
         const removed = next.subscriptionPayments[index]!
@@ -98,7 +104,7 @@ export function usePaymentHistory(props: { sources: VaultSource[]; subscriptionK
     const payment = draft.value
     if (!payment || !draftSubscription.value || !payment.entryId || !validDate(paidOn.value) || !validDate(payment.periodFrom) || !validDate(payment.periodUntil) || payment.periodUntil <= payment.periodFrom || !Number.isFinite(payment.amount) || payment.amount < 0 || payment.amount > 1_000_000_000) { error.value = 'Проверьте подписку, сумму, дату оплаты и оплаченный период.'; return }
     payment.paidAt = paidOn.value === originalPaidOn ? originalPaidAt : new Date(paidOn.value + 'T12:00:00+03:00').toISOString()
-    if (await persist(draftSubscription.value, { ...payment })) editorOpen.value = false
+    if (await persist(draftSubscription.value, { ...payment })) { editorOpen.value = false; await useNotificationsStore().refresh() }
   }
   function askDelete(payment: ReturnType<typeof sourcePayments>[number]) { error.value = ''; deleting.value = payment; undoRenewal.value = !!rollback.value; deleteOpen.value = true }
   async function remove() {

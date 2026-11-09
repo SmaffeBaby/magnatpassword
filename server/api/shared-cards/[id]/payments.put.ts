@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { paymentRollback } from '../../../../shared/utils/subscription-finances'
+import { paymentRollback, syncPaymentPeriod } from '../../../../shared/utils/subscription-finances'
 export default defineEventHandler(async event => {
   const context = await requireCard(event, true)
   const body = await sharedBody(event, z.discriminatedUnion('action', [
@@ -15,7 +15,10 @@ export default defineEventHandler(async event => {
     const field = (context.card.entry.financeSubscription?.id === payment.fieldId ? context.card.entry.financeSubscription : context.card.entry.customFields?.find(field => field.id === payment.fieldId && field.type === 'subscription'))
     if (index < 0 && !field) throw createError({ statusCode: 404, message: 'Подписка не найдена' })
     if (index >= 0 && payments[index]!.fieldId !== payment.fieldId) throw createError({ statusCode: 400, message: 'Нельзя перенести оплату в другую подписку' })
-    if (index >= 0) payments[index] = payment
+    if (index >= 0) {
+      if (!context.card.archived && syncPaymentPeriod(entry, payments, payments[index]!, payment)) entry.updatedAt = new Date().toISOString()
+      payments[index] = payment
+    }
     else payments.push(payment)
     if (payments.length > 20000) throw createError({ statusCode: 400, message: 'Достигнут предел записей истории' })
   } else {

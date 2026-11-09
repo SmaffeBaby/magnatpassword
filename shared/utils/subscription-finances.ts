@@ -51,6 +51,20 @@ export function paymentRollback(entry: import('../types/vault').Credential, paym
  return { sub, paidFrom: previous?.periodFrom ?? sub.startsOn, paidUntil: payment.periodFrom }
 }
 
+// A correction to the payment for the current period must move the subscription
+// deadline with it. Older history and independently changed deadlines stay intact.
+export function syncPaymentPeriod(entry: import('../types/vault').Credential, payments: SubscriptionPayment[], previous: SubscriptionPayment, payment: SubscriptionPayment) {
+ if (entry.id !== previous.entryId || payment.entryId !== previous.entryId || payment.fieldId !== previous.fieldId || payment.id !== previous.id) return false
+ const field = entry.financeSubscription?.id === previous.fieldId ? entry.financeSubscription : entry.customFields?.find(field => field.id === previous.fieldId)
+ const sub = field?.subscription
+ if (!sub || (sub.paidFrom ?? sub.startsOn) !== previous.periodFrom || sub.paidUntil <= previous.periodFrom || sub.paidUntil > previous.periodUntil) return false
+ if (payments.some(item => item.id !== previous.id && item.entryId === previous.entryId && item.fieldId === previous.fieldId && item.periodUntil >= previous.periodUntil)) return false
+ if (payment.periodFrom < sub.startsOn || payment.periodUntil <= payment.periodFrom) return false
+ const changed = sub.paidFrom !== payment.periodFrom || sub.paidUntil !== payment.periodUntil
+ sub.paidFrom = payment.periodFrom; sub.paidUntil = payment.periodUntil
+ return changed
+}
+
 export function paymentMatchesRow(payment: ReturnType<typeof sourcePayments>[number], row: SubscriptionRow) {
  return payment.fieldId === row.field.id && payment.entryId === row.entry.id && (payment.sharedCardId ? payment.sharedCardId === row.entry.sharedCardId : !row.entry.sharedCardId && (row.entry.vaultIds ?? [row.entry.vaultId]).includes(payment.vaultId))
 }
