@@ -40,6 +40,7 @@ export function useSubscriptionCalendar(props:{entries:ScopedCredential[];source
  const cells=computed(()=>{const weekday=(new Date(month.value+'T12:00:00Z').getUTCDay()+6)%7;return Array.from({length:42},(_,i)=>{const date=addPeriod(month.value,i-weekday,'day'),events=charges.value.filter(event=>event.date===date);return {date,day:Number(date.slice(-2)),outside:date.slice(0,7)!==month.value.slice(0,7),events,totals:currencyTotals(events.filter(event=>!event.paid).map(event=>({amount:event.amount,currency:event.currency})))}})})
  const selectedRows=computed(()=>charges.value.filter(event=>event.date===selected.value))
  const monthTotals=computed(()=>currencyTotals(charges.value.filter(event=>event.charge&&!event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
+ const monthRenewalTotals=computed(()=>currencyTotals(charges.value.filter(event=>!event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
  const selectedTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>event.charge&&!event.paid)))
  const monthPaidTotals=computed(()=>currencyTotals(charges.value.filter(event=>event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
  const selectedEndingTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>!event.charge&&!event.paid)))
@@ -47,5 +48,5 @@ export function useSubscriptionCalendar(props:{entries:ScopedCredential[];source
  function move(delta:number){const next=addPeriod(month.value,delta,'month');if(next)month.value=next}
  function goToday(){month.value=common.today.value.slice(0,7)+'-01';selected.value=common.today.value}
  watch(month,value=>{selected.value=value})
- return {...common,month,selected,monthTitle,cells,selectedRows,move,goToday,selectedMonth,selectedYear,monthOptions,monthTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,selectedEndingTotals,amountLabel}
+ return {...common,month,selected,monthTitle,cells,selectedRows,move,goToday,selectedMonth,selectedYear,monthOptions,monthTotals,monthRenewalTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,selectedEndingTotals,amountLabel}
 }
