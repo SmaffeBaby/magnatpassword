@@ -5,7 +5,8 @@ export const homeApps = {
   finances: { label: 'Финансы', actionLabel: 'Финансы', icon: 'i-lucide-chart-no-axes-combined' },
   relationships: { label: 'Взаимосвязи', actionLabel: 'Взаимосвязи', icon: 'i-lucide-network' },
   projects: { label: 'Проекты', actionLabel: 'Проекты', icon: 'i-lucide-folder-kanban' },
-  team: { label: 'Команда', actionLabel: 'Команду', icon: 'i-lucide-users-round' }
+  team: { label: 'Команда', actionLabel: 'Команду', icon: 'i-lucide-users-round' },
+  kaban: { label: 'Кабан', actionLabel: 'Кабан', icon: 'i-lucide-columns-3' }
 } satisfies Record<HomeAppId, { label: string; actionLabel: string; icon: string }>
 
 export const defaultHomeLayout = (): HomeLayout => ({ version: 1, rows: [{ align: 'center', cards: [...HOME_APP_IDS] }], hidden: [] })

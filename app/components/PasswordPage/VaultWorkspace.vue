@@ -18,6 +18,7 @@ import SubscriptionUpcoming from './SubscriptionUpcoming.vue'
 import VaultSwitcher from './VaultSwitcher.vue'
 import PersonAvatar from '../PersonAvatar.vue'
 import { useScrollTopbar } from '../../composables/useScrollTopbar'
+import WorkspaceSidebar from '../WorkspaceSidebar.vue'
 import { useVaultWorkspace } from '../../composables/useVaultWorkspace'
 const LazyRelationshipExplorer = defineAsyncComponent(() => import('./RelationshipExplorer.vue'))
 const LazySubscriptionFinances = defineAsyncComponent(() => import('./SubscriptionFinances.vue'))
@@ -159,10 +160,7 @@ function removeImage(id: string) { form.images = form.images?.filter(image => im
 </script>
 <template>
   <div :class="['vault-shell', { embedded }]">
-    <aside v-if="!embedded" :class="['vault-sidebar', { 'is-open': mobileOpen }]">
-      <BrandLogo />
-      <VaultSwitcher v-model="workspaceId" />
-      <p class="sidebar-label">{{ relationshipWorkspace ? 'ВЗАИМОСВЯЗИ' : financeWorkspace ? 'ФИНАНСЫ' : 'ХРАНИЛИЩЕ' }}</p>
+    <WorkspaceSidebar v-if="!embedded" v-model:vault-id="workspaceId" :open="mobileOpen" :section="relationshipWorkspace ? 'ВЗАИМОСВЯЗИ' : financeWorkspace ? 'ФИНАНСЫ' : 'ХРАНИЛИЩЕ'">
       <nav class="vault-nav" aria-label="Хранилище">
         <template v-if="!financeWorkspace && !relationshipWorkspace">
         <button :class="{ selected: active === 'all' }" @click="select('all')"><UIcon name="i-lucide-layout-grid" />Все пароли<span class="nav-count">{{ entries.length }}</span></button>
@@ -183,8 +181,7 @@ function removeImage(id: string) { form.images = form.images?.filter(image => im
       <button v-if="workspaceId==='all'||canManageCategoryVault(workspaceId)" class="add-category" @click="editCategory()"><UIcon name="i-lucide-plus" />Новая категория</button>
       </template>
 
-      <div class="sidebar-bottom"><div class="sidebar-user"><NuxtLink to="/profile" class="sidebar-profile"><PersonAvatar :name="team.me?.person.fullName||auth.user?.email||'Профиль'" :src="team.me?.person.avatarUrl"/><span><strong>{{ team.me?.person.fullName||'Мой профиль' }}</strong><small>{{ auth.user?.email }}</small></span></NuxtLink><button title="Выйти" aria-label="Выйти" @click="auth.logout()"><UIcon name="i-lucide-log-out"/></button></div></div>
-    </aside>
+    </WorkspaceSidebar>
     <button v-if="mobileOpen" class="sidebar-scrim" aria-label="Закрыть меню" @click="mobileOpen = false" />
     <main class="vault-main">
       <header v-if="!embedded" class="vault-topbar password-topbar" :class="{ 'is-hidden': topbarHidden && !mobileOpen }"><PasswordHeader :workspace-name="workspaceName" :title="title" @toggle-menu="mobileOpen = !mobileOpen" @open-entry="openNotification" /></header>

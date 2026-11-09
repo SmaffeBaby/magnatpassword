@@ -12,7 +12,7 @@ export default defineNuxtConfig({
   srcDir: 'app/', serverDir: 'server/',
   devtools: { enabled: false },
   app: { head: { title: 'Magnat', htmlAttrs: { lang: 'ru' }, link: [{ key: 'brand-favicon', rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }], meta: [{ name: 'description', content: 'Личное зашифрованное хранилище паролей' }, { name: 'robots', content: 'noindex, nofollow' }] } },
-  css: ['~/assets/css/main.css', '~/assets/css/native.css'],
+  css: ['~/assets/css/main.css', '~/assets/css/kaban.css', '~/assets/css/native.css'],
   modules: ['./modules/breakpoints', '@nuxt/ui', ...(!native ? ['nuxt-security', '@nuxt/content'] : []), '@pinia/nuxt', '@nuxtjs/i18n'],
   experimental: { appManifest: false },
   ui: { fonts: false, colorMode: false },
@@ -30,6 +30,8 @@ export default defineNuxtConfig({
     '/api/profile/avatar': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 2113536, maxUploadFileRequestInBytes: 2113536 } } },
     '/api/projects/*/estimate': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 12582912, maxUploadFileRequestInBytes: 12582912 } } },
     '/team': { ssr:false }, '/team/**': { ssr:false }, '/profile': { ssr:false },
+    '/kaban': { ssr:false },
+    '/api/kaban/tasks/*/files': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
     '/api/auth/brand': { security: { rateLimiter: { tokensPerInterval: 60, interval: 60000 } } },
     '/api/**': { headers: { 'Cache-Control': 'no-store' }, security: { corsHandler: false } },
     '/supabase/**': { headers: { 'Cache-Control': 'no-store' }, security: { corsHandler: false } }
