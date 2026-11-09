@@ -40,6 +40,17 @@ export function paymentForRenewal(row:SubscriptionRow,until:string,id:string,now
  return {id,entryId:row.entry.id,fieldId:row.field.id,service:row.entry.title,label:row.field.label,amount:row.subscription.price,currency:row.subscription.currency,paidAt:now,periodFrom:row.subscription.paidUntil,periodUntil:until}
 }
 
+// Only the payment ending the current period can undo a renewal. Older history
+// must never shorten a subscription that has since been paid again.
+export function paymentRollback(entry: import('../types/vault').Credential, payments: SubscriptionPayment[], payment: SubscriptionPayment) {
+ const field = entry.financeSubscription?.id === payment.fieldId ? entry.financeSubscription : entry.customFields?.find(field => field.id === payment.fieldId)
+ const sub = field?.subscription
+ if (entry.id !== payment.entryId || !sub || sub.paidUntil !== payment.periodUntil || sub.paidFrom !== payment.periodFrom || payment.periodFrom < sub.startsOn) return null
+ if (payments.some(item => item.id !== payment.id && item.entryId === payment.entryId && item.fieldId === payment.fieldId && item.periodUntil > payment.periodFrom)) return null
+ const previous = payments.filter(item => item.id !== payment.id && item.entryId === payment.entryId && item.fieldId === payment.fieldId && item.periodUntil === payment.periodFrom).sort((a,b) => b.periodFrom.localeCompare(a.periodFrom))[0]
+ return { sub, paidFrom: previous?.periodFrom ?? sub.startsOn, paidUntil: payment.periodFrom }
+}
+
 export function paymentMatchesRow(payment: ReturnType<typeof sourcePayments>[number], row: SubscriptionRow) {
  return payment.fieldId === row.field.id && payment.entryId === row.entry.id && (payment.sharedCardId ? payment.sharedCardId === row.entry.sharedCardId : !row.entry.sharedCardId && (row.entry.vaultIds ?? [row.entry.vaultId]).includes(payment.vaultId))
 }

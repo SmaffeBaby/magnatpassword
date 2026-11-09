@@ -1,6 +1,6 @@
 import type { VaultSource } from '~~/shared/types/sharing'
 import type { SubscriptionPayment } from '~~/shared/types/subscriptions'
-import { sourcePayments, currencyTotals, amountLabel } from '~~/shared/utils/subscription-finances'
+import { sourcePayments, currencyTotals, amountLabel, paymentRollback } from '~~/shared/utils/subscription-finances'
 import { sourceEntries } from '~~/shared/utils/vault-sources'
 import { validDate, todayDate, dateLabel, addPeriod } from '~~/shared/utils/subscriptions'
 import { createId } from '~/utils/browser'
@@ -30,6 +30,13 @@ export function usePaymentHistory(props: { sources: VaultSource[]; subscriptionK
   const busy = computed(() => vault.busy || shared.busy || shared.loading)
   const error = ref(''), editorOpen = ref(false), deleteOpen = ref(false)
   const deleting = ref<ReturnType<typeof sourcePayments>[number] | null>(null)
+  const undoRenewal = ref(false)
+  const rollback = computed(() => {
+    const payment = deleting.value
+    if (!payment) return null
+    const entry = payment.sharedCardId ? shared.cards.find(card => card.id === payment.sharedCardId && !card.archived)?.entry : props.sources.find(source => source.id === payment.vaultId)?.data.entries.find(entry => entry.id === payment.entryId)
+    return entry ? paymentRollback(entry, allPayments.value.filter(item => payment.sharedCardId ? item.sharedCardId === payment.sharedCardId : !item.sharedCardId && item.vaultId === payment.vaultId), payment) : null
+  })
   const draft = ref<SubscriptionPayment | null>(null), draftSubscription = ref(''), paidOn = ref('')
   const editing = ref(false)
   let originalPaidAt = '', originalPaidOn = ''
@@ -53,13 +60,13 @@ export function usePaymentHistory(props: { sources: VaultSource[]; subscriptionK
     originalPaidAt = paidAt; originalPaidOn = todayDate(new Date(paidAt)); paidOn.value = originalPaidOn; editorOpen.value = true
   }
   function canManage(payment: ReturnType<typeof sourcePayments>[number]) {
-    return payment.sharedCardId ? shared.cards.some(card => card.id === payment.sharedCardId && !card.archived) : props.sources.some(source => source.id === payment.vaultId)
+    return payment.sharedCardId ? shared.cards.some(card => card.id === payment.sharedCardId && card.canEdit !== false) : payment.vaultId === 'personal' || shared.groups.some(group => group.id === payment.vaultId && group.canEdit !== false)
   }
   async function persist(key: string, payment?: SubscriptionPayment, paymentId?: string) {
     if (busy.value) return false
     if (key.startsWith('shared:')) {
       const id = key.slice(7).split('/')[0]!
-      const ok = payment ? await shared.savePayment(id, payment) : await shared.deletePayment(id, paymentId!)
+      const ok = payment ? await shared.savePayment(id, payment) : await shared.deletePayment(id, paymentId!, undoRenewal.value)
       if (!ok) error.value = shared.error || 'Не удалось сохранить историю. Повторите после загрузки данных.'
       return ok
     }
@@ -70,7 +77,17 @@ export function usePaymentHistory(props: { sources: VaultSource[]; subscriptionK
     next.subscriptionPayments = (next.subscriptionPayments ?? []).filter(item => !item.sharedCardId)
     const index = next.subscriptionPayments.findIndex(item => item.id === (payment?.id ?? paymentId))
     if (payment) { if (index >= 0) next.subscriptionPayments[index] = payment; else next.subscriptionPayments.push(payment) }
-    else if (index >= 0) next.subscriptionPayments.splice(index, 1)
+    else if (index >= 0) {
+      if (undoRenewal.value) {
+        const removed = next.subscriptionPayments[index]!
+        const entry = next.entries.find(entry => entry.id === removed.entryId)
+        const previous = entry && paymentRollback(entry, next.subscriptionPayments, removed)
+        if (!previous) { error.value = 'Срок подписки изменился. Обновите историю и повторите удаление.'; return false }
+        previous.sub.paidFrom = previous.paidFrom; previous.sub.paidUntil = previous.paidUntil
+        entry!.updatedAt = new Date().toISOString()
+      }
+      next.subscriptionPayments.splice(index, 1)
+    }
     if (next.subscriptionPayments.length > 20000) { error.value = 'Достигнут предел записей истории'; return false }
     const ok = source.id === 'personal' ? await vault.save(next) : await shared.save(source.id, next)
     if (!ok) error.value = vault.error || shared.error || 'Не удалось сохранить историю'
@@ -83,12 +100,12 @@ export function usePaymentHistory(props: { sources: VaultSource[]; subscriptionK
     payment.paidAt = paidOn.value === originalPaidOn ? originalPaidAt : new Date(paidOn.value + 'T12:00:00+03:00').toISOString()
     if (await persist(draftSubscription.value, { ...payment })) editorOpen.value = false
   }
-  function askDelete(payment: ReturnType<typeof sourcePayments>[number]) { error.value = ''; deleting.value = payment; deleteOpen.value = true }
+  function askDelete(payment: ReturnType<typeof sourcePayments>[number]) { error.value = ''; deleting.value = payment; undoRenewal.value = !!rollback.value; deleteOpen.value = true }
   async function remove() {
     const payment = deleting.value
     if (!payment) return
     error.value = ''
-    if (await persist(paymentKey(payment), undefined, payment.id)) { deleteOpen.value = false; deleting.value = null }
+    if (await persist(paymentKey(payment), undefined, payment.id)) { deleteOpen.value = false; deleting.value = null; await useNotificationsStore().refresh() }
   }
-  return { ...filters, subscription, from, to, options, addOptions, validRange, payments, totals, busy, error, editorOpen, deleteOpen, deleting, draft, draftSubscription, paidOn, editing, add, edit, canManage, save, askDelete, remove, dateLabel, amountLabel }
+  return { ...filters, subscription, from, to, options, addOptions, validRange, payments, totals, busy, error, editorOpen, deleteOpen, deleting, undoRenewal, rollback, draft, draftSubscription, paidOn, editing, add, edit, canManage, save, askDelete, remove, dateLabel, amountLabel }
 }

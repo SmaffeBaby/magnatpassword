@@ -24,10 +24,10 @@ export async function visibleSharedCards(event:H3Event,context:Awaited<ReturnTyp
   return {canEdit,id:row.id,archived:row.archived,revision:row.revision,ownerId:row.owner_id,vaultIds:permitted,canManageSharing:row.owner_id===context.user.id&&fullAccess,canManageCategories:fullAccess,entry,payments:data.subscriptionPayments??[]}
  }).filter((card):card is NonNullable<typeof card>=>card!==null)
 }
-export async function requireCard(event:H3Event) {
+export async function requireCard(event:H3Event, allowArchived = false) {
  const context=await requireSharedUser(event),id=sharedId(event),access=await loadCategoryAccess(context,event),card=(await visibleSharedCards(event,context,access)).find(card=>card.id===id)
  if(card?.canEdit===false)throw createError({statusCode:403,message:'Доступ только для просмотра'})
- if(!card||card.archived)throw createError({statusCode:403,message:'Нет доступа к карточке'})
+ if(!card||card.archived&&!allowArchived)throw createError({statusCode:403,message:'Нет доступа к карточке'})
  return {...context,id,card,access}
 }
 export function sealCard(event:H3Event,id:string,entry:SharedCard['entry'],payments:SharedCard['payments']){

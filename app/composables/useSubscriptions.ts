@@ -37,14 +37,15 @@ export function useSubscriptionCalendar(props:{entries:ScopedCredential[];source
   const paid=recordedCharges(payments.value,props.entries).filter(event=>event.date>=from&&event.date<=to&&(common.group.value==='all'||event.payment.vaultIds.includes(common.group.value))&&(common.currency.value==='all'||event.currency===common.currency.value)&&`${event.payment.service} ${event.payment.label} ${event.payment.vaultNames.join(' ')}`.toLowerCase().includes(common.search.value.trim().toLowerCase()))
   return [...planned,...paid].sort((a,b)=>a.date.localeCompare(b.date))
  })
- const cells=computed(()=>{const weekday=(new Date(month.value+'T12:00:00Z').getUTCDay()+6)%7;return Array.from({length:42},(_,i)=>{const date=addPeriod(month.value,i-weekday,'day'),events=charges.value.filter(event=>event.date===date);return {date,day:Number(date.slice(-2)),outside:date.slice(0,7)!==month.value.slice(0,7),events,totals:currencyTotals(events.filter(event=>event.charge&&!event.paid).map(event=>({amount:event.amount,currency:event.currency})))}})})
+ const cells=computed(()=>{const weekday=(new Date(month.value+'T12:00:00Z').getUTCDay()+6)%7;return Array.from({length:42},(_,i)=>{const date=addPeriod(month.value,i-weekday,'day'),events=charges.value.filter(event=>event.date===date);return {date,day:Number(date.slice(-2)),outside:date.slice(0,7)!==month.value.slice(0,7),events,totals:currencyTotals(events.filter(event=>!event.paid).map(event=>({amount:event.amount,currency:event.currency})))}})})
  const selectedRows=computed(()=>charges.value.filter(event=>event.date===selected.value))
  const monthTotals=computed(()=>currencyTotals(charges.value.filter(event=>event.charge&&!event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
  const selectedTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>event.charge&&!event.paid)))
  const monthPaidTotals=computed(()=>currencyTotals(charges.value.filter(event=>event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
+ const selectedEndingTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>!event.charge&&!event.paid)))
  const selectedPaidTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>event.paid)))
  function move(delta:number){const next=addPeriod(month.value,delta,'month');if(next)month.value=next}
  function goToday(){month.value=common.today.value.slice(0,7)+'-01';selected.value=common.today.value}
  watch(month,value=>{selected.value=value})
- return {...common,month,selected,monthTitle,cells,selectedRows,move,goToday,selectedMonth,selectedYear,monthOptions,monthTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,amountLabel}
+ return {...common,month,selected,monthTitle,cells,selectedRows,move,goToday,selectedMonth,selectedYear,monthOptions,monthTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,selectedEndingTotals,amountLabel}
 }

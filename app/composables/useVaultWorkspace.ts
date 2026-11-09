@@ -3,7 +3,7 @@ import {projectSharedCards,storedVaultData} from '~~/shared/utils/shared-card-so
 import {credentialAccounts,entryCategoryIds} from '~~/shared/utils/credentials'
 import { paymentForRenewal } from '~~/shared/utils/subscription-finances'
 import { addPeriod, todayDate, validDate, nextPaidUntil, subscriptionRows } from '~~/shared/utils/subscriptions'
-import type { AppNotification } from '~~/shared/types/subscriptions'
+import type { AppNotification, SubscriptionPayment } from '~~/shared/types/subscriptions'
 import type { CustomField } from '~~/shared/types/vault'
 import { cardKey } from '~~/shared/utils/relationships'
 import type { CredentialLink } from '~~/shared/types/vault'
@@ -172,19 +172,43 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string; fi
       subscriptionSettings.editSubscription(field)
     } else delete field.subscription
   }
-  async function renewSubscription(entry: ScopedCredential, fieldId: string) {
-    if(!canEditEntry(entry)){toast.add({title:'Доступ только для просмотра',color:'neutral'});return}
+  const renewalOpen = ref(false), renewalPayment = ref<SubscriptionPayment | null>(null), renewalPaidOn = ref(''), renewalError = ref('')
+  let renewalEntry: ScopedCredential | null = null, renewalRevision = 0, renewalSourceRevision = 0
+  function renewSubscription(entry: ScopedCredential, fieldId: string) {
+    if (!canEditEntry(entry)) { toast.add({title:'Доступ только для просмотра',color:'neutral'}); return }
     if (busy.value) return
-    if(entry.sharedCardId){if(await shared.renewCard(entry.sharedCardId,fieldId))await useNotificationsStore().refresh();return}
-    const next = copyData(entry.vaultId), value = next?.entries.find(e => e.id === entry.id)
-    const sub = (value?.financeSubscription?.id===fieldId?value.financeSubscription:value?.customFields?.find(f => f.id === fieldId))?.subscription
-    if (!next || !value || !sub) return
-    const until = nextPaidUntil(sub)
+    const current = allEntries.value.find(item => entry.sharedCardId ? item.sharedCardId === entry.sharedCardId : item.id === entry.id && item.vaultId === entry.vaultId)
+    const row = current && subscriptionRows([current]).find(row => row.field.id === fieldId)
+    if (!row) return
+    const until = nextPaidUntil(row.subscription)
     if (!until) { toast.add({title:'Не удалось рассчитать срок подписки',color:'error'}); return }
-    const row = subscriptionRows([{...value,vaultId:entry.vaultId,vaultName:entry.vaultName}]).find(row=>row.field.id===fieldId)!
-    ;(next.subscriptionPayments ??= []).push(paymentForRenewal(row,until,createId()))
-    sub.paidFrom = sub.paidUntil; sub.paidUntil = until; value.updatedAt = new Date().toISOString()
-    if (await saveData(entry.vaultId,next)) { toast.add({title:'Оплата отмечена, срок продлён',color:'success'}); await useNotificationsStore().refresh() }
+    renewalEntry = current!
+    renewalRevision = shared.cards.find(card => card.id === entry.sharedCardId)?.revision ?? 0
+    renewalSourceRevision = entry.vaultId === 'personal' ? vault.getRevision() : shared.groups.find(group => group.id === entry.vaultId)?.revision ?? 0
+    renewalPayment.value = paymentForRenewal(row, until, createId())
+    renewalPaidOn.value = todayDate(); renewalError.value = ''; renewalOpen.value = true
+  }
+  async function confirmRenewal() {
+    if (busy.value || !renewalEntry || !renewalPayment.value) return
+    const payment = { ...renewalPayment.value }, entry = renewalEntry
+    renewalError.value = ''
+    if (!validDate(renewalPaidOn.value) || !validDate(payment.periodFrom) || !validDate(payment.periodUntil) || payment.periodUntil <= payment.periodFrom || !Number.isFinite(payment.amount) || payment.amount < 0 || payment.amount > 1e9) { renewalError.value = 'Проверьте сумму, дату оплаты и оплаченный период.'; return }
+    payment.paidAt = new Date(renewalPaidOn.value + 'T12:00:00+03:00').toISOString()
+    let ok = false
+    if (entry.sharedCardId) ok = await shared.renewCard(entry.sharedCardId, payment.fieldId, payment, renewalRevision)
+    else {
+      const revision = entry.vaultId === 'personal' ? vault.getRevision() : shared.groups.find(group => group.id === entry.vaultId)?.revision
+      if (revision !== renewalSourceRevision) { renewalError.value = 'Хранилище изменилось. Закройте окно и повторите оплату.'; return }
+      const next = copyData(entry.vaultId), value = next?.entries.find(item => item.id === entry.id)
+      const sub = (value?.financeSubscription?.id === payment.fieldId ? value.financeSubscription : value?.customFields?.find(field => field.id === payment.fieldId))?.subscription
+      if (!next || !value || !sub || sub.paidUntil !== payment.periodFrom) { renewalError.value = 'Срок подписки изменился. Закройте окно и повторите оплату.'; return }
+      if ((next.subscriptionPayments?.length ?? 0) >= 20000) { renewalError.value = 'Достигнут предел записей истории'; return }
+      ;(next.subscriptionPayments ??= []).push(payment)
+      sub.paidFrom = payment.periodFrom; sub.paidUntil = payment.periodUntil; value.updatedAt = new Date().toISOString()
+      ok = await saveData(entry.vaultId, next)
+    }
+    if (ok) { renewalOpen.value = false; toast.add({title:'Оплата отмечена, срок продлён',color:'success'}); await useNotificationsStore().refresh() }
+    else renewalError.value = error.value || 'Не удалось сохранить оплату.'
   }
   function openNotification(notification: AppNotification) {
     const entry = allEntries.value.find(e => e.id === notification.entryId && e.vaultId === notification.vaultId)
@@ -265,7 +289,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string; fi
     if (categoryOpen.value && categoryVaultId.value !== 'personal' && !source(categoryVaultId.value)) categoryOpen.value = false
   })
   watch(()=>shared.cards,()=>{if(editingCardId.value&&entryOpen.value&&!shared.cards.some(card=>card.id===editingCardId.value&&!card.archived)){entryOpen.value=false;Object.assign(form,blankEntry())}})
-  watch(() => vault.unlocked, value => { if (!value) { relations.open.value=false;finance.open.value=false;historyOpen.value=false;historyKey.value='';viewOpen.value=false;viewKey.value='';entryOpen.value = false; categoryOpen.value = false; deleteOpen.value = false; Object.assign(form, blankEntry()); query.value = ''; deleting.value = null; workspaceId.value = 'all'; Object.assign(categoryForm, { id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1' }) } })
+  watch(() => vault.unlocked, value => { if (!value) { renewalOpen.value=false;renewalPayment.value=null;renewalEntry=null;relations.open.value=false;finance.open.value=false;historyOpen.value=false;historyKey.value='';viewOpen.value=false;viewKey.value='';entryOpen.value = false; categoryOpen.value = false; deleteOpen.value = false; Object.assign(form, blankEntry()); query.value = ''; deleting.value = null; workspaceId.value = 'all'; Object.assign(categoryForm, { id: '', name: '', icon: 'i-lucide-folder', color: '#6366f1' }) } })
   onBeforeUnmount(() => Object.assign(form, blankEntry()))
-  return { relations, finance, canEditEntry, navigationCategories, selectCategory, ...folderSettings, filters, canManageCategoryVault, structureVaultOptions, categoriesEditable, folderOptions, selectedFolder, historyOpen, historyKey, historyMode, openPaymentHistory, sources, subscriptionCards, ...media, targetVaultIds, sharingEditable, setTargetVaults, addAccount, removeAccount, uploadImages, uploadCategorySvg, viewOpen, viewingEntry, viewingCategories, viewingLinks, viewEntry, entryCategories, upcomingMode, financesMode, visibleSources, ...subscriptionSettings, calendarMode, subscriptionCount, changeFieldType, renewSubscription, openNotification, graphMode, allEntries, relationTargets, fieldTypes, sourceFieldOptions, incomingLinks, addCustomField, removeCustomField, addLink, removeLink, linkTarget, setLinkTarget, targetFieldOptions, vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
+  return { renewalOpen, renewalPayment, renewalPaidOn, renewalError, confirmRenewal, relations, finance, canEditEntry, navigationCategories, selectCategory, ...folderSettings, filters, canManageCategoryVault, structureVaultOptions, categoriesEditable, folderOptions, selectedFolder, historyOpen, historyKey, historyMode, openPaymentHistory, sources, subscriptionCards, ...media, targetVaultIds, sharingEditable, setTargetVaults, addAccount, removeAccount, uploadImages, uploadCategorySvg, viewOpen, viewingEntry, viewingCategories, viewingLinks, viewEntry, entryCategories, upcomingMode, financesMode, visibleSources, ...subscriptionSettings, calendarMode, subscriptionCount, changeFieldType, renewSubscription, openNotification, graphMode, allEntries, relationTargets, fieldTypes, sourceFieldOptions, incomingLinks, addCustomField, removeCustomField, addLink, removeLink, linkTarget, setLinkTarget, targetFieldOptions, vault, auth, shared, workspaceId, workspaceName, entries, categories, busy, error, editingVaultId, categoryVaultId, vaultOptions, entryCategory, categoryCount, resetEntryCategory, active, query, sort, mobileOpen, entryOpen, categoryOpen, deleteOpen, showPassword, deleting, deletingCategory, formError, form, categoryForm, colors, icons, categoryOptions, selectedCategory, favorites, category, title, filtered, categoryMode, editEntry, editCategory, select, saveEntry, saveCategory, favorite, askDelete, remove, copy, host, generatePassword, safeUrl, productName }
 }

@@ -63,9 +63,9 @@ export const useSharedVaultsStore = defineStore('shared-vaults', () => {
   async function saveCard(entry:VaultData['entries'][number],vaultIds:string[]|undefined,id?:string,origin?:{vaultId:string;revision:number},expectedRevision?:number):Promise<boolean>{
     return !!await mutate(()=>sharedRequest(id?`/api/shared-cards/${id}`:'/api/shared-cards',{method:id?'PUT':'POST',body:{entry,...(vaultIds?{vaultIds}:{}),...(id?{revision:expectedRevision??cards.value.find(card=>card.id===id)?.revision}:{}),...(origin?{origin}:{})}}))
   }
-  async function renewCard(id:string,fieldId:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}/renew`,{method:'POST',body:{revision:cards.value.find(card=>card.id===id)?.revision,fieldId}}))}
+  async function renewCard(id:string,fieldId:string,payment:SubscriptionPayment,revision:number){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}/renew`,{method:'POST',body:{revision,fieldId,payment}}))}
   async function savePayment(id:string,payment:SubscriptionPayment){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}/payments`,{method:'PUT',body:{action:'save',revision:cards.value.find(card=>card.id===id)?.revision,payment}}))}
-  async function deletePayment(id:string,paymentId:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}/payments`,{method:'PUT',body:{action:'delete',revision:cards.value.find(card=>card.id===id)?.revision,paymentId}}))}
+  async function deletePayment(id:string,paymentId:string,undoRenewal=false){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}/payments`,{method:'PUT',body:{action:'delete',revision:cards.value.find(card=>card.id===id)?.revision,paymentId,undoRenewal}}))}
   async function deleteCard(id:string){return !!await mutate(()=>sharedRequest(`/api/shared-cards/${id}`,{method:'DELETE',body:{revision:cards.value.find(card=>card.id===id)?.revision}}))}
   async function migrateSubscriptions(){return await mutate(()=>sharedRequest<{migrated:number}>('/api/finance-subscriptions/migrate',{method:'POST'}))}
   async function migrateRelationships(){return await mutate(()=>sharedRequest<{migrated:number}>('/api/relationship-cards/migrate',{method:'POST'}))}
