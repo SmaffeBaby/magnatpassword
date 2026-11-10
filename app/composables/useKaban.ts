@@ -9,6 +9,8 @@ import { saveFile } from '~/utils/file-download'
 import { dateLabel, todayDate } from '~~/shared/utils/subscriptions'
 
 export function useKaban() {
+ const route=useRoute(),router=useRouter()
+ let openedLink=''
  const auth=useAuthStore(),vault=useVaultStore(),shared=useSharedVaultsStore(),filters=useFiltersStore(),toast=useToast()
  const {workspaceId}=storeToRefs(filters)
  const workspaces=ref<KabanWorkspace[]>([])
@@ -47,12 +49,12 @@ export function useKaban() {
   if(!vault.unlocked||!auth.user||loading.value)return
   const attempt=generation,id=workspaceId.value,request=++requestNumber
   if(!quiet)loading.value=true
-  try{const ids=id==='all'?sources.value.map(source=>source.id):[id];const results=await Promise.all(ids.map(vault=>sharedRequest<KabanWorkspace>('/api/kaban?'+new URLSearchParams({vault}))));if(attempt===generation&&request===requestNumber){workspaces.value=results;data.value=results.find(item=>item.board.id===draft.value?.boardId)||results[0]||null;error.value='';if(view.value==='history')void loadHistory()}}
+  try{const ids=id==='all'?sources.value.map(source=>source.id):[id];const results=await Promise.all(ids.map(vault=>sharedRequest<KabanWorkspace>('/api/kaban?'+new URLSearchParams({vault}))));if(attempt===generation&&request===requestNumber){workspaces.value=results;data.value=results.find(item=>item.board.id===draft.value?.boardId)||results[0]||null;error.value='';void openLinkedTask();if(view.value==='history')void loadHistory()}}
   catch(failure){if(attempt===generation&&request===requestNumber){data.value=null;workspaces.value=[];error.value=message(failure)}}
   finally{if(attempt===generation&&request===requestNumber){loading.value=false;if(id==='all'&&workspaces.value.length&&workspaces.value.length!==sources.value.length)void load(true)}}
  }
  function clearPreview(){if(preview.value)URL.revokeObjectURL(preview.value);preview.value='';previewName.value=''}
- function closeEditor(){if(!busy.value){editorOpen.value=false;editorSession++;draft.value=null;files.value=[];pendingFiles.value=[];clearPreview()}}
+ function closeEditor(){if(!busy.value){if(route.query.task)void router.replace({query:{...route.query,task:undefined}});editorOpen.value=false;editorSession++;draft.value=null;files.value=[];pendingFiles.value=[];clearPreview()}}
  async function openTask(task?:KabanTask,stageId?:string,settings=false){
   if(task&&workspaceId.value==='all')data.value=workspaces.value.find(item=>item.board.id===task.boardId)||null
   if(!task&&workspaceId.value==='all'&&selectedCategory.value.includes(':'))data.value=workspaces.value.find(item=>item.board.id===selectedCategory.value.split(':')[0])||data.value
@@ -189,6 +191,24 @@ export function useKaban() {
   }catch(failure){if(attempt===generation)locationError.value=message(failure)}finally{if(attempt===generation)busy.value=false}
  }
  function setView(value:'board'|'closed'|'history'){view.value=value;selectedCategory.value='all';onlyMine.value=false;onlyOverdue.value=false;mobileOpen.value=false;if(value==='history')void loadHistory()}
+ async function openLinkedTask(){
+  const id=typeof route.query.task==='string'?route.query.task:''
+  const target=typeof route.query.vault==='string'?route.query.vault:'all'
+  const key=`${auth.user?.id}:${target}:${id}`
+  if(!id||!vault.unlocked||workspaceId.value!==target||!workspaces.value.length||openedLink===key)return
+  openedLink=key
+  const task=workspaces.value.flatMap(item=>item.tasks).find(item=>item.id===id)
+  if(!task){error.value='Задача удалена или у вас больше нет доступа к ней.';return}
+  search.value='';onlyMine.value=false;onlyOverdue.value=false;selectedCategory.value='all';view.value=task.archived?'closed':'board'
+  await openTask(task)
+ }
+ watch([()=>route.query.task,()=>route.query.vault,()=>auth.user?.id,()=>vault.unlocked],()=>{
+  openedLink=''
+  if(!route.query.task||!vault.unlocked)return
+  const target=typeof route.query.vault==='string'?route.query.vault:'all'
+  if(workspaceId.value!==target)workspaceId.value=target
+  else if(!loading.value)void load()
+ },{immediate:true})
  watch([workspaceId,()=>auth.user?.id,()=>vault.unlocked],()=>{generation++;data.value=null;workspaces.value=[];locationOpen.value=false;targetVaultId.value='';targetRequest++;loading.value=false;busy.value=false;error.value='';editorOpen.value=false;draft.value=null;editorSession++;files.value=[];filesLoading.value=false;pendingFiles.value=[];clearPreview();stagesOpen.value=false;categoryOpen.value=false;deleteOpen.value=false;selectedCategory.value='all';view.value='board';history.value=[];historyBefore.value=null;historyLoading.value=false;mobileOpen.value=false;void load()},{immediate:true})
  watch(()=>sources.value.map(source=>source.id).join(','),()=>{void load()})
  onMounted(()=>{void shared.refresh(true).then(()=>load());timer=setInterval(()=>{if(!busy.value&&!editorOpen.value&&!stagesOpen.value&&document.visibilityState==='visible')void load(true)},15000)})
