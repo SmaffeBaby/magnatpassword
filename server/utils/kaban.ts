@@ -2,10 +2,19 @@ import { z } from 'zod'
 import type { H3Event } from 'h3'
 import type { KabanTaskData, KabanFile } from '../../shared/types/kaban'
 import { validDate } from '../../shared/utils/subscriptions'
-import { kabanCanEditPlanning, kabanPlanningChanged } from '../../shared/utils/kaban'
+import { kabanCanEditPlanning, kabanPlanningChanged, kabanBlocks, kabanBlockSummary, kabanLink } from '../../shared/utils/kaban'
 import { openSharedVault, sealSharedVault } from './shared-crypto'
 
-export const kabanDataSchema = z.object({ title: z.string().trim().min(1).max(200), description: z.string().max(20000), dueOn: z.string().refine(value => !value || validDate(value)), todos: z.array(z.object({ id: z.uuid(), text: z.string().trim().min(1).max(500), done: z.boolean() }).strict()).max(100).refine(items => new Set(items.map(item => item.id)).size === items.length) }).strict()
+const todoSchema = z.array(z.object({ id:z.uuid(),text:z.string().trim().min(1).max(500),done:z.boolean() }).strict()).max(100).refine(items=>new Set(items.map(item=>item.id)).size===items.length)
+const blockBase={id:z.uuid(),title:z.string().trim().min(1).max(120)}
+export const kabanBlocksSchema=z.array(z.discriminatedUnion('type',[
+ z.object({...blockBase,type:z.literal('description'),value:z.string().max(20000)}).strict(),
+ z.object({...blockBase,type:z.literal('link'),value:z.string().max(2048).refine(value=>!value||!!kabanLink(value))}).strict(),
+ z.object({...blockBase,type:z.literal('password'),vaultId:z.union([z.literal('personal'),z.uuid()]),entryId:z.union([z.literal(''),z.uuid()])}).strict(),
+ z.object({...blockBase,type:z.literal('todo'),items:todoSchema}).strict(),
+ z.object({...blockBase,type:z.literal('files')}).strict()
+])).max(40).refine(blocks=>new Set(blocks.map(block=>block.id)).size===blocks.length).refine(blocks=>{const summary=kabanBlockSummary(blocks);return summary.description.length<=20000&&summary.todos.length<=100&&new Set(summary.todos.map(item=>item.id)).size===summary.todos.length})
+export const kabanDataSchema=z.object({title:z.string().trim().min(1).max(200),description:z.string().max(20000),dueOn:z.string().refine(value=>!value||validDate(value)),todos:todoSchema,blocks:kabanBlocksSchema.optional()}).strict()
 export const kabanTaskSchema = z.object({ boardId: z.uuid(), stageId: z.uuid(), participantIds: z.array(z.uuid()).max(50), closerIds: z.array(z.uuid()).max(50).optional(), categoryIds: z.array(z.string().min(1).max(128)).min(1).max(50), data: kabanDataSchema }).strict()
 export const kabanStagesSchema = z.array(z.object({ id: z.uuid(), name: z.string().trim().min(1).max(60), color: z.string().regex(/^#[\da-fA-F]{6}$/), done: z.boolean() }).strict()).min(1).max(12).refine(stages => new Set(stages.map(stage => stage.id)).size === stages.length)
 export const kabanBucket = 'kaban-files'
@@ -36,6 +45,11 @@ export async function writeKabanTask(event: H3Event, id: string, create = false)
     const current = await context.client.rpc('kaban_task_access', { p_actor: context.user.id, p_task: id, p_write: true, p_board: body.boardId })
     if (current.error) kabanFailure(current.error)
     const row = current.data
+    const previous=kabanDataSchema.parse(openSharedVault(row.encrypted_data,sharedSecret(event),`kaban-task:${id}`,1))
+    if(previous.blocks&&!body.data.blocks){
+      if(previous.description!==body.data.description||JSON.stringify(previous.todos)!==JSON.stringify(body.data.todos))throw createError({statusCode:409,message:'Задача использует новые поля. Обновите приложение перед редактированием.'})
+      body.data.blocks=previous.blocks
+    }
     if (row.revision !== body.revision) kabanFailure({ message: 'REVISION_CONFLICT' })
     if (!kabanCanEditPlanning(context.user.id, { creatorId: row.creator_id })) {
       if ((body.closerIds && (body.closerIds.length !== row.closer_ids.length || body.closerIds.some(value => !row.closer_ids.includes(value)))) || kabanPlanningChanged({ dueOn: readKabanTaskData(event, row).dueOn, participantIds: row.participant_ids }, { dueOn: body.data.dueOn, participantIds: body.participantIds })) {
@@ -44,6 +58,7 @@ export async function writeKabanTask(event: H3Event, id: string, create = false)
     }
     // The mutation checks this same revision under a row lock, so concurrent edits cannot bypass this comparison.
   }
+  if(body.data.blocks)Object.assign(body.data,kabanBlockSummary(body.data.blocks))
   const { error } = await context.client.rpc('kaban_task_mutate', { p_actor: context.user.id, p_board: body.boardId, p_id: id, p_revision: body.revision, p_payload: { stageId: body.stageId, participantIds: [...new Set(body.participantIds)], ...(body.closerIds ? { closerIds: [...new Set(body.closerIds)] } : {}), categoryIds: [...new Set(body.categoryIds)], encryptedData: sealSharedVault(body.data, sharedSecret(event), `kaban-task:${id}`, 1) } })
   if (error) kabanFailure(error)
   return { id }
@@ -55,7 +70,7 @@ export async function readKabanFiles(event: H3Event, write = false) {
   const files: KabanFile[] = (data ?? []).map((row: any) => ({ ...openSharedVault<KabanFile>(row.encrypted_data, sharedSecret(event), `kaban-file:${task}:${row.id}`, 1), id: row.id }))
   return { context, task, files }
 }
-export function readKabanTaskData(event: H3Event, row: any): KabanTaskData { return kabanDataSchema.parse(openSharedVault(row.encrypted_data, sharedSecret(event), `kaban-task:${row.id}`, 1)) }
+export function readKabanTaskData(event: H3Event, row: any): KabanTaskData { const data=kabanDataSchema.parse(openSharedVault(row.encrypted_data, sharedSecret(event), `kaban-task:${row.id}`, 1));return {...data,blocks:kabanBlocks(data,row.id)} }
 export function kabanImageType(bytes: Uint8Array): string {
   if (bytes.length >= 24 && [137,80,78,71,13,10,26,10].every((value,index) => bytes[index] === value)) return 'image/png'
   if (bytes.length >= 4 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'image/jpeg'

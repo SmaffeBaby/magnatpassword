@@ -1,3 +1,5 @@
+import { z } from 'zod'
+import { readKabanTaskData } from '../../../../../utils/kaban'
 import { randomUUID } from 'node:crypto'
 import { readKabanFiles, kabanFailure, kabanBucket, kabanImageType } from '../../../../../utils/kaban'
 import { sealSharedVault } from '../../../../../utils/shared-crypto'
@@ -8,8 +10,16 @@ export default defineEventHandler(async event => {
   const parts = await readMultipartFormData(event), file = parts?.find(part => part.name === 'file')
   if (!file?.filename || !file.data.length) throw createError({ statusCode: 400, message: 'Выберите непустой файл.' })
   if (file.data.length > kabanFileLimit) throw createError({ statusCode: 413, message: 'Максимальный размер файла — 20 МБ.' })
+  const blockPart=parts?.find(part=>part.name==='blockId')
+  const blockId=blockPart?z.uuid().safeParse(blockPart.data.toString()):null
+  if(blockId&&!blockId.success)throw createError({statusCode:400,message:'Некорректное поле вложений.'})
+  if(blockId?.success){
+    const task=await current.context.client.rpc('kaban_task_access',{p_actor:current.context.user.id,p_task:current.task,p_write:true})
+    if(task.error)kabanFailure(task.error)
+    if(!readKabanTaskData(event,task.data).blocks?.some(block=>block.id===blockId.data&&block.type==='files'))throw createError({statusCode:409,message:'Поле вложений изменилось. Обновите задачу.'})
+  }
   const id = randomUUID(), path = `${current.task}/${id}`
-  const metadata = { id, name: file.filename.replace(/[\x00-\x1f/\\]/g, '_').slice(0,240), type: kabanImageType(file.data) || 'application/octet-stream', size: file.data.length, createdAt: new Date().toISOString() }
+  const metadata = { ...(blockId?.success?{blockId:blockId.data}:{}), id, name: file.filename.replace(/[\x00-\x1f/\\]/g, '_').slice(0,240), type: kabanImageType(file.data) || 'application/octet-stream', size: file.data.length, createdAt: new Date().toISOString() }
   const uploaded = await current.context.client.storage.from(kabanBucket).upload(path, file.data, { contentType: 'application/octet-stream', upsert: false })
   if (uploaded.error) throw createError({ statusCode: 503, message: 'Не удалось загрузить файл.' })
   try {
