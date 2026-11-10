@@ -1,10 +1,10 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Magnat",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "identifier": "ru.magnat.password",
   "build": {
-    "frontendDist": "https://192.168.10.250/?native=1&appVersion=0.2.2",
+    "frontendDist": "https://192.168.10.250/?native=1&appVersion=0.2.3",
     "devUrl": "http://localhost:3004",
     "beforeDevCommand": "npm run native:dev",
     "beforeBuildCommand": ""
@@ -19,7 +19,7 @@
         "fullscreen": false,
         "minWidth": 360,
         "minHeight": 600,
-        "url": "https://192.168.10.250/?native=1&appVersion=0.2.2",
+        "url": "https://192.168.10.250/?native=1&appVersion=0.2.3",
         "label": "main",
         "dragDropEnabled": false
       }
@@ -41,6 +41,9 @@
           },
           "permissions": [
             "core:app:allow-version",
+            "deep-link:default",
+            "core:event:allow-listen",
+            "core:event:allow-unlisten",
             "allow-open-external",
             "allow-save-download",
             "allow-notification-permission",
@@ -49,6 +52,12 @@
           ]
         }
       ]
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [{ "scheme": ["magnat"], "appLink": false }],
+      "desktop": { "schemes": ["magnat"] }
     }
   },
   "bundle": {

@@ -2,16 +2,24 @@
 import { isNativeShell } from '~/utils/native-shell'
 import BrandLogo from './BrandLogo.vue'
 import PersonAvatar from './PersonAvatar.vue'
+import QrLogin from './QrLogin.vue'
 import { useAuthGate } from '../composables/useAuthGate'
 
 const native = ref(false)
 onMounted(() => { native.value = isNativeShell() })
 const props = defineProps<{ admin?: boolean }>()
+const route = useRoute()
+const desktop = ref(false)
+let desktopMedia: MediaQueryList | undefined
+const updateDesktop = () => { desktop.value = desktopMedia?.matches ?? false }
+onMounted(() => { desktopMedia = window.matchMedia('(min-width: 768px)'); updateDesktop(); desktopMedia.addEventListener('change', updateDesktop) })
+onBeforeUnmount(() => desktopMedia?.removeEventListener('change', updateDesktop))
 const { auth, vault, email, password, register, master, localError, authenticate, openVault, previewBrand, brandOptions, toggleRegistration,
   remember, selectedAccount, showAccounts, chooseAccount, otherAccount, backToAccounts } = useAuthGate(props)
 const formId = useId()
 const passwordVisible = ref(false)
 const masterVisible = ref(false)
+const qrEnabled = computed(() => desktop.value && !auth.user && !register.value && !props.admin && route.path !== '/auth/qr')
 watch([password, register], () => { if (!password.value) passwordVisible.value = false })
 watch(register, () => { passwordVisible.value = false })
 watch(master, () => { if (!master.value) masterVisible.value = false })
@@ -20,8 +28,9 @@ watch(master, () => { if (!master.value) masterVisible.value = false })
   <div v-if="auth.checking || (!admin && auth.user && vault.checking)" class="gate"><UIcon name="i-lucide-loader-circle" class="size-6 animate-spin" /><p>Проверяем сессию…</p></div>
   <div v-else-if="!auth.user || (!admin && !vault.unlocked)" class="gate">
     <BrandLogo class="gate-brand" />
-    <UCard class="w-full max-w-md">
+    <UCard class="w-full" :class="qrEnabled ? 'max-w-[860px]' : 'max-w-md'">
       <template v-if="!auth.user">
+        <div :class="{ 'gate-auth-layout': qrEnabled }"><div class="min-w-0">
         <span class="eyebrow">{{ admin ? 'ПАНЕЛЬ УПРАВЛЕНИЯ' : 'ВАШЕ ЛИЧНОЕ ПРОСТРАНСТВО' }}</span>
         <h1 class="mt-3 text-2xl font-semibold tracking-tight">{{ showAccounts ? 'Выберите аккаунт' : register ? 'Создать аккаунт' : admin ? 'Вход в панель управления' : 'Добро пожаловать' }}</h1>
         <p class="mt-2 mb-7 text-sm text-slate-500">{{ showAccounts ? 'Продолжите с сохранённым аккаунтом или войдите в другой.' : register ? 'Все ваши доступы. Под одним надёжным замком.' : admin ? 'Войдите под аккаунтом администратора.' : 'Войдите, чтобы открыть своё хранилище.' }}</p>
@@ -56,6 +65,7 @@ watch(master, () => { if (!master.value) masterVisible.value = false })
         <button v-if="!admin" type="button" :disabled="auth.pending" class="mt-6 w-full text-center text-sm text-slate-500 hover:text-primary-600" @click="toggleRegistration">{{ register ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться' }}</button>
         </template>
         <UAlert v-if="auth.storageError" class="mt-4" color="warning" variant="soft" :description="auth.storageError" />
+        </div><QrLogin v-if="qrEnabled" :remember="remember"/></div>
       </template>
       <template v-else>
         <span class="eyebrow">ЛИЧНОЕ ХРАНИЛИЩЕ</span>
@@ -78,3 +88,6 @@ watch(master, () => { if (!master.value) masterVisible.value = false })
   </div>
   <slot v-else />
 </template>
+<style scoped>
+.gate-auth-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(272px,.85fr);gap:32px}
+</style>

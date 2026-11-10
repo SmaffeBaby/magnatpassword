@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.2.2"
+version = "0.2.3"
 description = "Magnat workspace for desktop and mobile"
 authors = ["Magnat"]
 license = ""
@@ -27,6 +27,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-deep-link = "2"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6"

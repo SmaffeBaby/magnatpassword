@@ -37,6 +37,8 @@ export default defineNuxtConfig({
     '/kaban': { ssr:false },
     '/api/kaban/tasks/*/files': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
     '/api/auth/brand': { security: { rateLimiter: { tokensPerInterval: 60, interval: 60000 } } },
+    '/auth/qr': { ssr: false, headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } },
+    '/api/auth/qr/**': { security: { rateLimiter: false } },
     '/api/**': { headers: { 'Cache-Control': 'no-store' }, security: { corsHandler: false } },
     '/supabase/**': { headers: { 'Cache-Control': 'no-store' }, security: { corsHandler: false } }
   },

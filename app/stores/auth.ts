@@ -219,6 +219,25 @@ export const useAuthStore = defineStore('auth', () => {
     } catch { error.value = 'Не удалось завершить сессию. Повторите выход.' }
     finally { pending.value = false }
   }
+  async function authenticateQr(tokens: { access_token: string; refresh_token: string }, remember = true): Promise<boolean> {
+    if (pending.value || user.value) return false
+    pending.value = true; paused = true; error.value = ''
+    try {
+      const { data, error: failure } = await client().auth.setSession(tokens)
+      if (failure || !data.session) throw new Error('Не удалось открыть сессию. Обновите QR-код.')
+      applyAccessPolicy(data.session, await fetchAccessPolicy(data.session))
+      sessionUserId = data.session.user.id
+      if (remember) saveAccount(data.session.user)
+      else forgetAccount(data.session.user.id)
+      updateAccess(data.session.user.id, { signedOut: false, lastActivity: Date.now() })
+      paused = false; user.value = data.session.user
+      return true
+    } catch (failure) {
+      await client().auth.signOut({ scope: 'local' }).catch(() => {})
+      error.value = failure instanceof Error ? failure.message : 'Не удалось войти по QR-коду.'
+      return false
+    } finally { pending.value = false }
+  }
   async function invalidateSession() {
     const id = user.value?.id
     if (!id) return
@@ -227,5 +246,5 @@ export const useAuthStore = defineStore('auth', () => {
     try { await client().auth.signOut({ scope: 'local' }) } catch { /* The server has already revoked this device. */ }
   }
   return { user, checking, pending, error, savedAccounts, storageError, accessSettings, loadAccessSettings, saveAccessSettings,
-    hasQuickLogin, resumeAccount, touchActivity, idleExpired, handleSession, syncAccessPolicy, invalidateSession, loadSavedAccounts, forgetAccount, updateSavedProfile, restore, authenticate, logout }
+    hasQuickLogin, resumeAccount, touchActivity, idleExpired, handleSession, syncAccessPolicy, invalidateSession, loadSavedAccounts, forgetAccount, updateSavedProfile, restore, authenticate, authenticateQr, logout }
 })
