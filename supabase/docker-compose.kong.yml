@@ -9,6 +9,11 @@
 # aliases keep working unchanged. Kong re-adds an HTTPS listener on 8443.
 
 services:
+  realtime:
+    networks:
+      default:
+        aliases:
+          - realtime-dev.supabase-realtime
   api-gw:
     container_name: magnat-password-supabase-kong
     image: kong/kong:3.9.3

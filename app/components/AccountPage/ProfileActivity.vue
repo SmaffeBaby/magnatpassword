@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import type { ActivityFilter, ActivityDay, KabanActivity } from '~~/shared/types/kaban-activity'
-import { ACTIVITY_KINDS, activityLabels } from '~~/shared/types/kaban-activity'
+import { activityLabels } from '~~/shared/types/kaban-activity'
 import { activityCalendar, activityLevel, activitySummary, activityValue } from '~~/shared/utils/kaban-activity'
 import { todayDate } from '~~/shared/utils/subscriptions'
 const props=defineProps<{userId:string;brand:'light'|'magnat'}>()
 const auth=useAuthStore(),currentYear=Number(todayDate().slice(0,4)),year=ref(currentYear),vault=ref('all'),kind=ref<ActivityFilter>('all')
 const data=ref<KabanActivity|null>(null),loading=ref(false),error=ref(''),years=ref<number[]>([currentYear]),vaults=ref<{id:string;name:string}[]>([]),selected=ref(''),focused=ref('')
 const colors=computed(()=>props.brand==='light'?['#eef0f6','#d6d5ea','#a9a7ce','#69658f','#26263e']:['#f2f3f5','#f8d6d9','#e8949c','#cf4c58','#ad131e'])
-const filters=[{label:'Все действия',value:'all'},...ACTIVITY_KINDS.map(value=>({label:activityLabels[value],value}))]
+const profileKinds=['created','completed','moved'] as const
+const filters=[{label:'Все действия',value:'all'},...profileKinds.map(value=>({label:activityLabels[value],value}))]
 const dayMap=computed(()=>new Map(data.value?.days.map(day=>[day.date,day])||[]))
 const today=computed(()=>data.value?.today||todayDate())
 const cells=computed(()=>activityCalendar(year.value,today.value))
@@ -17,7 +18,7 @@ const summary=computed(()=>activitySummary(data.value?.days||[],kind.value,today
 const selectedDay=computed(()=>dayMap.value.get(selected.value))
 const yearOptions=computed(()=>[...new Set([currentYear,year.value,...years.value])].sort((a,b)=>b-a).map(value=>({label:String(value),value})))
 const vaultOptions=computed(()=>[{label:'Все доступные хранилища',value:'all'},...vaults.value.map(item=>({label:item.name,value:item.id}))])
-const dayBreakdown=computed(()=>ACTIVITY_KINDS.map(type=>({type,label:activityLabels[type],count:selectedDay.value?.kinds[type]||0})).filter(item=>item.count>0))
+const dayBreakdown=computed(()=>profileKinds.map(type=>({type,label:activityLabels[type],count:selectedDay.value?.kinds[type]||0})).filter(item=>item.count>0))
 const dateLabel=(value:string)=>new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'Europe/Moscow'}).format(new Date(value+'T12:00:00Z'))
 const value=(date:string)=>activityValue(dayMap.value.get(date),kind.value)
 const title=(date:string)=>`${dateLabel(date)}: ${value(date)} действий${kind.value==='all'?'':' · '+activityLabels[kind.value]}`
@@ -58,7 +59,7 @@ onBeforeUnmount(()=>{request++;buttons.clear()})
     <div class="activity-chart-body"><div class="activity-weekdays" aria-hidden="true"><span>Вс</span><span>Пн</span><span/><span>Ср</span><span/><span>Пт</span><span/></div><div class="activity-cells" role="group" :aria-label="`Календарь действий за ${year} год`"><template v-for="(day,index) in cells" :key="day.date"><button v-if="day.inYear" :ref="element=>cellRef(day.date,element)" type="button" class="activity-day" :class="{'is-selected':selected===day.date,'is-future':day.future}" :style="{gridColumn:day.week+1,gridRow:day.weekday+1,background:colors[activityLevel(value(day.date))]}" :disabled="day.future" :tabindex="focused===day.date?0:-1" :aria-label="title(day.date)" :title="title(day.date)" :aria-pressed="selected===day.date" @click="select(day.date)" @focus="focused=day.date" @keydown="event=>keyboard(event,index)"/><span v-else class="activity-padding" aria-hidden="true" :style="{gridColumn:day.week+1,gridRow:day.weekday+1}"/></template></div></div>
    </div></div>
    <p class="sr-only">Используйте стрелки для перемещения между днями; Enter или пробел, чтобы выбрать день.</p>
-   <div class="activity-chart-footer"><UPopover><UButton label="Как считается" icon="i-lucide-info" color="neutral" variant="link" size="xs"/><template #content><div class="activity-help"><strong>Что считается действием</strong><p>Одно сохранение задачи, добавление или удаление файла — одно действие. Изменения общей задачи учитываются один раз, даже если она находится в нескольких хранилищах.</p><p>Одно действие может относиться к нескольким типам.</p><p>Показана только доступная вам история. Очищенные записи не учитываются. Время — московское.</p></div></template></UPopover><div class="activity-legend" :aria-label="`Цветовая гамма ${brand==='light'?'Light':'Magnat'}`"><span>Меньше</span><i v-for="(color,index) in colors" :key="color" :style="{background:color}" :title="['Нет действий','1–2 действия','3–5 действий','6–9 действий','10 и более действий'][index]"/><span>Больше</span></div></div>
+   <div class="activity-chart-footer"><UPopover><UButton label="Как считается" icon="i-lucide-info" color="neutral" variant="link" size="xs"/><template #content><div class="activity-help"><strong>Что считается действием</strong><p>Учитываются только создание, завершение и перемещения задач. Изменения полей, списков дел и вложений не учитываются. Изменения общей задачи учитываются один раз, даже если она находится в нескольких хранилищах.</p><p>Одно действие может относиться к нескольким типам.</p><p>Показана только доступная вам история. Очищенные записи не учитываются. Время — московское.</p></div></template></UPopover><div class="activity-legend" :aria-label="`Цветовая гамма ${brand==='light'?'Light':'Magnat'}`"><span>Меньше</span><i v-for="(color,index) in colors" :key="color" :style="{background:color}" :title="['Нет действий','1–2 действия','3–5 действий','6–9 действий','10 и более действий'][index]"/><span>Больше</span></div></div>
    <div v-if="selected" class="activity-day-details"><div><h3>{{dateLabel(selected)}}</h3><span>{{value(selected)}} {{kind==='all'?'действий':activityLabels[kind].toLowerCase()}}</span></div><div v-if="dayBreakdown.length" class="activity-breakdown"><span v-for="item in dayBreakdown" :key="item.type" :class="{'is-highlighted':kind===item.type}">{{item.label}} <strong>{{item.count}}</strong></span></div><p v-else>За этот день действий не найдено.</p></div>
   </template>
   <footer class="activity-privacy">Учитываются действия из доступной вам истории задач. Очищенная история не входит в календарь. Даты — по Москве.</footer>

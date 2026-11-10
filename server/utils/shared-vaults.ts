@@ -1,3 +1,4 @@
+import {apiIngressLimit,apiInvalidSessionLimit,apiAccountLimit} from './api-rate-limit'
 import {sanitizeSvg,validRasterImage} from '../../shared/utils/media'
 import type { H3Event } from 'h3'
 import { z } from 'zod'
@@ -37,12 +38,14 @@ export async function sharedBody<T extends z.ZodType>(event: H3Event, schema: T)
   return parsed.data
 }
 export async function requireSharedUser(event: H3Event) {
+  apiIngressLimit(event)
   const token = getHeader(event, 'authorization')?.match(/^Bearer (\S+)$/i)?.[1]
-  if (!token) throw createError({ statusCode: 401, statusMessage: 'Shared vault request failed', message: 'Войдите в аккаунт' })
+  if (!token) {apiInvalidSessionLimit(event);throw createError({ statusCode: 401, statusMessage: 'Shared vault request failed', message: 'Войдите в аккаунт' })}
   const client = serverSupabase(event)
   const { data, error } = await client.auth.getUser(token)
-  if (error || !data.user) throw createError({ statusCode: 401, statusMessage: 'Shared vault request failed', message: 'Сессия завершена. Войдите снова.' })
+  if (error || !data.user) {apiInvalidSessionLimit(event);throw createError({ statusCode: 401, statusMessage: 'Shared vault request failed', message: 'Сессия завершена. Войдите снова.' })}
   const sessionId = await assertActiveAccountSession(client, data.user.id, token)
+  apiAccountLimit(event,data.user.id)
   setHeader(event, 'Cache-Control', 'private, no-store')
   return { client, user: data.user, sessionId }
 }

@@ -44,7 +44,7 @@ else {
   if (!['http:', 'https:'].includes(server.protocol) || server.username || server.password || server.pathname !== '/' || server.search || server.hash) throw new Error('Нужен http(s) origin без пути и секретов')
   if (['localhost', '127.0.0.1', '[::1]'].includes(server.hostname)) throw new Error('Для Android укажите сетевой адрес сервера вместо localhost')
   mkdirSync('.local', { recursive: true })
-  const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${server.origin}; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ${server.origin}; object-src 'none'; base-uri 'self'`
+  const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${server.origin}; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ${server.origin} ${server.origin.replace(/^http/, 'ws')}; object-src 'none'; base-uri 'self'`
   const config = resolve('.local/tauri.android-device.json')
   const shell = shellConfig(server.origin, JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8')).version)
   writeFileSync(config, JSON.stringify({ ...shell, app: { ...shell.app, security: { ...shell.app.security, csp } } }, null, 2))

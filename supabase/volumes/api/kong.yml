@@ -215,8 +215,8 @@ services:
 
   ## Secure Realtime routes
   - name: realtime-v1-ws
-    _comment: 'Realtime: /realtime/v1/* -> ws://realtime:4000/socket/*'
-    url: http://realtime:4000/socket
+    _comment: 'Realtime: host identifies the seeded realtime-dev tenant'
+    url: http://realtime-dev.supabase-realtime:4000/socket
     protocol: ws
     routes:
       - name: realtime-v1-ws

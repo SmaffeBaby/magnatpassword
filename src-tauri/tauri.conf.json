@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://localhost:3003; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://localhost:3003; object-src 'none'; base-uri 'self'",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://localhost:3003; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost http://localhost:3003 ws://localhost:3003; object-src 'none'; base-uri 'self'",
       "capabilities": [
         "default",
         {

@@ -8,7 +8,7 @@ export type KabanBlock =
  | { id:string; type:'todo'; title:string; items:KabanTodo[] }
  | { id:string; type:'files'; title:string }
 export interface KabanTaskData { title: string; description: string; dueOn: string; todos: KabanTodo[]; blocks?:KabanBlock[] }
-export interface KabanTask extends KabanTaskData { id: string; boardId: string; stageId: string; creatorId: string; participantIds: string[]; closerIds: string[]; locations: {boardId:string;vaultId:string|null}[]; canEdit:boolean; categoryIds: string[]; revision: number; createdAt: string; updatedAt: string; fileCount: number; archived: boolean }
+export interface KabanTask extends KabanTaskData { id: string; boardId: string; stageId: string; creatorId: string; participantIds: string[]; closerIds: string[]; locations: {boardId:string;vaultId:string|null}[]; canEdit:boolean; categoryIds: string[]; revision: number; createdAt: string; updatedAt: string; closedAt: string | null; fileCount: number; archived: boolean }
 export interface KabanCategory { id: string; name: string; parentId: string | null; color: string; archived: boolean; revision: number; archiveRoot?: string | null; legacyId?: string | null; boardId?: string }
 export interface KabanEvent { id: string; changeId?: string; createdAt: string; actor: TeamPerson | null; label: string; details: string[] }
 export interface KabanBoard { id: string; vaultId: string | null; revision: number; stages: KabanStage[] }

@@ -6,8 +6,9 @@ const nativeBuildRoot = process.env.MAGNAT_NATIVE_BUILD_ROOT
 const webBuildRoot = !native && process.env.MAGNAT_WEB_BUILD_ROOT
 
 export default defineNuxtConfig({
-  ...(webBuildRoot ? { buildDir: `${webBuildRoot}/.nuxt`, nitro: { output: { dir: `${webBuildRoot}/.output` } } } : {}),
-  ...(native ? { ssr: false, buildDir: nativeBuildRoot ? `${nativeBuildRoot}/.nuxt-native` : '.nuxt-native', nitro: { output: { dir: nativeBuildRoot ? `${nativeBuildRoot}/.output-native` : '.output-native' }, prerender: { crawlLinks: false, routes: ['/'] } } } : {}),
+  ...(webBuildRoot ? { buildDir: `${webBuildRoot}/.nuxt` } : {}),
+  ...(native ? { ssr: false, buildDir: nativeBuildRoot ? `${nativeBuildRoot}/.nuxt-native` : '.nuxt-native' } : {}),
+  nitro: { ...(webBuildRoot ? {output:{dir:`${webBuildRoot}/.output`}} : {}), ...(native ? {output:{dir:nativeBuildRoot?`${nativeBuildRoot}/.output-native`:'.output-native'},prerender:{crawlLinks:false,routes:['/']}} : {}), experimental:{websocket:true} },
   compatibilityDate: '2026-10-15',
   srcDir: 'app/', serverDir: 'server/',
   devtools: { enabled: false },
@@ -18,6 +19,8 @@ export default defineNuxtConfig({
   ui: { fonts: false, colorMode: false },
   icon: { serverBundle: { collections: ['lucide'] }, ...(native ? { clientBundle: { scan: true, includeCustomCollections: true } } : {}) },
   routeRules: {
+    // Authenticated APIs use validated-account budgets in requireSharedUser.
+    ...Object.fromEntries(['finance-reports','finance-subscriptions','kaban','notifications','personal-vault','profile','projects','relationship-cards','shared-cards','shared-vaults','team','workspace'].flatMap(root=>[[`/api/${root}`,{security:{rateLimiter:false}}],[`/api/${root}/**`,{security:{rateLimiter:false}}]])),
     '/api/app-version': { headers: { 'Cache-Control': 'no-store' }, security: { rateLimiter: false } },
     '/downloads': { headers: { 'Cache-Control': 'no-store' } },
     '/projects': { ssr: false },

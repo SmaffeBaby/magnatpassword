@@ -1,3 +1,4 @@
+import { kabanClosedInRange } from '~~/shared/utils/kaban-closed'
 import { sourceEntries } from '~~/shared/utils/vault-sources'
 import { projectSharedCards } from '~~/shared/utils/shared-card-sources'
 import { storeToRefs } from 'pinia'
@@ -17,7 +18,7 @@ export function useKaban() {
  const data=ref<KabanWorkspace|null>(null),loading=ref(false),busy=ref(false),error=ref(''),mobileOpen=ref(false)
  const view=ref<'board'|'closed'|'history'>('board'),history=ref<KabanEvent[]>([]),historyBefore=ref<string|null>(null),historyLoading=ref(false)
  const selectedCategory=ref('all'),search=ref(''),onlyMine=ref(false),onlyOverdue=ref(false)
- const taskSettings=ref(false)
+ const taskSettings=ref(false),closedFrom=ref(''),closedUntil=ref('')
  const editorOpen=ref(false),draft=ref<KabanTask|null>(null),formError=ref(''),deleteOpen=ref(false)
  const files=ref<KabanFile[]>([]),filesLoading=ref(false),pendingFiles=shallowRef<{file:File;blockId?:string}[]>([]),preview=ref(''),previewName=ref('')
  const stagesOpen=ref(false),stageDraft=ref<KabanStage[]>([]),stageRevision=ref(0),stageError=ref('')
@@ -45,13 +46,31 @@ export function useKaban() {
  const structureBusy=computed(()=>busy.value||vault.busy||shared.busy||shared.loading)
  const canEdit=computed(()=>!!data.value?.canEdit&&!busy.value)
  const message=(failure:any)=>failure?.data?.message||failure?.message||'Не удалось загрузить доску.'
- async function load(quiet=false){
-  if(!vault.unlocked||!auth.user||loading.value)return
+ let activeLoad:{key:string;promise:Promise<void>}|null=null
+ function load(quiet=false):Promise<void>{
+  if(!vault.unlocked||!auth.user)return Promise.resolve()
+  const key=`${generation}:${workspaceId.value}:${sources.value.map(source=>source.id).join(',')}`
+  if(activeLoad?.key===key)return activeLoad.promise
+  const request={key,promise:loadBoard(quiet)};activeLoad=request
+  void request.promise.finally(()=>{if(activeLoad===request)activeLoad=null})
+  return request.promise
+ }
+ async function loadBoard(quiet=false){
+  if(!vault.unlocked||!auth.user)return
   const attempt=generation,id=workspaceId.value,request=++requestNumber
+  const oldSaved=draft.value?data.value?.tasks.find(task=>task.id===draft.value?.id):null
+  const syncDraft=editorOpen.value&&!taskSettings.value&&!!oldSaved&&!!draft.value&&!pendingFiles.value.length&&JSON.stringify(taskBody(oldSaved))===JSON.stringify(taskBody(draft.value))
+  const session=editorSession
   if(!quiet)loading.value=true
-  try{const ids=id==='all'?sources.value.map(source=>source.id):[id];const results=await Promise.all(ids.map(vault=>sharedRequest<KabanWorkspace>('/api/kaban?'+new URLSearchParams({vault}))));if(attempt===generation&&request===requestNumber){workspaces.value=results;data.value=results.find(item=>item.board.id===draft.value?.boardId)||results[0]||null;error.value='';void openLinkedTask();if(view.value==='history')void loadHistory()}}
+  try{const ids=id==='all'?sources.value.map(source=>source.id):[id];const results=await Promise.all(ids.map(vault=>sharedRequest<KabanWorkspace>('/api/kaban?'+new URLSearchParams({vault}))));if(attempt===generation&&request===requestNumber){workspaces.value=results;data.value=results.find(item=>item.board.id===draft.value?.boardId)||results[0]||null;error.value='';
+   if(syncDraft&&session===editorSession&&!taskSettings.value&&draft.value&&oldSaved&&!pendingFiles.value.length&&JSON.stringify(taskBody(oldSaved))===JSON.stringify(taskBody(draft.value))){
+    const current=results.flatMap(item=>item.tasks).find(task=>task.id===draft.value?.id)
+    if(current){draft.value=JSON.parse(JSON.stringify(current));const loaded=await sharedRequest<KabanFile[]>(`/api/kaban/tasks/${current.id}/files`);if(attempt===generation&&session===editorSession)files.value=loaded}
+    else{closeEditor();error.value='Задача удалена или больше недоступна.'}
+   }
+   void openLinkedTask();if(view.value==='history')void loadHistory()}}
   catch(failure){if(attempt===generation&&request===requestNumber){data.value=null;workspaces.value=[];error.value=message(failure)}}
-  finally{if(attempt===generation&&request===requestNumber){loading.value=false;if(id==='all'&&workspaces.value.length&&workspaces.value.length!==sources.value.length)void load(true)}}
+  finally{if(attempt===generation&&request===requestNumber){loading.value=false}}
  }
  function clearPreview(){if(preview.value)URL.revokeObjectURL(preview.value);preview.value='';previewName.value=''}
  function closeEditor(){if(!busy.value){if(route.query.task)void router.replace({query:{...route.query,task:undefined}});editorOpen.value=false;editorSession++;draft.value=null;files.value=[];pendingFiles.value=[];clearPreview()}}
@@ -60,7 +79,7 @@ export function useKaban() {
   if(!task&&workspaceId.value==='all'&&selectedCategory.value.includes(':'))data.value=workspaces.value.find(item=>item.board.id===selectedCategory.value.split(':')[0])||data.value
   if(!data.value)return
   editorSession++;const session=editorSession,attempt=generation
-  draft.value=task?JSON.parse(JSON.stringify(task)):{id:'',boardId:data.value.board.id,stageId:stageId||data.value.board.stages[0]!.id,creatorId:auth.user!.id,participantIds:[],closerIds:[],locations:[],canEdit:true,categoryIds:selectedCategory.value==='all'?[]:[workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value],revision:0,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),fileCount:0,archived:false,title:'',description:'',dueOn:'',todos:[]}
+  draft.value=task?JSON.parse(JSON.stringify(task)):{id:'',boardId:data.value.board.id,stageId:stageId||data.value.board.stages[0]!.id,creatorId:auth.user!.id,participantIds:[],closerIds:[],locations:[],canEdit:true,categoryIds:selectedCategory.value==='all'?[]:[workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value],revision:0,createdAt:new Date().toISOString(),closedAt:null,updatedAt:new Date().toISOString(),fileCount:0,archived:false,title:'',description:'',dueOn:'',todos:[]}
   taskSettings.value=!task||settings
   if(!task)draft.value!.blocks=[{id:createId(),type:'description',title:'Описание',value:''},{id:createId(),type:'todo',title:'To-do список',items:[]},{id:createId(),type:'files',title:'Файлы и фотографии'}]
   editorOpen.value=true;formError.value='';files.value=[];filesLoading.value=false;pendingFiles.value=[];clearPreview()
@@ -136,7 +155,9 @@ export function useKaban() {
   if(workspaceId.value==='all'){const split=id.indexOf(':');if(split<0)return false;const selectedBoard=id.slice(0,split);if(boardId!==selectedBoard)return false;localId=id.slice(split+1);board=workspaces.value.find(item=>item.board.id===boardId)||null}
   return ids.includes(localId)||!!board?.categories.some(category=>category.parentId===localId&&ids.includes(category.id))
  }
- const tasks=computed(()=>displayData.value?.tasks.filter(task=>task.archived===(view.value==='closed')&&(selectedCategory.value==='all'||categoryContains(selectedCategory.value,task.categoryIds,task.boardId))&&(!onlyMine.value||task.creatorId===auth.user?.id||task.participantIds.includes(auth.user?.id??''))&&(!onlyOverdue.value||kabanOverdue(task,displayData.value?.board.stages.find(stage=>stage.id===task.stageId)?.done))&&`${task.title} ${task.description} ${task.blocks?.map(block=>block.title+('value' in block?' '+block.value:'')).join(' ')||''}`.toLowerCase().includes(search.value.trim().toLowerCase()))??[])
+ const tasks=computed(()=>displayData.value?.tasks.filter(task=>task.archived===(view.value==='closed')&&(view.value!=='closed'||kabanClosedInRange(task.closedAt,closedFrom.value,closedUntil.value))&&(selectedCategory.value==='all'||categoryContains(selectedCategory.value,task.categoryIds,task.boardId))&&(!onlyMine.value||task.creatorId===auth.user?.id||task.participantIds.includes(auth.user?.id??''))&&(!onlyOverdue.value||kabanOverdue(task,displayData.value?.board.stages.find(stage=>stage.id===task.stageId)?.done))&&`${task.title} ${task.description} ${task.blocks?.map(block=>block.title+('value' in block?' '+block.value:'')).join(' ')||''}`.toLowerCase().includes(search.value.trim().toLowerCase()))??[])
+ const closedTasks=computed(()=>[...tasks.value].sort((a,b)=>(b.closedAt||'').localeCompare(a.closedAt||'')))
+ const taskStamp=(value:string)=>new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'}).format(new Date(value))
  const totalTasks=computed(()=>[...new Map(workspaces.value.flatMap(item=>item.tasks).map(task=>[task.id,task])).values()])
  const boardStages=computed(()=>workspaceId.value==='all'?displayData.value?.board.stages.filter(stage=>tasks.value.some(task=>task.stageId===stage.id))||[]:displayData.value?.board.stages||[])
  const canComplete=(task:KabanTask)=>task.canEdit&&(task.creatorId===auth.user?.id||task.closerIds.includes(auth.user?.id||''))
@@ -167,6 +188,27 @@ export function useKaban() {
   if(!canComplete(task)||busy.value)return;const attempt=generation;busy.value=true
   try{await sharedRequest(`/api/kaban/tasks/${task.id}/archive`,{method:'POST',body:{boardId:task.boardId,revision:task.revision,closed}});if(attempt===generation)await load()}
   catch(failure){if(attempt===generation)error.value=message(failure)}finally{if(attempt===generation)busy.value=false}
+ }
+ const categoryActionOpen=ref(false),categoryAction=ref<'move'|'copy'>('move'),actionCategory=ref(''),categoryActionError=ref('')
+ function openCategoryAction(action:'move'|'copy'){
+  if(!draft.value?.id||!draft.value.canEdit)return
+  const saved=data.value?.tasks.find(task=>task.id===draft.value?.id)
+  if(!saved||JSON.stringify(taskBody(saved))!==JSON.stringify(taskBody(draft.value))||pendingFiles.value.length){formError.value='Сначала сохраните изменения задачи.';return}
+  categoryAction.value=action;actionCategory.value='';categoryActionError.value='';categoryActionOpen.value=true
+ }
+ async function saveCategoryAction(){
+  if(!draft.value?.id||!actionCategory.value||busy.value)return
+  const task=draft.value,attempt=generation;busy.value=true;categoryActionError.value=''
+  try{
+   const result=categoryAction.value==='copy'
+    ?await sharedRequest<{id:string}>(`/api/kaban/tasks/${task.id}/copy`,{method:'POST',body:{boardId:task.boardId,revision:task.revision,categoryId:actionCategory.value}})
+    :await sharedRequest<{id:string}>(`/api/kaban/tasks/${task.id}`,{method:'PUT',body:taskBody({...task,categoryIds:[actionCategory.value]})})
+   if(attempt!==generation)return
+   await load();categoryActionOpen.value=false
+   const next=data.value?.tasks.find(item=>item.id===result.id)
+   if(next){selectedCategory.value=workspaceId.value==='all'?next.boardId+':'+actionCategory.value:actionCategory.value;view.value=next.archived?'closed':'board';await openTask(next)}
+   toast.add({title:categoryAction.value==='copy'?'Создана независимая копия задачи':'Задача перемещена',color:'success'})
+  }catch(failure){if(attempt===generation)categoryActionError.value=message(failure)}finally{if(attempt===generation)busy.value=false}
  }
  const historyCursors=ref<Record<string,string|null>>({})
  async function loadHistory(more=false){
@@ -209,9 +251,16 @@ export function useKaban() {
   if(workspaceId.value!==target)workspaceId.value=target
   else if(!loading.value)void load()
  },{immediate:true})
- watch([workspaceId,()=>auth.user?.id,()=>vault.unlocked],()=>{generation++;data.value=null;workspaces.value=[];locationOpen.value=false;targetVaultId.value='';targetRequest++;loading.value=false;busy.value=false;error.value='';editorOpen.value=false;draft.value=null;editorSession++;files.value=[];filesLoading.value=false;pendingFiles.value=[];clearPreview();stagesOpen.value=false;categoryOpen.value=false;deleteOpen.value=false;selectedCategory.value='all';view.value='board';history.value=[];historyBefore.value=null;historyLoading.value=false;mobileOpen.value=false;void load()},{immediate:true})
+ watch([workspaceId,()=>auth.user?.id,()=>vault.unlocked],()=>{generation++;categoryActionOpen.value=false;data.value=null;workspaces.value=[];locationOpen.value=false;targetVaultId.value='';targetRequest++;loading.value=false;busy.value=false;error.value='';editorOpen.value=false;draft.value=null;editorSession++;files.value=[];filesLoading.value=false;pendingFiles.value=[];clearPreview();stagesOpen.value=false;categoryOpen.value=false;deleteOpen.value=false;selectedCategory.value='all';view.value='board';history.value=[];historyBefore.value=null;historyLoading.value=false;mobileOpen.value=false;void load()},{immediate:true})
  watch(()=>sources.value.map(source=>source.id).join(','),()=>{void load()})
- onMounted(()=>{void shared.refresh(true).then(()=>load());timer=setInterval(()=>{if(!busy.value&&!editorOpen.value&&!stagesOpen.value&&document.visibilityState==='visible')void load(true)},15000)})
+ const realtimeConnected=useKabanRealtime(async()=>{
+  const attempt=generation,id=auth.user?.id
+  await shared.refresh()
+  if(attempt!==generation||id!==auth.user?.id||!vault.unlocked)return
+  await load(true)
+  await useNotificationsStore().refresh(true)
+ },()=>busy.value||loading.value)
+ onMounted(()=>{void load();timer=setInterval(()=>{if(!realtimeConnected.value&&!busy.value&&!editorOpen.value&&!stagesOpen.value&&document.visibilityState==='visible')void load(true)},30000)})
  onBeforeUnmount(()=>{generation++;editorSession++;clearInterval(timer);clearPreview()})
- return {taskSettings,passwordOptions,passwordEntry,totalTasks,boardStages,changeDraftVault,displayData,canComplete,canOwn,taskSourceNames,workspaces,sourceName,locationOpen,targetVaultId,targetWorkspace,targetCategory,targetStage,locationMove,locationError,locationLoading,newLocationCategory,locationSources,targetCategoryOptions,openLocation,saveLocation,view,history,historyBefore,historyLoading,loadHistory,setView,categoryContains,categoryParent,parentOptions,archiveTask,archiveCategory,auth,vault,shared,filters,data,loading,busy,error,mobileOpen,workspaceId,workspaceName,sources,currentSource,visibleSources,categories,categoryOptions,canCategorize,structureBusy,canEdit,load,selectedCategory,search,onlyMine,onlyOverdue,tasks,categoryCount,chooseCategory,editorOpen,draft,formError,deleteOpen,openTask,closeEditor,chooseFiles,saveTask,moveTask,removeTask,files,filesLoading,pendingFiles,preview,previewName,clearPreview,openFile,removeFile,stagesOpen,stageDraft,stageError,editStages,addStage,shiftStage,stageCount,saveStages,peopleOptions,person,categoryOpen,categoryError,categoryForm,editCategory,saveCategory,dateLabel,todayDate,kabanOverdue}
+ return {realtimeConnected,closedFrom,closedUntil,closedTasks,taskStamp,categoryActionOpen,categoryAction,actionCategory,categoryActionError,openCategoryAction,saveCategoryAction,taskSettings,passwordOptions,passwordEntry,totalTasks,boardStages,changeDraftVault,displayData,canComplete,canOwn,taskSourceNames,workspaces,sourceName,locationOpen,targetVaultId,targetWorkspace,targetCategory,targetStage,locationMove,locationError,locationLoading,newLocationCategory,locationSources,targetCategoryOptions,openLocation,saveLocation,view,history,historyBefore,historyLoading,loadHistory,setView,categoryContains,categoryParent,parentOptions,archiveTask,archiveCategory,auth,vault,shared,filters,data,loading,busy,error,mobileOpen,workspaceId,workspaceName,sources,currentSource,visibleSources,categories,categoryOptions,canCategorize,structureBusy,canEdit,load,selectedCategory,search,onlyMine,onlyOverdue,tasks,categoryCount,chooseCategory,editorOpen,draft,formError,deleteOpen,openTask,closeEditor,chooseFiles,saveTask,moveTask,removeTask,files,filesLoading,pendingFiles,preview,previewName,clearPreview,openFile,removeFile,stagesOpen,stageDraft,stageError,editStages,addStage,shiftStage,stageCount,saveStages,peopleOptions,person,categoryOpen,categoryError,categoryForm,editCategory,saveCategory,dateLabel,todayDate,kabanOverdue}
 }

@@ -13,7 +13,7 @@ if (['localhost', '127.0.0.1', '[::1]'].includes(server.hostname)) throw new Err
 mkdirSync('.local', { recursive: true })
 const shell = shellConfig(server.origin, JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8')).version)
 const config = resolve('.local/tauri.windows-server.json')
-const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${server.origin}; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ${server.origin}; object-src 'none'; base-uri 'self'`
+const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${server.origin}; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ${server.origin} ${server.origin.replace(/^http/, 'ws')}; object-src 'none'; base-uri 'self'`
 writeFileSync(config, JSON.stringify({
   ...shell,
   ...(process.env.MAGNAT_WINDOWS_PREBUILT === '1' ? { build: { beforeBuildCommand: '' } } : {}),
