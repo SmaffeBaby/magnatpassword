@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { kabanId,kabanFailure,readKabanTaskData } from '../../../../utils/kaban'
 import { openSharedVault } from '../../../../utils/shared-crypto'
@@ -18,7 +19,9 @@ export default defineEventHandler(async event=>{
   if(row.entity==='task'){
    const previous=a?readKabanTaskData(event,a):null,next=b?readKabanTaskData(event,b):null,name=next?.title||previous?.title||'Задача'
    label=`${row.action==='INSERT'?'Создана задача':row.action==='DELETE'?'Удалена задача':a.archived!==b.archived?(b.archived?'Задача закрыта':'Задача восстановлена'):'Изменена задача'}: ${name}`
-   if(previous&&next){for(const [key,title] of [['title','Название'],['description','Описание'],['dueOn','Срок'],['todos','To-do список']] as const){if(JSON.stringify(previous[key])!==JSON.stringify(next[key]))details.push(key==='dueOn'?`Срок: ${previous.dueOn||'не задан'} → ${next.dueOn||'не задан'}`:`Изменено: ${title}`)}if(a.stage_id!==b.stage_id)details.push('Перемещение в другую стадию');if(JSON.stringify(a.category_ids)!==JSON.stringify(b.category_ids))details.push('Перемещение в другую категорию');if(JSON.stringify(a.participant_ids)!==JSON.stringify(b.participant_ids))details.push('Изменены ответственные');for(const item of next.todos){const old=previous.todos.find(todo=>todo.id===item.id);if(!old)details.push('Добавлен пункт: '+item.text);else{if(old.text!==item.text)details.push('Пункт: '+old.text+' → '+item.text);if(old.done!==item.done)details.push((item.done?'Выполнен пункт: ':'Возвращён в работу пункт: ')+item.text)}}for(const item of previous.todos)if(!next.todos.some(todo=>todo.id===item.id))details.push('Удалён пункт: '+item.text)}
+   if(previous&&next){for(const [key,title] of [['title','Название'],['description','Описание'],['dueOn','Срок'],['todos','To-do список']] as const){if(JSON.stringify(previous[key])!==JSON.stringify(next[key]))details.push(key==='dueOn'?`Срок: ${previous.dueOn||'не задан'} → ${next.dueOn||'не задан'}`:`Изменено: ${title}`)}if(JSON.stringify(a.closer_ids)!==JSON.stringify(b.closer_ids))details.push('Изменены пользователи, которые могут завершать задачу');if(a.stage_id!==b.stage_id)details.push('Перемещение в другую стадию');if(JSON.stringify(a.category_ids)!==JSON.stringify(b.category_ids))details.push('Перемещение в другую категорию');if(JSON.stringify(a.participant_ids)!==JSON.stringify(b.participant_ids))details.push('Изменены ответственные');for(const item of next.todos){const old=previous.todos.find(todo=>todo.id===item.id);if(!old)details.push('Добавлен пункт: '+item.text);else{if(old.text!==item.text)details.push('Пункт: '+old.text+' → '+item.text);if(old.done!==item.done)details.push((item.done?'Выполнен пункт: ':'Возвращён в работу пункт: ')+item.text)}}for(const item of previous.todos)if(!next.todos.some(todo=>todo.id===item.id))details.push('Удалён пункт: '+item.text)}
+  }else if(row.entity==='location'){
+   label=row.action==='MOVE'?'Задача перемещена в другое хранилище':'Задача добавлена в другое хранилище'
   }else if(row.entity==='category'){
    label=`${row.action==='INSERT'?'Создана категория':a?.archived!==b?.archived?(b?.archived?'Категория закрыта':'Категория восстановлена'):'Изменена категория'}: ${b?.name||a?.name}`
    if(a&&b){if(a.name!==b.name)details.push(`${a.name} → ${b.name}`);if(a.parent_id!==b.parent_id)details.push('Изменена родительская категория');if(a.color!==b.color)details.push('Изменён цвет')}
@@ -26,7 +29,7 @@ export default defineEventHandler(async event=>{
    const file=openSharedVault<KabanFile>((b||a).encrypted_data,sharedSecret(event),`kaban-file:${row.task_id}:${row.entity_id}`,1)
    label=`${row.action==='INSERT'?'Добавлен файл':'Удалён файл'}: ${file.name}`
   }else label='Изменены стадии доски'
-  return {id:String(row.id),createdAt:row.created_at,actor:people.find(person=>person.id===row.actor_id)||null,label,details}
+  return {id:String(row.id),changeId:createHash('sha256').update(JSON.stringify([row.created_at,row.actor_id,row.entity,row.entity_id,row.action,a,b])).digest('hex'),createdAt:row.created_at,actor:people.find(person=>person.id===row.actor_id)||null,label,details}
  })
  return {events,nextBefore:data?.length>50?String(rows[rows.length-1].id):null}
 })

@@ -28,12 +28,12 @@ export default defineEventHandler(async event => {
     if (result.error) kabanFailure(result.error)
     members = (result.data ?? []).map(row => row.user_id)
   }
-  const ids = [...new Set<string>([...members, ...data.tasks.map((row: any) => row.creator_id), ...data.tasks.flatMap((row: any) => row.participant_ids)])]
+  const ids = [...new Set<string>([...members, ...data.tasks.map((row: any) => row.creator_id), ...data.tasks.flatMap((row: any) => [...row.participant_ids, ...row.closer_ids])])]
   const [profiles, assignments, units] = await Promise.all([
     context.client.from('team_profiles').select('*').in('user_id', ids),
     context.client.from('team_role_assignments').select('user_id,role_id').in('user_id', ids), teamUnits(context)
   ])
   if (profiles.error || assignments.error) throw createError({ statusCode: 503, message: 'Не удалось загрузить участников.' })
   const people = await teamPeople(context, (profiles.data ?? []).map(profile => ({ ...profile, role_ids: (assignments.data ?? []).filter(item => item.user_id === profile.user_id).map(item => item.role_id) })))
-  return { ...data, people, units, eligibleIds: members, tasks: data.tasks.map((row: any) => ({ ...readKabanTaskData(event, row), id: row.id, boardId: row.board_id, stageId: row.stage_id, creatorId: row.creator_id, participantIds: row.participant_ids, categoryIds: row.category_ids, revision: row.revision, createdAt: row.created_at, updatedAt: row.updated_at, fileCount: Number(row.file_count),archived:row.archived })) }
+  return { ...data, people, units, eligibleIds: members, tasks: data.tasks.map((row: any) => ({ ...readKabanTaskData(event, row), id: row.id, boardId: row.board_id, stageId: row.stage_id, creatorId: row.creator_id, participantIds: row.participant_ids, closerIds: row.closer_ids, locations: row.locations, canEdit: data.canEdit, categoryIds: row.category_ids, revision: row.revision, createdAt: row.created_at, updatedAt: row.updated_at, fileCount: Number(row.file_count),archived:row.archived })) }
 })

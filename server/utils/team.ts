@@ -32,7 +32,10 @@ export async function teamProfile(_event:H3Event,context:Context,id:string):Prom
  if(!ownAssignments?.length)for(const unit of units)if(unit.kind==='company'&&unit.brand===(context.user.user_metadata?.account_brand==='light'?'light':'magnat'))mine.add(unit.id)
  if(!roleIds.length)for(const unit of units)if(unit.kind==='company'&&unit.brand===profile.brand)theirs.add(unit.id)
  const [person]=await teamPeople(context,[{...profile,role_ids:roleIds}])
- return {person:person!,units,commonUnits:[...mine].filter(id=>theirs.has(id)),commonVaults:(vaults??[]).map((row:any)=>({id:row.id,name:row.name,role:row.member_role,owner:row.owner}))}
+ const images = vaults?.length ? await context.client.from('shared_vaults').select('id,encrypted_data,key_epoch').in('id',vaults.map((row:any)=>row.id)) : {data:[],error:null}
+ if(images.error)throw createError({statusCode:503,message:'Не удалось загрузить изображения хранилищ'})
+ const vaultImages=new Map((images.data??[]).map(row=>[row.id,decodeShared(_event,row).svg]))
+ return {person:person!,units,commonUnits:[...mine].filter(id=>theirs.has(id)),commonVaults:(vaults??[]).map((row:any)=>({id:row.id,name:row.name,role:row.member_role,owner:row.owner,svg:vaultImages.get(row.id)}))}
 }
 export async function requireVaultManager(context:Awaited<ReturnType<typeof requireSharedMember>>,targetId?:string,nextRole?:string){
  if(context.row.owner_id===context.user.id)return

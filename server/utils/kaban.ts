@@ -6,11 +6,13 @@ import { kabanCanEditPlanning, kabanPlanningChanged } from '../../shared/utils/k
 import { openSharedVault, sealSharedVault } from './shared-crypto'
 
 export const kabanDataSchema = z.object({ title: z.string().trim().min(1).max(200), description: z.string().max(20000), dueOn: z.string().refine(value => !value || validDate(value)), todos: z.array(z.object({ id: z.uuid(), text: z.string().trim().min(1).max(500), done: z.boolean() }).strict()).max(100).refine(items => new Set(items.map(item => item.id)).size === items.length) }).strict()
-export const kabanTaskSchema = z.object({ boardId: z.uuid(), stageId: z.uuid(), participantIds: z.array(z.uuid()).max(50), categoryIds: z.array(z.string().min(1).max(128)).min(1).max(50), data: kabanDataSchema }).strict()
+export const kabanTaskSchema = z.object({ boardId: z.uuid(), stageId: z.uuid(), participantIds: z.array(z.uuid()).max(50), closerIds: z.array(z.uuid()).max(50).optional(), categoryIds: z.array(z.string().min(1).max(128)).min(1).max(50), data: kabanDataSchema }).strict()
 export const kabanStagesSchema = z.array(z.object({ id: z.uuid(), name: z.string().trim().min(1).max(60), color: z.string().regex(/^#[\da-fA-F]{6}$/), done: z.boolean() }).strict()).min(1).max(12).refine(stages => new Set(stages.map(stage => stage.id)).size === stages.length)
 export const kabanBucket = 'kaban-files'
 export function kabanFailure(error: { message: string }) {
   const text = error.message
+  if (text.includes('CREATOR_COMPLETION_ONLY')) throw createError({ statusCode: 403, message: 'Завершать задачу может создатель или выбранные им пользователи.' })
+  if (text.includes('CREATOR_ONLY')) throw createError({ statusCode: 403, message: 'Это действие доступно только создателю задачи.' })
   if (text.includes('ACCESS_DENIED')) throw createError({ statusCode: 403, message: 'Нет прав на действие в этом хранилище.' })
   if (text.includes('REVISION_CONFLICT')) throw createError({ statusCode: 409, message: 'Данные изменились. Обновите доску и повторите действие.' })
   if (text.includes('KABAN_NOT_FOUND')) throw createError({ statusCode: 404, message: 'Задача или доска не найдена.' })
@@ -31,22 +33,18 @@ export async function writeKabanTask(event: H3Event, id: string, create = false)
   const permission = await context.client.rpc('kaban_check', { p_actor: context.user.id, p_board: body.boardId, p_write: true })
   if (permission.error) kabanFailure(permission.error)
   if (!create) {
-    const current = await context.client.from('kaban_tasks').select('id,creator_id,participant_ids,category_ids,revision,encrypted_data').eq('id', id).eq('board_id', body.boardId).maybeSingle()
+    const current = await context.client.rpc('kaban_task_access', { p_actor: context.user.id, p_task: id, p_write: true, p_board: body.boardId })
     if (current.error) kabanFailure(current.error)
-    if (!current.data) kabanFailure({ message: 'KABAN_NOT_FOUND' })
-    const row = current.data!
-    const visible = await context.client.rpc('kaban_task_visible', { p_board: body.boardId, p_ids: row.category_ids, p_categories: permission.data.categoryIds })
-    if (visible.error) kabanFailure(visible.error)
-    if (!visible.data) kabanFailure({ message: 'ACCESS_DENIED' })
+    const row = current.data
     if (row.revision !== body.revision) kabanFailure({ message: 'REVISION_CONFLICT' })
     if (!kabanCanEditPlanning(context.user.id, { creatorId: row.creator_id })) {
-      if (kabanPlanningChanged({ dueOn: readKabanTaskData(event, row).dueOn, participantIds: row.participant_ids }, { dueOn: body.data.dueOn, participantIds: body.participantIds })) {
+      if ((body.closerIds && (body.closerIds.length !== row.closer_ids.length || body.closerIds.some(value => !row.closer_ids.includes(value)))) || kabanPlanningChanged({ dueOn: readKabanTaskData(event, row).dueOn, participantIds: row.participant_ids }, { dueOn: body.data.dueOn, participantIds: body.participantIds })) {
         throw createError({ statusCode: 403, message: 'Только создатель задачи может менять срок и ответственных.' })
       }
     }
     // The mutation checks this same revision under a row lock, so concurrent edits cannot bypass this comparison.
   }
-  const { error } = await context.client.rpc('kaban_task_mutate', { p_actor: context.user.id, p_board: body.boardId, p_id: id, p_revision: body.revision, p_payload: { stageId: body.stageId, participantIds: [...new Set(body.participantIds)], categoryIds: [...new Set(body.categoryIds)], encryptedData: sealSharedVault(body.data, sharedSecret(event), `kaban-task:${id}`, 1) } })
+  const { error } = await context.client.rpc('kaban_task_mutate', { p_actor: context.user.id, p_board: body.boardId, p_id: id, p_revision: body.revision, p_payload: { stageId: body.stageId, participantIds: [...new Set(body.participantIds)], ...(body.closerIds ? { closerIds: [...new Set(body.closerIds)] } : {}), categoryIds: [...new Set(body.categoryIds)], encryptedData: sealSharedVault(body.data, sharedSecret(event), `kaban-task:${id}`, 1) } })
   if (error) kabanFailure(error)
   return { id }
 }
