@@ -3,6 +3,7 @@ import type { AppRelease } from '~~/shared/types/releases'
 import { backendFetch, backendUrl } from '~/utils/backend'
 definePageMeta({ layout: false })
 useHead({ title: 'Скачать Magnat' })
+const route=useRoute()
 const release = ref<AppRelease | null>(null), loading = ref(true), error = ref(''), selected = ref('windows')
 const platforms = [
   { label: 'Windows', value: 'windows' }, { label: 'macOS', value: 'macos' },
@@ -20,6 +21,7 @@ async function load() {
 onMounted(() => {
   const agent = navigator.userAgent
   selected.value = /Android/i.test(agent) ? 'android' : /iPhone|iPad/i.test(agent) || (/Mac/i.test(agent) && navigator.maxTouchPoints > 1) ? 'ios' : /Mac/i.test(agent) ? 'macos' : 'windows'
+  if(typeof route.query.platform==='string'&&platforms.some(item=>item.value===route.query.platform))selected.value=route.query.platform
   void load()
 })
 </script>

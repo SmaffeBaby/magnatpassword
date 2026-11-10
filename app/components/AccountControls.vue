@@ -16,7 +16,8 @@ const profileItems = computed(() => [
     { label: 'Настройки аккаунта', icon: 'i-lucide-settings', to: '/settings/account' },
     { label: 'Команда', icon: 'i-lucide-users-round', to: '/team' },
     ...(!native.value ? [{ label: 'Скачать приложение', icon: 'i-lucide-download', to: '/downloads' }] : []),
-    { label: 'Копия личного хранилища', icon: 'i-lucide-download', onSelect: () => vault.exportEncrypted() }
+    { label: 'Копия личного хранилища', icon: 'i-lucide-download', onSelect: () => vault.exportEncrypted() },
+    ...(native.value ? [{label:'Версия приложения',icon:'i-lucide-info',to:'/settings/app-version'}] : [])
   ],
   [
     { label: 'Сменить аккаунт', icon: 'i-lucide-users-round', onSelect: () => auth.logout() },
