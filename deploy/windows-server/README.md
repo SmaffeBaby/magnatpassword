@@ -84,3 +84,11 @@ The paired iPhone was updated in place to 0.2.1 and launched successfully; HTTPS
 The older 0.2.0 archive is retained for rollback and still contains the old origin. Use the new installers and server for further work. A new origin may require signing in again.
 
 Before publishing 0.2.1, the contents of 31 public application tables were compared between source and destination using row hashes; no differences were found. The live device heartbeat table was excluded from that comparison.
+
+## Release 0.2.2 — 2026-11-10
+
+Windows x64, macOS Apple Silicon, signed iOS IPA and Android ARM64 APK were rebuilt sequentially and published under `/home/magnat/releases/0.2.2`. The `latest.json` pointer was switched atomically after validating all four SHA-256 hashes. Production HTTPS downloads were checked byte-for-byte against the built files; release 0.2.1 remains available for rollback. The application release plan was updated to 0.2.2.
+
+The shell now exposes its installed version to the hosted website and includes `appVersion=0.2.2` in the startup URL. The Android signing certificate matches 0.2.1 and its versionCode increased.
+
+The registered iPhone was updated in place from 0.2.1 to 0.2.2 and launched successfully. Its refreshed development provisioning profile expires on **2026-11-17 at 14:46 Europe/Moscow**; it is limited to the registered device.
