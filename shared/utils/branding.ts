@@ -24,6 +24,8 @@ export function applicationForPath(path: string) {
   if (root === 'finances') return { slug: 'finances', name: 'Финансы' }
   if (root === 'relationships') return { slug: 'relationships', name: 'Взаимосвязи' }
   if (root === 'projects') return { slug: 'projects', name: 'Проекты' }
+  if (root === 'team') return { slug: 'team', name: 'Команда' }
+  if (root === 'kaban') return { slug: 'kaban', name: 'Кабан' }
   return null
 }
 

@@ -29,7 +29,11 @@ function openNotification(notification: AppNotification) {
       <aside v-if="isProjects" class="projects-sidebar" aria-label="Навигация проектов"><ProjectNavigation/></aside>
       <USlideover v-if="isProjects" v-model:open="projectMenuOpen" side="left" title="Проекты" description="Разделы рабочего пространства и текущего проекта." :ui="{ content: 'max-w-xs', body: 'p-0 sm:p-0' }"><template #body><ProjectNavigation @navigate="projectMenuOpen = false"/></template></USlideover>
       <header class="home-topbar" :class="{'projects-topbar':isProjects,'team-topbar':isTeam||isAccountPage,'is-hidden':isProjects && topbarHidden && !projectMenuOpen}">
-        <NuxtLink v-if="isHome" to="/" class="home-brand" aria-label="Главная"><img :src="brand === 'light' ? '/light-favicon.svg' : '/favicon.svg'" alt="" width="32" height="32" /></NuxtLink>
+        <NuxtLink v-if="isHome" to="/" class="home-brand" aria-label="Главная">
+          <img :src="brand === 'light' ? '/light-favicon.svg' : '/favicon.svg'" alt="" width="32" height="32" :class="{ 'home-brand-compact': brand === 'light' }" />
+          <span v-if="brand === 'light'" class="home-brand-desktop home-brand-light" aria-hidden="true"><img src="/light-logo.svg" alt="" width="139" height="30" /></span>
+          <span v-else class="home-brand-desktop home-brand-magnat" aria-hidden="true">magnat <span>professional</span></span>
+        </NuxtLink>
         <div v-else class="home-navigation-context"><UButton v-if="isProjects" icon="i-lucide-panel-left" color="neutral" variant="ghost" class="project-menu-trigger" aria-label="Открыть меню проектов" :aria-expanded="projectMenuOpen" @click="projectMenuOpen = true"/><NuxtLink :to="isProjects ? '/projects' : '/'" class="projects-back"><UIcon :name="isProjects ? 'i-lucide-folder-kanban' : 'i-lucide-arrow-left'" />{{ isProjects ? 'Проекты' : 'Главная' }}</NuxtLink></div>
         <ApplicationSwitcher v-if="isProjects || isTeam || isAccountPage" />
         <div v-if="isHome" class="home-personal-controls"><HomeCustomization/><AccountControls class="home-account" @open-entry="openNotification"/></div>

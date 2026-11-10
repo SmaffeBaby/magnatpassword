@@ -7,6 +7,8 @@ import TeamCard from './TeamCard.vue'
 import KabanCard from './KabanCard.vue'
 const projectAccess=useProjectAccess(),home=useHomeLayoutStore(),auth=useAuthStore(),route=useRoute()
 const open=ref(false)
+const { application } = useAccountBrand()
+const currentServiceName = computed(() => application.value?.name || 'Все сервисы')
 const components={passwords:PasswordCard,finances:FinanceCard,relationships:RelationshipsCard,projects:ProjectsCard,team:TeamCard,kaban:KabanCard}
 const rows=computed(()=>home.display.rows.map(row=>({...row,cards:row.cards.filter(id=>id!=='projects'||projectAccess.data.value?.allowed)})).filter(row=>row.cards.length))
 watch(()=>route.path,()=>{open.value=false})
@@ -16,7 +18,7 @@ watch(open,value=>{if(value&&!home.ready&&!home.loading)void home.load()})
 <template>
  <nav class="workspace-apps services-switcher" aria-label="Приложения">
   <UPopover v-model:open="open" :content="{side:'bottom',align:'center',sideOffset:12,collisionPadding:16}" :ui="{content:'services-popover rounded-[22px] shadow-xl'}">
-   <button type="button" class="password-glass services-trigger" :class="{'is-open':open}" aria-label="Все сервисы" :aria-expanded="open"><UIcon name="i-lucide-layout-grid"/><span>Все сервисы</span><UIcon name="i-lucide-chevron-down" class="services-chevron"/></button>
+   <button type="button" class="password-glass services-trigger" :class="{'is-open':open}" :aria-label="currentServiceName" :aria-expanded="open"><UIcon name="i-lucide-layout-grid"/><span>{{ currentServiceName }}</span><UIcon name="i-lucide-chevron-down" class="services-chevron"/></button>
    <template #content>
     <section class="services-panel" aria-label="Все сервисы">
      <header><div><strong>Все сервисы</strong></div><UButton to="/" icon="i-lucide-house" color="neutral" variant="ghost" aria-label="На главную" @click="open=false"/></header>
