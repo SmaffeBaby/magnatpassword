@@ -13,6 +13,7 @@ const profileItems = computed(() => [
   [{ label: name.value, type: 'label' as const }],
   [
     { label: 'Мой профиль', icon: 'i-lucide-user-round-cog', to: '/profile' },
+    { label: 'Настройки аккаунта', icon: 'i-lucide-settings', to: '/settings/account' },
     { label: 'Команда', icon: 'i-lucide-users-round', to: '/team' },
     ...(!native.value ? [{ label: 'Скачать приложение', icon: 'i-lucide-download', to: '/downloads' }] : []),
     { label: 'Копия личного хранилища', icon: 'i-lucide-download', onSelect: () => vault.exportEncrypted() }

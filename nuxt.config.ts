@@ -29,6 +29,7 @@ export default defineNuxtConfig({
     '/api/projects/*/contracts/*/files': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
     '/api/profile/avatar': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 2113536, maxUploadFileRequestInBytes: 2113536 } } },
     '/api/projects/*/estimate': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 12582912, maxUploadFileRequestInBytes: 12582912 } } },
+    '/settings/**': { ssr:false },
     '/team': { ssr:false }, '/team/**': { ssr:false }, '/profile': { ssr:false },
     '/kaban': { ssr:false },
     '/api/kaban/tasks/*/files': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
