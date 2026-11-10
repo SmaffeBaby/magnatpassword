@@ -1,10 +1,26 @@
 <script setup lang="ts">
-import type { AppRelease } from '~~/shared/types/releases'
+import type { AppRelease, ReleaseDownload } from '~~/shared/types/releases'
 import { backendFetch, backendUrl } from '~/utils/backend'
+import { downloadFileUrl } from '~/utils/file-download'
 definePageMeta({ layout: false })
 useHead({ title: 'Скачать Magnat' })
 const route=useRoute()
 const release = ref<AppRelease | null>(null), loading = ref(true), error = ref(''), selected = ref('windows')
+const downloading = ref(false), downloadOpen = ref(false), downloadError = ref('')
+const attemptedDownload = ref<ReleaseDownload | null>(null)
+async function startDownload(item = download.value) {
+  if (!item?.url || downloading.value) return
+  attemptedDownload.value = { ...item }
+  downloading.value = true
+  downloadError.value = ''
+  try {
+    const saved = await downloadFileUrl(backendUrl(item.url), item.asset || item.url.split('/').pop() || 'Magnat')
+    downloadOpen.value = saved
+  } catch (failure) {
+    downloadError.value = failure instanceof Error ? failure.message : 'Не удалось скачать файл. Попробуйте ещё раз.'
+    downloadOpen.value = true
+  } finally { downloading.value = false }
+}
 const platforms = [
   { label: 'Windows', value: 'windows' }, { label: 'macOS', value: 'macos' },
   { label: 'Android', value: 'android' }, { label: 'iPhone / iPad', value: 'ios' }
@@ -35,13 +51,20 @@ onMounted(() => {
       <UAlert v-else-if="error" class="mt-6" color="neutral" :description="error" :actions="[{label:'Повторить',onClick:load}]" />
       <template v-else>
         <p class="mt-6 text-sm text-slate-500">Версия оболочки <strong class="text-slate-900">v{{ release?.version }}</strong></p>
-        <UButton v-if="download?.url" class="mt-4" size="lg" icon="i-lucide-download" :href="backendUrl(download.url)" :label="`Скачать · ${download.label}`" :disabled="signingExpired" />
+        <UButton v-if="download?.url" type="button" class="mt-4" size="lg" icon="i-lucide-download" :label="`Скачать · ${download.label}`" :loading="downloading" :disabled="signingExpired || downloading" @click="startDownload()" />
         <UAlert v-else class="mt-4" color="neutral" :description="selected === 'ios' ? 'Версия для iPhone и iPad готовится. Публичная установка пока недоступна.' : 'Установщик для этой платформы пока не опубликован.'" />
         <p v-if="selected === 'ios' && download" class="mt-4 text-xs text-slate-500">IPA предназначен для зарегистрированных iPhone и устанавливается через инструменты разработчика. Это не версия из App Store. <span v-if="signingExpiry">Подпись действует до {{ signingExpiry }}.</span><span v-if="signingExpired"> Срок подписи истёк; требуется новый подписанный пакет.</span></p>
         <p v-if="selected === 'android'" class="mt-4 text-xs text-slate-500">Android запросит разрешение на установку APK. Для обновления сохраните установленное приложение и его данные.</p>
       </template>
     </UCard>
     <section v-if="release"><h2 class="text-xl font-semibold">Что нового в v{{ release.version }}</h2><p class="mt-4 whitespace-pre-wrap break-words leading-7 text-slate-600">{{ release.notes }}</p></section>
-    <NuxtLink to="/" class="text-sm text-primary-600">Открыть Magnat в браузере →</NuxtLink>
+    <UModal v-model:open="downloadOpen" :title="downloadError ? 'Не удалось начать загрузку' : 'Загрузка началась'" :description="attemptedDownload?.asset || attemptedDownload?.label" :ui="{ footer: 'justify-end' }">
+      <template #body>
+        <p v-if="downloadError" role="alert" class="mb-4 text-sm text-red-600">{{ downloadError }}</p>
+        <p v-else class="mb-4 text-sm text-slate-500">Файл передан для сохранения. Страница загрузки остаётся открытой.</p>
+        <UButton type="button" variant="link" class="whitespace-normal px-0 text-left" :loading="downloading" :disabled="downloading" label="попробуйте еще раз, если скачивание не началось" @click="startDownload(attemptedDownload || undefined)" />
+      </template>
+      <template #footer><UButton label="Закрыть" color="neutral" variant="outline" @click="downloadOpen = false" /></template>
+    </UModal>
   </main>
 </template>

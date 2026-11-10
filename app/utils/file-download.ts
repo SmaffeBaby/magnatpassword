@@ -21,3 +21,40 @@ export async function saveFile(blob: Blob, filename: string): Promise<boolean> {
   window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
   return true
 }
+
+interface SaveTarget {
+  createWritable(): Promise<{
+    write(data: Blob): Promise<void>
+    close(): Promise<void>
+    abort(): Promise<void>
+  }>
+}
+
+// Open the browser picker before the first await so it retains the click gesture.
+export async function downloadFileUrl(url: string, filename: string): Promise<boolean> {
+  const picker = (window as Window & {
+    showSaveFilePicker?: (options: { suggestedName: string }) => Promise<SaveTarget>
+  }).showSaveFilePicker
+  let target: SaveTarget | undefined
+  try {
+    if (!isTauri() && picker) target = await picker.call(window, { suggestedName: downloadFilename(filename) })
+  } catch (failure) {
+    if (failure instanceof Error && failure.name === 'AbortError') return false
+    throw new Error('Не удалось открыть окно сохранения файла.')
+  }
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(response.status === 404
+    ? 'Установщик не найден. Обновите список версий и попробуйте ещё раз.'
+    : 'Не удалось скачать установщик. Попробуйте ещё раз.')
+  const blob = await response.blob()
+  if (!target) return saveFile(blob, filename)
+  const writable = await target.createWritable()
+  try {
+    await writable.write(blob)
+    await writable.close()
+  } catch (failure) {
+    await writable.abort().catch(() => {})
+    throw failure
+  }
+  return true
+}
