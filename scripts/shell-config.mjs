@@ -6,7 +6,7 @@ export function shellConfig(origin, version) {
     version,
     build: { frontendDist: `${url.origin}/?native=1&appVersion=${encodeURIComponent(version)}`, beforeBuildCommand: '' },
     app: {
-      windows: [{ label: 'main', title: 'Magnat', url: `${url.origin}/?native=1&appVersion=${encodeURIComponent(version)}`, width: 1280, height: 850, minWidth: 360, minHeight: 600, resizable: true }],
+      windows: [{ label: 'main', title: 'Magnat', url: `${url.origin}/?native=1&appVersion=${encodeURIComponent(version)}`, width: 1280, height: 850, minWidth: 360, minHeight: 600, resizable: true, dragDropEnabled: false }],
       security: { capabilities: ['default', { identifier: 'native-actions', windows: ['main'], remote: { urls: [`${url.origin}/*`] }, permissions: ['core:app:allow-version', 'allow-open-external', 'allow-save-download', 'allow-notification-permission', 'allow-set-unread-count', 'allow-show-unread-notification'] }] }
     },
     bundle: { createUpdaterArtifacts: false }

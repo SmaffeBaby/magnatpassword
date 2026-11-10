@@ -20,7 +20,8 @@
         "minWidth": 360,
         "minHeight": 600,
         "url": "https://192.168.10.250/?native=1&appVersion=0.2.2",
-        "label": "main"
+        "label": "main",
+        "dragDropEnabled": false
       }
     ],
     "security": {

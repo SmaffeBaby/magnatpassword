@@ -15,6 +15,39 @@ const selected=computed(()=>c.categories.find(category=>category.id===c.selected
 const selectedParent=computed(()=>c.categories.find(category=>category.id===selected.value?.parentId))
 const colors=['#64748b','#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#a855f7']
 function drop(stageId:string){const task=c.displayData?.tasks.find(task=>task.id===dragged.value);dragged.value='';if(task)void c.moveTask(task,stageId)}
+let cancelPointerDrag: (()=>void)|undefined
+function pointerDrag(event:PointerEvent,id:string){
+ if(event.button!==0||c.busy)return
+ cancelPointerDrag?.()
+ const startX=event.clientX,startY=event.clientY,pointerId=event.pointerId
+ const handle=event.currentTarget as HTMLElement
+ let moved=false
+ handle.setPointerCapture(pointerId)
+ function move(next:PointerEvent){
+  if(next.pointerId!==pointerId)return
+  if(Math.hypot(next.clientX-startX,next.clientY-startY)>6){moved=true;dragged.value=id}
+ }
+ function cleanup(){
+  window.removeEventListener('pointermove',move)
+  window.removeEventListener('pointerup',finish)
+  window.removeEventListener('pointercancel',cancel)
+  if(handle.hasPointerCapture(pointerId))handle.releasePointerCapture(pointerId)
+  dragged.value='';cancelPointerDrag=undefined
+ }
+ function cancel(){cleanup()}
+ function finish(next:PointerEvent){
+  if(next.pointerId!==pointerId)return
+  const stageId=moved?document.elementFromPoint(next.clientX,next.clientY)?.closest<HTMLElement>('[data-kaban-stage]')?.dataset.kabanStage:undefined
+  cleanup()
+  const task=c.displayData?.tasks.find(task=>task.id===id)
+  if(task&&stageId)void c.moveTask(task,stageId)
+ }
+ cancelPointerDrag=cleanup
+ window.addEventListener('pointermove',move)
+ window.addEventListener('pointerup',finish)
+ window.addEventListener('pointercancel',cancel)
+}
+onBeforeUnmount(()=>cancelPointerDrag?.())
 function notification(notification:{entryId:string|null;vaultId:string|null}){navigateTo({path:'/password',query:{...(notification.entryId?{entry:notification.entryId}:{}),...(notification.vaultId?{vault:notification.vaultId}:{})}})}
 </script>
 <template>
@@ -44,9 +77,9 @@ function notification(notification:{entryId:string|null;vaultId:string|null}){na
      <div v-if="c.view==='closed'" class="kaban-closed-filters"><UFormField label="Закрыты с"><UInput v-model="c.closedFrom" type="date" aria-label="Закрыты с" :max="c.closedUntil||undefined"/></UFormField><UFormField label="По"><UInput v-model="c.closedUntil" type="date" aria-label="Закрыты по" :min="c.closedFrom||undefined"/></UFormField><UButton label="Сбросить период" color="neutral" variant="ghost" :disabled="!c.closedFrom&&!c.closedUntil" @click="c.closedFrom='';c.closedUntil=''"/><small>По дате закрытия · московское время</small></div><div v-if="c.view==='closed'" class="kaban-closed-grid"><KabanTaskCard v-for="task in c.closedTasks" :key="task.id" :task="task" :controller="c"/><p v-if="!c.closedTasks.length" class="kaban-help">За выбранный период закрытых задач нет.</p></div>
      <p v-if="c.view!=='closed'&&c.workspaceId==='all'&&!c.tasks.length" class="kaban-loading">Нет задач по выбранным условиям.</p>
      <div v-if="c.view!=='closed'" class="kaban-board" aria-label="Канбан-доска">
-      <section v-for="stage in c.boardStages" :key="stage.id" class="kaban-column" :class="{'is-drop-target':!!dragged}" @dragover.prevent @drop.prevent="drop(stage.id)">
+      <section v-for="stage in c.boardStages" :key="stage.id" :data-kaban-stage="stage.id" class="kaban-column" :class="{'is-drop-target':!!dragged}" @dragover.prevent @drop.prevent="drop(stage.id)">
        <header><span class="kaban-stage-dot" :style="{background:stage.color}"/><h2>{{stage.name}}</h2><span class="kaban-column-count">{{c.tasks.filter(task=>task.stageId===stage.id).length}}</span><UButton v-if="c.workspaceId!=='all'&&c.displayData.canEdit&&c.view==='board'" size="xs" icon="i-lucide-plus" color="neutral" variant="ghost" :aria-label="`Добавить задачу: ${stage.name}`" :disabled="c.busy" @click="c.openTask(undefined,stage.id)"/></header>
-       <div class="kaban-column-body"><KabanTaskCard v-for="task in c.tasks.filter(task=>task.stageId===stage.id)" :key="task.id" :task="task" :done="stage.done" :controller="c" @drag="dragged=$event"/><p v-if="!c.tasks.some(task=>task.stageId===stage.id)" class="kaban-column-empty">{{c.displayData.canEdit?'Перетащите задачу сюда или создайте новую':'Пока нет задач'}}</p></div>
+       <div class="kaban-column-body"><KabanTaskCard v-for="task in c.tasks.filter(task=>task.stageId===stage.id)" :key="task.id" :task="task" :done="stage.done" :controller="c" @drag="dragged=$event" @pointer-drag="pointerDrag"/><p v-if="!c.tasks.some(task=>task.stageId===stage.id)" class="kaban-column-empty">{{c.displayData.canEdit?'Перетащите задачу сюда или создайте новую':'Пока нет задач'}}</p></div>
       </section>
      </div>
     </template>
