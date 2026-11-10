@@ -1,3 +1,4 @@
+import { activityChanges } from '../../shared/utils/kaban-activity'
 import { z } from 'zod'
 import type { H3Event } from 'h3'
 import type { KabanTaskData, KabanFile } from '../../shared/types/kaban'
@@ -20,6 +21,7 @@ export const kabanStagesSchema = z.array(z.object({ id: z.uuid(), name: z.string
 export const kabanBucket = 'kaban-files'
 export function kabanFailure(error: { message: string }) {
   const text = error.message
+  if (text.includes('INVALID_YEAR')) throw createError({statusCode:400,message:'Выберите доступный год.'})
   if (text.includes('INVALID_RETENTION')) throw createError({statusCode:400,message:'Укажите срок хранения от 1 до 1000 дней, месяцев или лет.'})
   if (text.includes('CREATOR_COMPLETION_ONLY')) throw createError({ statusCode: 403, message: 'Завершать задачу может создатель или выбранные им пользователи.' })
   if (text.includes('CREATOR_ONLY')) throw createError({ statusCode: 403, message: 'Это действие доступно только создателю задачи.' })
@@ -42,11 +44,13 @@ export async function writeKabanTask(event: H3Event, id: string, create = false)
   const body = await sharedBody(event, schema)
   const permission = await context.client.rpc('kaban_check', { p_actor: context.user.id, p_board: body.boardId, p_write: true })
   if (permission.error) kabanFailure(permission.error)
+  let activityPrevious:KabanTaskData|null=null
   if (!create) {
     const current = await context.client.rpc('kaban_task_access', { p_actor: context.user.id, p_task: id, p_write: true, p_board: body.boardId })
     if (current.error) kabanFailure(current.error)
     const row = current.data
     const previous=kabanDataSchema.parse(openSharedVault(row.encrypted_data,sharedSecret(event),`kaban-task:${id}`,1))
+    activityPrevious=previous
     if(previous.blocks&&!body.data.blocks){
       if(previous.description!==body.data.description||JSON.stringify(previous.todos)!==JSON.stringify(body.data.todos))throw createError({statusCode:409,message:'Задача использует новые поля. Обновите приложение перед редактированием.'})
       body.data.blocks=previous.blocks
@@ -60,7 +64,7 @@ export async function writeKabanTask(event: H3Event, id: string, create = false)
     // The mutation checks this same revision under a row lock, so concurrent edits cannot bypass this comparison.
   }
   if(body.data.blocks)Object.assign(body.data,kabanBlockSummary(body.data.blocks))
-  const { error } = await context.client.rpc('kaban_task_mutate', { p_actor: context.user.id, p_board: body.boardId, p_id: id, p_revision: body.revision, p_payload: { stageId: body.stageId, participantIds: [...new Set(body.participantIds)], ...(body.closerIds ? { closerIds: [...new Set(body.closerIds)] } : {}), categoryIds: [...new Set(body.categoryIds)], encryptedData: sealSharedVault(body.data, sharedSecret(event), `kaban-task:${id}`, 1) } })
+  const { error } = await context.client.rpc('kaban_task_mutate', { p_actor: context.user.id, p_board: body.boardId, p_id: id, p_revision: body.revision, p_payload: { activity:activityChanges(activityPrevious,body.data,id),stageId: body.stageId, participantIds: [...new Set(body.participantIds)], ...(body.closerIds ? { closerIds: [...new Set(body.closerIds)] } : {}), categoryIds: [...new Set(body.categoryIds)], encryptedData: sealSharedVault(body.data, sharedSecret(event), `kaban-task:${id}`, 1) } })
   if (error) kabanFailure(error)
   return { id }
 }
