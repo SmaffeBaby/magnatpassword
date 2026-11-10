@@ -20,6 +20,7 @@ export const kabanStagesSchema = z.array(z.object({ id: z.uuid(), name: z.string
 export const kabanBucket = 'kaban-files'
 export function kabanFailure(error: { message: string }) {
   const text = error.message
+  if (text.includes('INVALID_RETENTION')) throw createError({statusCode:400,message:'Укажите срок хранения от 1 до 1000 дней, месяцев или лет.'})
   if (text.includes('CREATOR_COMPLETION_ONLY')) throw createError({ statusCode: 403, message: 'Завершать задачу может создатель или выбранные им пользователи.' })
   if (text.includes('CREATOR_ONLY')) throw createError({ statusCode: 403, message: 'Это действие доступно только создателю задачи.' })
   if (text.includes('ACCESS_DENIED')) throw createError({ statusCode: 403, message: 'Нет прав на действие в этом хранилище.' })

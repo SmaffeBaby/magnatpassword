@@ -19,7 +19,7 @@ watch(open,value=>{if(value&&!home.ready&&!home.loading)void home.load()})
    <button type="button" class="password-glass services-trigger" :class="{'is-open':open}" aria-label="Все сервисы" :aria-expanded="open"><UIcon name="i-lucide-layout-grid"/><span>Все сервисы</span><UIcon name="i-lucide-chevron-down" class="services-chevron"/></button>
    <template #content>
     <section class="services-panel" aria-label="Все сервисы">
-     <header><div><strong>Все сервисы</strong><p>Как на вашей главной странице</p></div><UButton to="/" icon="i-lucide-house" color="neutral" variant="ghost" aria-label="На главную" @click="open=false"/></header>
+     <header><div><strong>Все сервисы</strong></div><UButton to="/" icon="i-lucide-house" color="neutral" variant="ghost" aria-label="На главную" @click="open=false"/></header>
      <p v-if="home.loading" class="services-status" role="status">Загружаем сервисы…</p>
      <UAlert v-else-if="home.error&&!home.ready" color="error" title="Не удалось загрузить сервисы" :description="home.error" :actions="[{label:'Повторить',onClick:()=>home.load()}]"/>
      <template v-else-if="home.ready">
@@ -42,7 +42,7 @@ watch(open,value=>{if(value&&!home.ready&&!home.loading)void home.load()})
 .services-trigger.is-open>.services-chevron{transform:rotate(180deg)}
 .services-panel{width:min(680px,calc(100vw - 32px));max-height:min(680px,calc(100dvh - 150px));overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:18px;background:linear-gradient(145deg,#fff,#f8fafc);border-radius:22px}
 .services-panel>header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:14px;border-bottom:1px solid #e7edf3}
-.services-panel>header strong{font-size:17px;font-weight:650;color:#334155}.services-panel>header p{font-size:12px;color:#94a3b8;margin-top:4px}
+.services-panel>header strong{font-size:17px;font-weight:650;color:#334155}
 .services-row{display:flex;flex-wrap:wrap;gap:12px;min-width:0}.align-left{justify-content:flex-start}.align-center{justify-content:center}.align-right{justify-content:flex-end}
 .services-row :deep(.password-glass){display:flex;flex-direction:row;align-items:center;justify-content:flex-start;width:calc((100% - 24px)/3);min-width:0;gap:10px;padding:17px 14px;border-radius:16px;font-size:14px;white-space:normal;transition:transform .18s,box-shadow .18s;background:#fff;box-shadow:0 4px 18px #0f172a06;border:1px solid #e7edf3}
 .services-row :deep(.password-glass:hover){transform:translateY(-2px);box-shadow:0 8px 24px #0f172a0c}
