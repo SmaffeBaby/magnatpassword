@@ -50,3 +50,7 @@ src-tauri/gen/android/keystore.properties
 *.p12
 *.pfx
 *.mobileprovision
+
+/deploy/local/
+/docker-compose.https.yml
+/docker-compose.override.yml
