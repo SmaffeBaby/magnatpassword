@@ -20,7 +20,7 @@ export default defineNuxtConfig({
   icon: { serverBundle: { collections: ['lucide'] }, ...(native ? { clientBundle: { scan: true, includeCustomCollections: true } } : {}) },
   routeRules: {
     // Authenticated APIs use validated-account budgets in requireSharedUser.
-    ...Object.fromEntries(['finance-reports','finance-subscriptions','kaban','notifications','personal-vault','profile','projects','relationship-cards','shared-cards','shared-vaults','team','workspace'].flatMap(root=>[[`/api/${root}`,{security:{rateLimiter:false}}],[`/api/${root}/**`,{security:{rateLimiter:false}}]])),
+    ...Object.fromEntries(['assistant','finance-reports','finance-subscriptions','kaban','notifications','personal-vault','profile','projects','relationship-cards','shared-cards','shared-vaults','team','workspace'].flatMap(root=>[[`/api/${root}`,{security:{rateLimiter:false}}],[`/api/${root}/**`,{security:{rateLimiter:false}}]])),
     '/api/app-version': { headers: { 'Cache-Control': 'no-store' }, security: { rateLimiter: false } },
     '/downloads': { headers: { 'Cache-Control': 'no-store' } },
     '/projects': { ssr: false },
@@ -30,6 +30,7 @@ export default defineNuxtConfig({
     '/fonts/**': { security: { rateLimiter: false } },
     '/api/projects/*/input-data/upload': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
     '/api/projects/*/contracts/*/files': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
+    '/api/assistant/upload': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
     '/api/profile/avatar': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 2113536, maxUploadFileRequestInBytes: 2113536 } } },
     '/api/projects/*/estimate': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 12582912, maxUploadFileRequestInBytes: 12582912 } } },
     '/settings/**': { ssr:false },
@@ -42,7 +43,7 @@ export default defineNuxtConfig({
     '/api/**': { headers: { 'Cache-Control': 'no-store' }, security: { corsHandler: false } },
     '/supabase/**': { headers: { 'Cache-Control': 'no-store' }, security: { corsHandler: false } }
   },
-  runtimeConfig: { releasesDirectory: '', releasesBuildToken: '', sharedVaultKey: '', supabaseUrl: 'http://localhost:8003', supabaseServiceRoleKey: '', public: { webBuildId, backendOrigin: native ? process.env.MAGNAT_SERVER_URL || 'http://localhost:3003' : '', supabaseUrl: '/supabase', supabaseAnonKey: '' } },
+  runtimeConfig: { ollamaUrl: 'http://localhost:11434', releasesDirectory: '', releasesBuildToken: '', sharedVaultKey: '', supabaseUrl: 'http://localhost:8003', supabaseServiceRoleKey: '', public: { webBuildId, backendOrigin: native ? process.env.MAGNAT_SERVER_URL || 'http://localhost:3003' : '', supabaseUrl: '/supabase', supabaseAnonKey: '' } },
   security: {
     headers: { contentSecurityPolicy: { 'upgrade-insecure-requests': false, 'connect-src': ["'self'", 'ipc:', 'http://ipc.localhost'], 'img-src': ["'self'", 'data:', 'blob:'], 'frame-ancestors': ["'none'"] }, strictTransportSecurity: false, crossOriginOpenerPolicy: false, originAgentCluster: false },
     rateLimiter: { tokensPerInterval: 300, interval: 300000, driver: { name: 'lruCache' } }

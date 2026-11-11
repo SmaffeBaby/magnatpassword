@@ -1,4 +1,4 @@
-import { subscriptionCardReferences, matchesSubscriptionCard } from './subscriptions'
+import { subscriptionCardReferences, matchesSubscriptionCard } from './subscriptions.ts'
 import type { ScopedCredential } from './vault-sources'
 export type RelationshipMode = 'all' | 'title' | 'site' | 'field' | 'manual'
 export interface RelationNode { id: string; label: string; kind: 'card' | 'title' | 'site' | 'field'; vaultName?: string }

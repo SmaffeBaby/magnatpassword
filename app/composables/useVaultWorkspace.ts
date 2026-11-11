@@ -101,6 +101,17 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string; fi
     form.accounts=entry?JSON.parse(JSON.stringify(credentialAccounts(entry))):[];form.categoryIds=entryCategoryIds(next);form.categoryId=form.categoryIds[0]??''
     showPassword.value = false; formError.value = ''; entryOpen.value = true
   }
+  const assistantDraft = useState<import('~~/shared/types/assistant').AssistantDraft | null>('assistant-draft', () => null)
+  watch([assistantDraft, () => route.path, () => vault.unlocked], () => {
+    if (!assistantDraft.value || route.path !== '/password' || !vault.unlocked || props.embedded) return
+    const draft = assistantDraft.value
+    assistantDraft.value = null
+    // A new assistant card starts private; sharing is chosen explicitly in the editor.
+    workspaceId.value = 'personal'; active.value = 'all'
+    editEntry()
+    form.title = draft.title; form.url = draft.url; form.notes = draft.notes
+    form.accounts = [{ id: createId(), label: 'Основной доступ', username: draft.username, password: draft.password || generatePassword() }]
+  }, { immediate: true })
   function editCategory(value?: ScopedCategory) {
     categoryVaultId.value = value?.vaultId ?? (canManageCategoryVault(defaultTarget())?defaultTarget():'personal')
     if(!canManageCategoryVault(categoryVaultId.value))return

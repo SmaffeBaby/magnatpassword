@@ -1,6 +1,6 @@
 import type { Currency, Subscription, SubscriptionPayment } from '../types/subscriptions'
 import type { VaultSource } from '../types/sharing'
-import { addPeriod, dayDifference, subscriptionRows, todayDate } from './subscriptions'
+import { addPeriod, dayDifference, subscriptionRows, todayDate } from './subscriptions.ts'
 export const currencies: Currency[] = ['RUB','USD','EUR','CNY']
 export const amountLabel = (amount: number, currency: Currency) => new Intl.NumberFormat('ru-RU',{style:'currency',currency,maximumFractionDigits:2}).format(amount)
 export function currencyTotals(items: {amount:number;currency:Currency}[]) {

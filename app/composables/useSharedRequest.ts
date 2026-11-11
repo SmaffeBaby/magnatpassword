@@ -3,7 +3,7 @@ function rateLimitFailure(seconds:number){
  const message=`Слишком много запросов. Повторите через ${seconds} сек.`
  return Object.assign(new Error(message),{statusCode:429,data:{message,data:{retryAfterSeconds:seconds}}})
 }
-export async function sharedRequest<T>(url: string, options: { method?: 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown; signal?: AbortSignal; responseType?: 'blob' } = {}): Promise<T> {
+export async function sharedRequest<T>(url: string, options: { method?: 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown; signal?: AbortSignal; responseType?: 'blob' | 'stream' } = {}): Promise<T> {
   const client = useNuxtApp().$supabase
   const auth = useAuthStore(), userId = auth.user?.id
   const scope=`${userId}:${options.method||'GET'}:${url.split('?')[0]?.split('/')[2]}`
@@ -12,7 +12,7 @@ export async function sharedRequest<T>(url: string, options: { method?: 'POST' |
   requestCooldowns.delete(scope)
   const { data } = await client.auth.getSession()
   if (!data.session || !userId || auth.user?.id !== userId || data.session.user.id !== userId) throw new Error('Войдите в аккаунт')
-  try {return await backendFetch<T, 'json' | 'blob'>(url, { ...options, retry: 0, body: options.body as Record<string, unknown> | undefined, headers: { Authorization: `Bearer ${data.session.access_token}` } }) as T
+  try {return await backendFetch<T, 'json' | 'blob' | 'stream'>(url, { ...options, retry: 0, body: options.body as Record<string, unknown> | undefined, headers: { Authorization: `Bearer ${data.session.access_token}` } }) as T
   }catch(error:any){
     if((error?.statusCode??error?.status)===429){
      const seconds=Math.min(Math.max(Math.ceil(Number(error.response?.headers?.get('retry-after'))||error?.data?.data?.retryAfterSeconds||60),1),300)

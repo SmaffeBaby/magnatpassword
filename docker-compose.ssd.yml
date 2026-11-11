@@ -1,0 +1,10 @@
+# Opt in via COMPOSE_FILE=docker-compose.yml:docker-compose.ssd.yml in .env.
+# Refuse to create a directory on the internal disk when the external SSD is absent.
+services:
+  ollama:
+    volumes:
+      - type: bind
+        source: ${OLLAMA_DATA_DIR:?Set OLLAMA_DATA_DIR to the existing directory on your SSD}
+        target: /root/.ollama
+        bind:
+          create_host_path: false
