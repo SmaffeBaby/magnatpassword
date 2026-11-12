@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContractRegisterCard from '~/components/ContractRegisterCard.vue'
 import ProjectsCard from '~/components/ProjectsPage/ProjectsCard.vue'
 import RelationshipsCard from '~/components/RelationshipsCard.vue'
 import FinanceCard from '~/components/FinanceCard.vue'
@@ -8,8 +9,8 @@ import KabanCard from '~/components/KabanCard.vue'
 definePageMeta({ layout: 'home' })
 const projectAccess = useProjectAccess()
 const home = useHomeLayoutStore()
-const components = { passwords: PasswordCard, finances: FinanceCard, relationships: RelationshipsCard, projects: ProjectsCard, team: TeamCard, kaban: KabanCard }
-const rows = computed(() => home.display.rows.map(row => ({ ...row, cards: row.cards.filter(id => id !== 'projects' || projectAccess.data.value?.allowed) })).filter(row => row.cards.length))
+const components = { contracts: ContractRegisterCard, passwords: PasswordCard, finances: FinanceCard, relationships: RelationshipsCard, projects: ProjectsCard, team: TeamCard, kaban: KabanCard }
+const rows = computed(() => home.display.rows.map(row => ({ ...row, cards: row.cards.filter(id => !['projects','contracts'].includes(id) || projectAccess.data.value?.allowed) })).filter(row => row.cards.length))
 </script>
 <template>
   <div class="home-custom-layout">

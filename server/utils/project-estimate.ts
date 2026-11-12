@@ -14,7 +14,7 @@ export async function projectEstimate(event: H3Event, write?: { revision: number
   content.counterparties = await projectCompanies(event, context, id, content.counterparties)
   if (write) {
     const { revision, ...patch } = write
-    const partySignature = (rows: typeof content.counterparties) => JSON.stringify(rows.map(row => [row.id,row.catalogId,row.company,row.inn,row.kpp,row.director,row.address,row.bankAccount,row.isOwnLegalEntity]).sort((a,b) => String(a[0]).localeCompare(String(b[0]))))
+    const partySignature = (rows: typeof content.counterparties) => JSON.stringify(rows.map(row => [row.id,row.catalogId,row.company,row.inn,row.kpp,row.ogrn??'',row.director,row.address,row.bankAccount,row.isOwnLegalEntity]).sort((a,b) => String(a[0]).localeCompare(String(b[0]))))
     if (patch.counterparties && partySignature(patch.counterparties) !== partySignature(content.counterparties)) throw createError({statusCode:400,message:'Выбирайте компании из общей базы. Реквизиты редактируются на странице «Проекты».'})
     const parsed = estimateContentSchema.safeParse({ ...content, ...patch })
     if (!parsed.success) throw createError({ statusCode: 400, message: parsed.error.issues[0]?.message || 'Проверьте данные сметы' })

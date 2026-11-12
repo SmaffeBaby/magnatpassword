@@ -1,4 +1,6 @@
-export interface ProjectContractInput {
+export interface ProjectContractInput { noDeadline?: boolean; autoRenew?: boolean;
+  fields?: import('./contract-fields').ContractField[]
+  registryRef?: import('./contract-fields').RegistryReference | null
   code: string; number: string; sellerId: string; buyerId: string; date: string; deadline: string
   source: 'revenue' | 'expenses'; itemIds: string[]
 }

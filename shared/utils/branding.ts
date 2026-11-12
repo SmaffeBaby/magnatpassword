@@ -23,6 +23,7 @@ export function applicationForPath(path: string) {
   if (root === 'password') return { slug: 'password', name: 'Пароли' }
   if (root === 'finances') return { slug: 'finances', name: 'Финансы' }
   if (root === 'relationships') return { slug: 'relationships', name: 'Взаимосвязи' }
+  if (root === 'contract-register') return { slug: 'contracts', name: 'Реестр договоров' }
   if (root === 'projects') return { slug: 'projects', name: 'Проекты' }
   if (root === 'team') return { slug: 'team', name: 'Команда' }
   if (root === 'kaban') return { slug: 'kaban', name: 'Кабан' }

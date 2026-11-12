@@ -6,6 +6,7 @@ defineProps<{
   modelValue: string
   items: { value: string; label: string; inn?: string; description?: string; disabled?: boolean }[]
   disabled?: boolean
+  createDescription?: string
   connectCreated: (catalogId: string) => Promise<boolean>
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -19,7 +20,7 @@ function create(search: string) { initialSearch.value = search; menuOpen.value =
     <template #create-item-label="{ item }"><span class="company-picker-create"><UIcon name="i-lucide-plus"/>Добавить «{{ item }}»</span></template>
     <template #content-bottom><div v-if="!searchTerm.trim()" class="company-picker-footer"><UButton label="Добавить компанию" icon="i-lucide-plus" color="neutral" variant="ghost" size="sm" class="w-full" :disabled="disabled" @click="create('')"/></div></template>
   </USelectMenu>
-  <ProjectCompanyCreateModal v-model:open="createOpen" :initial-search="initialSearch" :connect="connectCreated"/>
+  <ProjectCompanyCreateModal v-model:open="createOpen" :initial-search="initialSearch" :connect="connectCreated" :description="createDescription"/>
 </template>
 
 <style scoped>

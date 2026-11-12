@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/vue-query'
 import { companyInputSchema, newCompanyDraft } from '~~/shared/utils/project-companies'
 import ProjectCompanyFields from './ProjectCompanyFields.vue'
 
-const props = defineProps<{ initialSearch: string; connect: (catalogId: string) => Promise<boolean> }>()
+const props = defineProps<{ initialSearch: string; connect: (catalogId: string) => Promise<boolean>; description?: string }>()
 const open = defineModel<boolean>('open', { default: false })
 const auth = useAuthStore(), client = useQueryClient(), formId = useId()
 const draft = ref(newCompanyDraft()), busy = ref(false), error = ref(''), createdId = ref('')
@@ -25,7 +25,7 @@ async function save() {
     if (auth.user?.id !== userId) return
     const connected = await props.connect(createdId.value)
     if (auth.user?.id !== userId) return
-    if (!connected) { error.value = 'Компания сохранена в общей базе, но не выбрана в проекте. Повторите выбор. Если данные проекта изменились, закройте и откройте основную форму заново.'; return }
+    if (!connected) { error.value = 'Компания сохранена в общей базе, но не выбрана в форме. Повторите выбор. Если данные изменились, закройте и откройте основную форму заново.'; return }
     open.value = false
   } catch (failure: any) { if (auth.user?.id === userId) error.value = failure?.data?.message || failure.message || 'Не удалось сохранить компанию' }
   finally { busy.value = false }
@@ -33,7 +33,7 @@ async function save() {
 </script>
 
 <template>
-  <UModal v-model:open="open" :title="draft.isOwnLegalEntity ? 'Добавить юр. лицо' : 'Добавить контрагента'" description="Компания появится в общей базе, подключится к проекту и будет выбрана в текущем поле." :dismissible="!busy" :close="!busy" :ui="{ content: 'sm:max-w-2xl' }">
+  <UModal v-model:open="open" :title="draft.isOwnLegalEntity ? 'Добавить юр. лицо' : 'Добавить контрагента'" :description="description ?? 'Компания появится в общей базе, подключится к проекту и будет выбрана в текущем поле.'" :dismissible="!busy" :close="!busy" :ui="{ content: 'sm:max-w-2xl' }">
     <template #body><form :id="formId" class="company-create-form" @submit.prevent="save"><ProjectCompanyFields v-model="draft" :disabled="busy || !!createdId"/><UAlert v-if="error" color="error" :description="error"/></form></template>
     <template #footer><div class="company-create-actions"><UButton label="Отмена" color="neutral" variant="outline" :disabled="busy" @click="open = false"/><UButton :label="createdId ? 'Выбрать компанию' : 'Сохранить и выбрать'" type="submit" :form="formId" :loading="busy"/></div></template>
   </UModal>

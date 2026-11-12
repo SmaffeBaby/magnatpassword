@@ -25,7 +25,7 @@ onBeforeUnmount(() => home.cancel())
 
 <template>
  <UButton icon="i-lucide-layout-dashboard" color="neutral" variant="ghost" class="home-customize-trigger" label="Настроить главную" :disabled="!home.ready || home.loading" @click="home.open"/>
- <UModal :open="home.editing" title="Настроить главную" description="Соберите удобное рабочее пространство. Настройки сохраняются в вашем аккаунте." :dismissible="!home.saving" :ui="{content:'sm:max-w-4xl',body:'min-w-0',footer:'justify-between flex-wrap'}" @update:open="value => { if (!value) home.cancel() }">
+ <UModal :open="home.editing" title="Настроить главную" description="Настройте главную страницу. Настройки сохраняются в вашем аккаунте." :dismissible="!home.saving" :ui="{content:'sm:max-w-4xl',body:'min-w-0',footer:'justify-between flex-wrap'}" @update:open="value => { if (!value) home.cancel() }">
   <template #body>
    <div class="home-layout-editor" :aria-busy="home.saving">
     <p class="home-editor-help">Перетаскивайте плашки между рядами или используйте стрелки и выбор ряда. Выравнивание задаётся для каждого ряда.</p>
@@ -38,7 +38,7 @@ onBeforeUnmount(() => home.cancel())
      <div class="home-editor-cards" :class="`align-${row.align}`">
       <article v-for="(id, position) in row.cards" :key="id" class="home-editor-card" :class="{'is-dragged':dragged === id}" :draggable="!home.saving" @dragstart="startDrag($event,id)" @dragend="dragged=null" @dragover.prevent.stop @drop.prevent.stop="drop(index,position)">
        <div class="home-editor-card-heading"><UIcon name="i-lucide-grip-vertical" class="home-drag-handle"/><UIcon :name="homeApps[id].icon"/><strong>{{ homeApps[id].label }}</strong><UButton icon="i-lucide-eye-off" size="xs" color="neutral" variant="ghost" :aria-label="`Скрыть ${homeApps[id].actionLabel}`" :disabled="home.saving" @click="home.hide(id)"/></div>
-       <p v-if="id === 'projects' && !projectAccess.data.value?.allowed" class="home-card-access">Появится при наличии доступа</p>
+       <p v-if="['projects','contracts'].includes(id) && !projectAccess.data.value?.allowed" class="home-card-access">Появится при наличии доступа</p>
        <div class="home-card-position"><UButton icon="i-lucide-chevron-left" size="xs" variant="outline" color="neutral" :aria-label="`${homeApps[id].label}: переместить влево`" :disabled="position === 0 || home.saving" @click="shift(id,index,position,-1)"/><USelect :model-value="String(index)" :items="rowOptions" size="sm" :aria-label="`Ряд плашки «${homeApps[id].label}»`" :disabled="home.saving" @update:model-value="value => changeRow(id,String(value))"/><UButton icon="i-lucide-chevron-right" size="xs" variant="outline" color="neutral" :aria-label="`${homeApps[id].label}: переместить вправо`" :disabled="position === row.cards.length - 1 || home.saving" @click="shift(id,index,position,1)"/></div>
       </article>
      </div>

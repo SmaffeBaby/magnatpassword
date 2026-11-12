@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { EstimateContent } from '../../shared/types/estimate'
 import type { ProjectContractInput, StoredProjectContract } from '../../shared/types/project-contracts'
 import { projectContractSchema, contractFigures, contractConflict } from '../../shared/utils/project-contracts'
+import { registryFileSet } from './contract-register'
 import { sealSharedVault, openSharedVault } from './shared-crypto'
 type Context=Awaited<ReturnType<typeof requireProjectsUser>>
 export function contractFailure(error:{message:string;code?:string}){
@@ -16,7 +17,9 @@ export function contractFailure(error:{message:string;code?:string}){
 export function contractId(event:H3Event){const parsed=z.uuid().safeParse(getRouterParam(event,'contractId'));if(!parsed.success)throw createError({statusCode:400,message:'Некорректный договор'});return parsed.data}
 export async function storedProjectContracts(event:H3Event,context:Context,id:string){
  const{data,error}=await context.client.rpc('project_contract_list',{p_actor:context.user.id,p_project:id});if(error)contractFailure(error)
- return {estimateRevision:data.estimateRevision as number,contracts:(data.contracts as any[]).map(row=>({...projectContractSchema.parse(openSharedVault(row.encryptedData,sharedSecret(event),`project-contract:${id}:${row.id}`,1)),id:row.id,revision:row.revision,fileCount:row.fileCount??0})) as StoredProjectContract[]}
+ const result={estimateRevision:data.estimateRevision as number,contracts:(data.contracts as any[]).map(row=>({...projectContractSchema.parse(openSharedVault(row.encryptedData,sharedSecret(event),`project-contract:${id}:${row.id}`,1)),id:row.id,revision:row.revision,fileCount:row.fileCount??0})) as StoredProjectContract[]}
+ await Promise.all(result.contracts.filter(c=>c.registryRef).map(async c=>{try{const files=await registryFileSet(event,context,c.registryRef!.origin,c.registryRef!.id);c.fileCount=(c.fileCount||0)+files.files.length}catch(failure:any){if([401,403].includes(failure?.statusCode))throw failure}}))
+ return result
 }
 export async function checkProjectContractReferences(event:H3Event,context:Context,id:string,content:EstimateContent){
  const{contracts}=await storedProjectContracts(event,context,id)
@@ -35,6 +38,10 @@ export async function saveProjectContract(event:H3Event,id:string,revision:numbe
  const context=await requireProjectsUser(event),project=projectId(event),estimate=await projectEstimate(event),existing=await storedProjectContracts(event,context,project)
  if(estimate.revision!==estimateRevision)throw createError({statusCode:409,message:'Смета изменилась. Обновите данные и повторите действие.'})
  if(revision>0&&!existing.contracts.some(row=>row.id===id))throw createError({statusCode:404,message:'Договор не найден'})
+ const previous=existing.contracts.find(row=>row.id===id)
+ if(contract?.registryRef&&(contract.registryRef.origin!==previous?.registryRef?.origin||contract.registryRef.id!==previous?.registryRef?.id))throw createError({statusCode:400,message:'Подгрузка договоров из общего реестра в проект отключена.'})
+ if(contract&&previous){contract={...contract,noDeadline:contract.noDeadline??previous.noDeadline,autoRenew:contract.autoRenew??previous.autoRenew,fields:contract.fields??previous.fields??[],registryRef:contract.registryRef===undefined?previous.registryRef:contract.registryRef}}
+ if(contract?.registryRef)await registryFileSet(event,context,contract.registryRef.origin,contract.registryRef.id,false,[`project/${id}`])
  if(contract){const result=contractFigures(estimate,contract),conflict=contractConflict(contract,existing.contracts,id);if(result.issue||conflict)throw createError({statusCode:400,message:result.issue||conflict})}
  const seller=estimate.counterparties.find(party=>party.id===contract?.sellerId),buyer=estimate.counterparties.find(party=>party.id===contract?.buyerId)
  const{error}=await context.client.rpc('project_contract_mutate',{p_actor:context.user.id,p_project:project,p_id:id,p_revision:revision,p_estimate_revision:estimateRevision,p_seller:seller?.catalogId??null,p_buyer:buyer?.catalogId??null,p_source:contract?.source??null,p_items:contract?.itemIds??[],p_data:contract?sealSharedVault(contract,sharedSecret(event),`project-contract:${project}:${id}`,1):null,p_delete:!contract})

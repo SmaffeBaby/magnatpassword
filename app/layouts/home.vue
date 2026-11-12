@@ -9,6 +9,8 @@ import type { AppNotification } from '~~/shared/types/subscriptions'
 const route = useRoute()
 const { brand } = useAccountBrand()
 const isProjects = computed(() => route.path === '/projects' || route.path.startsWith('/projects/'))
+const isRegistry = computed(() => route.path === '/contract-register')
+const hasSidebar=computed(()=>isProjects.value||isRegistry.value)
 const isTeam = computed(() => route.path === '/team' || route.path.startsWith('/team/'))
 const isAccountPage = computed(() => route.path.startsWith('/settings/') || route.path === '/profile')
 const projectMenuOpen = ref(false)
@@ -25,17 +27,17 @@ function openNotification(notification: AppNotification) {
 
 <template>
   <AuthGate>
-    <div class="home-shell" :class="{ 'projects-shell': isProjects }">
-      <aside v-if="isProjects" class="projects-sidebar" aria-label="Навигация проектов"><ProjectNavigation/></aside>
-      <USlideover v-if="isProjects" v-model:open="projectMenuOpen" side="left" title="Проекты" description="Разделы рабочего пространства и текущего проекта." :ui="{ content: 'max-w-xs', body: 'p-0 sm:p-0' }"><template #body><ProjectNavigation @navigate="projectMenuOpen = false"/></template></USlideover>
-      <header class="home-topbar" :class="{'projects-topbar':isProjects,'team-topbar':isTeam||isAccountPage,'is-hidden':isProjects && topbarHidden && !projectMenuOpen}">
+    <div class="home-shell" :class="{ 'projects-shell': hasSidebar, 'registry-shell': isRegistry }">
+      <aside v-if="hasSidebar" class="projects-sidebar" :aria-label="isRegistry?'Навигация реестра договоров':'Навигация проектов'"><ProjectNavigation :registry="isRegistry"/></aside>
+      <USlideover v-if="hasSidebar" v-model:open="projectMenuOpen" side="left" :title="isRegistry?'Реестр договоров':'Проекты'" description="Разделы сервиса." :ui="{ content: 'max-w-xs', body: 'p-0 sm:p-0' }"><template #body><ProjectNavigation :registry="isRegistry" @navigate="projectMenuOpen = false"/></template></USlideover>
+      <header class="home-topbar" :class="{'projects-topbar':hasSidebar,'team-topbar':isTeam||isAccountPage,'is-hidden':hasSidebar && topbarHidden && !projectMenuOpen}">
         <NuxtLink v-if="isHome" to="/" class="home-brand" aria-label="Главная">
           <img :src="brand === 'light' ? '/light-favicon.svg' : '/favicon.svg'" alt="" width="32" height="32" :class="{ 'home-brand-compact': brand === 'light' }" />
           <span v-if="brand === 'light'" class="home-brand-desktop home-brand-light" aria-hidden="true"><img src="/light-logo.svg" alt="" width="139" height="30" /></span>
           <span v-else class="home-brand-desktop home-brand-magnat" aria-hidden="true">magnat <span>professional</span></span>
         </NuxtLink>
-        <div v-else class="home-navigation-context"><UButton v-if="isProjects" icon="i-lucide-panel-left" color="neutral" variant="ghost" class="project-menu-trigger" aria-label="Открыть меню проектов" :aria-expanded="projectMenuOpen" @click="projectMenuOpen = true"/><NuxtLink :to="isProjects ? '/projects' : '/'" class="projects-back"><UIcon :name="isProjects ? 'i-lucide-folder-kanban' : 'i-lucide-arrow-left'" />{{ isProjects ? 'Проекты' : 'Главная' }}</NuxtLink></div>
-        <ApplicationSwitcher v-if="isProjects || isTeam || isAccountPage" />
+        <div v-else class="home-navigation-context"><UButton v-if="hasSidebar" icon="i-lucide-panel-left" color="neutral" variant="ghost" class="project-menu-trigger" :aria-label="isRegistry?'Открыть меню реестра договоров':'Открыть меню проектов'" :aria-expanded="projectMenuOpen" @click="projectMenuOpen = true"/><NuxtLink :to="isRegistry?'/contract-register':isProjects ? '/projects' : '/'" class="projects-back"><UIcon :name="isRegistry?'i-lucide-notebook-tabs':isProjects ? 'i-lucide-folder-kanban' : 'i-lucide-arrow-left'" />{{ isRegistry?'Реестр договоров':isProjects ? 'Проекты' : 'Главная' }}</NuxtLink></div>
+        <ApplicationSwitcher v-if="isProjects || isTeam || isAccountPage || isRegistry" />
         <div v-if="isHome" class="home-personal-controls"><HomeCustomization/><AccountControls class="home-account" @open-entry="openNotification"/></div>
         <AccountControls v-else class="home-account" @open-entry="openNotification" />
       </header>
@@ -52,4 +54,5 @@ function openNotification(notification: AppNotification) {
 @media(max-width:767px){.projects-shell>.projects-topbar{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:44px auto;gap:8px;padding:6px 16px 10px}.home-navigation-context{grid-column:1;grid-row:1}.projects-shell>.projects-topbar>.home-account{grid-column:2;grid-row:1}.projects-topbar :deep(.workspace-apps){grid-column:1/-1;grid-row:2;width:100%}.projects-shell>.home-section{padding:28px 18px 40px}.projects-shell :deep(.project-page-heading h1){font-size:26px}}
 .home-topbar.team-topbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:20px}.team-topbar>.home-account{justify-self:end}
 @media(max-width:767px){.home-topbar.team-topbar{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:44px auto;gap:8px;padding:6px 16px 10px}.team-topbar>.home-navigation-context{grid-column:1;grid-row:1}.team-topbar>.home-account{grid-column:2;grid-row:1}.team-topbar :deep(.workspace-apps){grid-column:1/-1;grid-row:2}}
+.registry-shell>.home-section{width:100%;max-width:none;min-width:0;padding-inline:24px}.registry-shell .home-navigation-context{min-width:0}@media(max-width:767px){.registry-shell>.home-section{padding-inline:16px}}
 </style>

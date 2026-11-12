@@ -1,13 +1,17 @@
+import { contractFieldsSchema, registryReferenceSchema } from './contract-fields'
 import { z } from 'zod'
 import type { EstimateContent } from '../types/estimate'
 import type { ProjectContractInput, StoredProjectContract } from '../types/project-contracts'
 import { estimateAmounts, estimateFinancials, roundMoney } from './estimate'
 export const projectContractSchema = z.object({
+  noDeadline:z.boolean().optional(), autoRenew:z.boolean().optional(),
+  fields: contractFieldsSchema.optional(), registryRef: registryReferenceSchema.nullable().optional(),
   code: z.string().trim().max(30), number: z.string().trim().min(1,'Укажите номер договора').max(100),
   sellerId: z.uuid('Выберите продавца / исполнителя'), buyerId: z.uuid('Выберите покупателя / заказчика'),
   date: z.union([z.literal(''),z.iso.date()]), deadline: z.union([z.literal(''),z.iso.date()]),
   source: z.enum(['revenue','expenses']), itemIds: z.array(z.uuid()).max(200)
 }).strict().superRefine((value,ctx)=>{
+  if(value.noDeadline&&(value.autoRenew||value.deadline))ctx.addIssue({code:'custom',message:'Для договора без срока уберите дату окончания и автопродление'})
   if(value.sellerId===value.buyerId)ctx.addIssue({code:'custom',message:'Стороны договора должны различаться'})
   if(value.date&&value.deadline&&value.deadline<value.date)ctx.addIssue({code:'custom',message:'Срок договора не может быть раньше даты договора'})
   if(new Set(value.itemIds).size!==value.itemIds.length)ctx.addIssue({code:'custom',message:'Позиции сметы не должны повторяться'})
