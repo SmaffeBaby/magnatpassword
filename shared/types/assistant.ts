@@ -1,3 +1,8 @@
+export type AssistantDownload = { name: string; size: number; source: string } & (
+  | { kind: 'input'; projectId: string; fileId: string }
+  | { kind: 'contract'; projectId: string; contractId: string; fileId: string }
+  | { kind: 'task'; taskId: string; fileId: string }
+)
 export interface AssistantDraft {
   title: string
   url: string
@@ -6,6 +11,9 @@ export interface AssistantDraft {
   notes: string
 }
 export interface AssistantReply {
+  structure?: import('./assistant-kaban').AssistantKabanDraft
+  downloads?: AssistantDownload[]
+  edit?: import('./assistant-edit').AssistantEdit
   choice?: AssistantChoice
   conversation?: AssistantConversation
   projectId?: string
@@ -16,6 +24,8 @@ export interface AssistantReply {
 }
 
 export interface AssistantAction {
+  patchLabel?: string
+  patchValue?: string
   kind: 'create_task' | 'edit_task' | 'move_task' | 'attach_files'
   title: string
   description: string
@@ -51,14 +61,17 @@ export interface AssistantQueueStatus {
 }
 
 export interface AssistantChoice {
-  kind: 'project' | 'vault' | 'record' | 'person'
+  kind: 'project' | 'vault' | 'record' | 'person' | 'task'
   prompt: string
   options: { id: string; label: string; disabled?: boolean }[]
 }
 export interface AssistantConversation {
+  kabanTopic?: 'tasks' | 'categories' | 'stages'
+  projectTopic?: import('./assistant-project').ProjectReadTopic
+  taskId?: string
   personId?: string
   personName?: string
   recordKey?: string
   relationQuery?: string
-  topic?: 'person' | 'site' | 'project' | 'relationships'
+  topic?: 'person' | 'site' | 'project' | 'relationships' | 'task' | 'kaban'
 }

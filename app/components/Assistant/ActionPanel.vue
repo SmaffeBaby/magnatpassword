@@ -2,6 +2,7 @@
 import type { AssistantAction, AssistantContext } from '~~/shared/types/assistant'
 import type { KabanBlock } from '~~/shared/types/kaban'
 import TaskField from './TaskField.vue'
+import { kabanCategoryStages, kabanTaskStage } from '~~/shared/utils/kaban-stages'
 import { kabanBlockSummary } from '~~/shared/utils/kaban'
 const props = defineProps<{ action: AssistantAction; context: AssistantContext | null; files: File[]; projectId: string; vaultId: string; contextBusy: boolean }>()
 const emit = defineEmits<{ done: [message: string]; cancel: []; uploaded: [file: File]; message: [message: string]; refresh: []; vault: [id: string]; project: [id: string] }>()
@@ -22,7 +23,7 @@ const editable = computed(() => !!board.value?.canEdit && (creating.value || tas
 const target = computed(() => props.contextBusy ? undefined : props.context?.uploadTargets.find(target => target.id === targetId.value))
 const taskOptions = computed(() => board.value?.tasks.filter(task => task.canEdit && !task.archived).map(task => ({ label: task.title, value: task.id })) || [])
 const categoryOptions = computed(() => board.value?.categories.filter(category => !category.archived && (board.value?.categoryIds === null || board.value?.categoryIds.includes(category.id))).map(category => ({ label: category.name, value: category.id })) || [])
-const stageOptions = computed(() => board.value?.board.stages.map(stage => ({ label: stage.name, value: stage.id, disabled: stage.done && !creating.value && !planningAllowed.value && !task.value?.closerIds.includes(auth.user?.id || '') })) || [])
+const stageOptions = computed(() => kabanCategoryStages(board.value, categoryIds.value[0]).map(stage => ({ label: stage.name, value: stage.id, disabled: stage.done && !creating.value && !planningAllowed.value && !task.value?.closerIds.includes(auth.user?.id || '') })) || [])
 const peopleOptions = computed(() => board.value?.people.filter(person => board.value?.eligibleIds.includes(person.id)).map(person => ({ label: person.fullName, value: person.id })) || [])
 const fileTargets = computed(() => props.context?.uploadTargets.map(target => ({ label: target.label, value: target.id })) || [])
 const fieldTypes = [{ label: 'Описание', value: 'description' }, { label: 'Ссылка', value: 'link' }, { label: 'Чек-лист', value: 'todo' }, { label: 'Пароль', value: 'password' }, { label: 'Вложения', value: 'files' }]
@@ -47,7 +48,7 @@ function fillTask() {
   title.value = value?.title || props.action.title
   dueOn.value = value?.dueOn || props.action.dueOn
   revision.value = value?.revision || 0
-  stageId.value = value?.stageId || board.value?.board.stages.find(stage => !stage.done)?.id || ''
+  stageId.value = value ? kabanTaskStage(value,value.categoryIds[0]) : kabanCategoryStages(board.value, categoryIds.value[0]).find(stage => !stage.done)?.id || ''
   categoryIds.value = value ? [...value.categoryIds] : []
   participantIds.value = value ? [...value.participantIds] : []
   closerIds.value = value ? [...value.closerIds] : []
@@ -58,12 +59,17 @@ function fillTask() {
     if (first?.type === 'description') first.value = props.action.description
     else blocks.value.push({ id: crypto.randomUUID(), type: 'description', title: 'Описание', value: props.action.description })
   }
+  if (props.action.patchLabel && props.action.patchValue !== undefined) {
+    const field = blocks.value.find(b => b.title.toLocaleLowerCase('ru') === props.action.patchLabel!.toLocaleLowerCase('ru'))
+    if (field?.type === 'description' || field?.type === 'link') field.value = props.action.patchValue
+  }
   if (props.action.dueOn && planningAllowed.value) dueOn.value = props.action.dueOn
-  const stage = board.value?.board.stages.filter(stage => stage.name.toLocaleLowerCase('ru') === props.action.stageName.toLocaleLowerCase('ru'))
+  const stage = kabanCategoryStages(board.value,categoryIds.value[0]).filter(stage => stage.name.toLocaleLowerCase('ru') === props.action.stageName.toLocaleLowerCase('ru'))
   if (stage?.length === 1) stageId.value = stage[0]!.id
 }
 watch(taskId, fillTask)
-watch(() => props.action, () => {
+watch(() => categoryIds.value[0], id => { const options=kabanCategoryStages(board.value,id); if(!options.some(s=>s.id===stageId.value))stageId.value=task.value?.categoryStageIds?.[id||'']||options.find(s=>!s.done)?.id||options[0]?.id||'' })
+watch(() => [props.action, props.context?.kaban?.board.id], () => {
   const matches = taskOptions.value.filter(task => props.action.taskName && task.label.toLocaleLowerCase('ru') === props.action.taskName.toLocaleLowerCase('ru'))
   taskId.value = creating.value ? '' : matches.length === 1 ? matches[0]!.value : ''
   fillTask()
@@ -81,7 +87,7 @@ async function saveTask() {
   if (!editable.value || busy.value) return
   error.value = ''; busy.value = true
   try {
-    const result = await sharedRequest<{ message: string }>('/api/assistant/action', { method: 'POST', signal: requestController.signal, body: { operation: props.action.kind, ...(creating.value ? {} : { taskId: taskId.value }), boardId: board.value!.board.id, stageId: stageId.value, categoryIds: categoryIds.value, participantIds: participantIds.value, closerIds: closerIds.value, revision: revision.value, data: { title: title.value, dueOn: dueOn.value, blocks: blocks.value, ...kabanBlockSummary(blocks.value) } } })
+    const result = await sharedRequest<{ message: string }>('/api/assistant/action', { method: 'POST', signal: requestController.signal, body: { scopeCategoryId: categoryIds.value[0], operation: props.action.kind, ...(creating.value ? {} : { taskId: taskId.value }), boardId: board.value!.board.id, stageId: stageId.value, categoryIds: categoryIds.value, participantIds: participantIds.value, closerIds: closerIds.value, revision: revision.value, data: { title: title.value, dueOn: dueOn.value, blocks: blocks.value, ...kabanBlockSummary(blocks.value) } } })
     if (active) emit('done', result.message)
   } catch (failure: any) { error.value = failure?.data?.message || 'Не удалось сохранить задачу.' }
   finally { busy.value = false }

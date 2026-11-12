@@ -6,7 +6,7 @@ export function assistantSite(url: string): string {
 export function isPasswordLookup(text: string): boolean {
   if (wantsCredential(text) || /^(?:добав|созда|сохран|запиш|измени|поменяй)/iu.test(text.trim()) || /связ|подпис/iu.test(text)) return false
   if (/^(?:как|где|можно ли|могу ли|умеешь ли)/iu.test(text.trim()) && /добав|созда|сохран/iu.test(text)) return false
-  return /(?:какой|покажи|посмотр|узнать|найти|найди|мой|скажи|напомни|дай)[\s\S]{0,70}парол|парол[\s\S]{0,30}(?:от|для)\s+\S/iu.test(text)
+  return /(?:какой|открой|открыть|покажи|посмотр|узнать|найти|найди|мой|скажи|напомни|дай)[\s\S]{0,70}парол|парол[\s\S]{0,30}(?:от|для)\s+\S/iu.test(text)
 }
 export function passwordLookupReply(question: string, rows: AssistantContext['relations'], selected?: string): AssistantReply {
   const domains = [...question.matchAll(/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}/giu)].map(match => assistantSite(match[0]))

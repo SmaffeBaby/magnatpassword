@@ -1,5 +1,5 @@
 import { isFinancialFormula, financialFormulaReply } from './assistant-calculations.ts'
-import type { AssistantReply } from '../types/assistant'
+import type { AssistantDownload, AssistantReply } from '../types/assistant'
 import type { AssistantProjectSnapshot, AssistantTeamSnapshot, ProjectReadTopic } from '../types/assistant-project'
 export const normalizeAssistantName = (text: string) => text.toLocaleLowerCase('ru').replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 export function projectReadTopic(question: string): ProjectReadTopic | 'team' | null {
@@ -34,6 +34,7 @@ export function projectDataReply(snapshot: AssistantProjectSnapshot, topic: Proj
   if (topic === 'finance' && isFinancialFormula(question)) return financialFormulaReply(snapshot)
   const { project, estimate, process, inputs } = snapshot
   const heading = `Проект «${project.name}».`, links = [{ label: 'Открыть проект', to: `/projects/${project.id}` }]
+  const downloads: AssistantDownload[] = []
   const q = normalizeAssistantName(question), parts: string[] = [heading]
   const listRequest = /список|какие|все товары|все услуги|все позиции|вся смета/u.test(q)
   const withoutProject = q.replace(normalizeAssistantName(project.name), '')
@@ -82,6 +83,7 @@ export function projectDataReply(snapshot: AssistantProjectSnapshot, topic: Proj
       parts.push(`Карточек входных данных: ${inputs.cards.length}.`)
       const page = pageRows(inputs.cards, question)
       for (const card of page.rows) parts.push(`• ${card.title}${card.description ? ': ' + card.description : ''}${card.fields.length ? '\n  ' + card.fields.map(field => `${field.label}: ${field.value || 'не указано'}`).join('; ') : ''}\n  Файлы: ${card.attachments.length ? card.attachments.map(file => `${file.name} (${Math.ceil(file.size / 1024)} КБ)`).join(', ') : 'нет вложений'}.`)
+      for (const card of page.rows) for (const file of card.attachments) downloads.push({ kind: 'input', projectId: project.id, fileId: file.id, name: file.name, size: file.size, source: `Входные данные · ${card.title}` })
       if (page.note) parts.push(page.note)
     }
   } else if (['contracts', 'execution', 'closing', 'relationships'].includes(topic)) {
@@ -112,9 +114,11 @@ export function projectDataReply(snapshot: AssistantProjectSnapshot, topic: Proj
     if (process) parts.push(`Затраты: ${amount(process.estimate.cost)}; выручка: ${amount(process.estimate.revenue)}; прибыль без НДС: ${amount(process.estimate.profit)}.`, `Договоры: ${progress(process.stages.contracts)}.`, `Исполнение: ${progress(process.stages.execution)}.`, `Закрытие: ${progress(process.stages.closing)}.`, `Договоров: ${process.contracts.length}; форм документов: ${process.documentCount}.`)
     if (inputs) parts.push(`Входных карточек: ${inputs.cards.length}; вложений: ${inputs.cards.reduce((n, card) => n + card.attachments.length, 0)}.`)
   }
+  if (topic === 'overview') for (const card of inputs?.cards.slice(0, 40) || []) for (const file of card.attachments) downloads.push({ kind: 'input', projectId: project.id, fileId: file.id, name: file.name, size: file.size, source: `Входные данные · ${card.title}` })
+  for (const row of snapshot.contractFiles || []) for (const file of row.files) downloads.push({ kind: 'contract', projectId: project.id, contractId: row.contractId, fileId: file.id, name: file.name, size: file.size, source: `Договор ${row.contract}` })
   if (snapshot.documents?.length) parts.push(...snapshot.documents.map(doc => `${doc.title}\n${doc.text}`))
   if (snapshot.warnings.length) parts.push(`Часть источников недоступна: ${snapshot.warnings.join('; ')}.`)
-  return { message: parts.filter(Boolean).join('\n'), draft: null, links }
+  return { message: parts.filter(Boolean).join('\n'), draft: null, links, ...(downloads.length ? { downloads } : {}) }
 }
 export function teamDataReply(team: AssistantTeamSnapshot, question: string): AssistantReply {
   const unit = new Map(team.units.map(unit => [unit.id, unit])), q = normalizeAssistantName(question)

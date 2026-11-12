@@ -14,10 +14,10 @@ export function continuesCredential(text: string): boolean {
 }
 
 export function assistantActionKind(text: string): 'create_task' | 'edit_task' | 'move_task' | 'attach_files' | null {
-  if (/^(?:как|где|что|почему|расскажи|объясни|подскажи)/iu.test(text.trim())) return null
-  if (/(?:прикреп|загруз|добав)[\s\S]{0,100}(?:файл|документ|вложен)/iu.test(text)) return 'attach_files'
+  if (/умеешь|умеет|способен/iu.test(text) || /^(?:как|где|что|почему|расскажи|объясни|подскажи)/iu.test(text.trim())) return null
+  if (!/скача|прикрепл[её]н|загруженн/iu.test(text) && /(?:прикреп|загруз|добав)[\s\S]{0,100}(?:файл|документ|вложен)/iu.test(text)) return 'attach_files'
   if (/(?:перемест|перенес|перенёс|передвин|поменяй стади)[\s\S]{0,100}(?:задач|кабан|стади)|(?:задач)[\s\S]{0,100}(?:перемест|перенес)/iu.test(text)) return 'move_task'
-  if (/(?:измен|исправ|редакт|переимен|обнов)[\s\S]{0,100}(?:задач)|(?:задач)[\s\S]{0,100}(?:измен|исправ|редакт)/iu.test(text)) return 'edit_task'
+  if (/(?:измен|помен|замен|исправ|редакт|переимен|обнов)[\s\S]{0,100}(?:задач)|(?:задач)[\s\S]{0,100}(?:измен|исправ|редакт)/iu.test(text)) return 'edit_task'
   if (/(?:созда|добав|заведи|постав)[\s\S]{0,100}(?:задач)/iu.test(text)) return 'create_task'
   return null
 }

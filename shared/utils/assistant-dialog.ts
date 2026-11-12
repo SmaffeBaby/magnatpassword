@@ -17,7 +17,12 @@ export function quickTaskAction(kind: AssistantAction['kind'], question: string)
   const meaningful = after && !/^(?:в кабане|в хранилище|пожалуйста|новую|новая|на доске)[\s.!]*$/iu.test(after)
   if (kind === 'create_task') action.title = (quoted || (meaningful ? after.split(/\s+(?:в хранилищ|описание|срок|до \d)/iu)[0] : '') || '').slice(0, 200)
   else action.taskName = (quoted || (meaningful ? after.split(/\s+(?:в стадию|на стадию|в колонку|переимен|измени|описание)/iu)[0] : '') || '').slice(0, 200)
+  if (kind === 'edit_task') action.title = (question.match(/(?:переимен[а-яё]*|название)\s*(?:на|в|[:=])\s*[«"]?([^»"\n]+)/iu)?.[1] || '').trim().slice(0, 200)
+  if (kind === 'edit_task' && /переимен|названи/iu.test(question)) action.title = (question.match(/\s(?:на|в)\s+[«"]?([^»"\n]+)[»"]?$/iu)?.[1] || action.title).trim().slice(0, 200)
+  const patch = question.match(/пол[ея]\s+[«"]([^»"]+)[»"]\s+на\s+[«"]?([\s\S]+?)[»"]?$/iu)
+  if (patch) { action.patchLabel = patch[1]; action.patchValue = patch[2] }
   action.description = (question.match(/описание\s*[:—-]\s*([\s\S]+)/iu)?.[1] || '').slice(0, 2000)
+  if (!action.description && /описани/iu.test(question)) action.description = (question.match(/описани[а-яё]*[\s\S]*?\sна\s+[«"]?([\s\S]+?)[»"]?$/iu)?.[1] || '').slice(0, 2000)
   action.dueOn = question.match(/\b\d{4}-\d{2}-\d{2}\b/u)?.[0] || ''
   action.stageName = (question.match(/(?:в стадию|на стадию|в колонку)\s+[«"]?([^»".,]+)/iu)?.[1] || '').trim().slice(0, 60)
   return action

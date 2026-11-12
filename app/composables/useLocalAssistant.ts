@@ -1,8 +1,10 @@
-import type { AssistantAction, AssistantContext, AssistantDraft, AssistantReply, AssistantQueueStatus, AssistantChoice, AssistantConversation } from '~~/shared/types/assistant'
+import type { AssistantDownload, AssistantAction, AssistantContext, AssistantDraft, AssistantReply, AssistantQueueStatus, AssistantChoice, AssistantConversation } from '~~/shared/types/assistant'
 import { assistantPage } from '~~/shared/utils/assistant-help'
 import { assistantActionKind } from '~~/shared/utils/assistant'
-interface Message { id: string; role: 'user' | 'assistant'; content: string; complete?: boolean; requestContent?: string }
+interface Message { downloads?: AssistantDownload[]; id: string; role: 'user' | 'assistant'; content: string; complete?: boolean; requestContent?: string }
 export function useLocalAssistant() {
+  const structure = ref<import('~~/shared/types/assistant-kaban').AssistantKabanDraft | null>(null)
+  const edit = ref<import('~~/shared/types/assistant-edit').AssistantEdit | null>(null)
   const auth = useAuthStore(), vault = useVaultStore(), route = useRoute()
   const visible = computed(() => !!auth.user && vault.unlocked)
   const open = ref(false), capabilities = ref(false), prompt = ref(''), error = ref('')
@@ -18,9 +20,10 @@ export function useLocalAssistant() {
   const pendingDraft = useState<AssistantDraft | null>('assistant-draft', () => null)
   let controller: AbortController | undefined, generation = 0, contextGeneration = 0
   const chatMessages = computed(() => messages.value.map(message => ({ id: message.id, role: message.role, parts: message.content ? [{ type: 'text' as const, text: message.content }] : [] })))
+  function downloadsFor(id: string) { return messages.value.find(message => message.id === id)?.downloads || [] }
   function addMessage(content: string, role: Message['role'] = 'assistant') { const message = { id: crypto.randomUUID(), role, content }; messages.value.push(message); return message.id }
   function stop() { queueStatus.value = null; generation++; controller?.abort(); controller = undefined; status.value = 'ready' }
-  function clear() { stop(); choice.value = null; conversation.value = {}; pendingRequest = null; projectId.value = ''; vaultId.value = ''; recordKey.value = ''; messages.value = []; draft.value = null; action.value = null; links.value = []; prompt.value = ''; error.value = ''; files.value = []; pendingDraft.value = null }
+  function clear() { stop(); structure.value = null; edit.value = null; choice.value = null; conversation.value = {}; pendingRequest = null; projectId.value = ''; vaultId.value = ''; recordKey.value = ''; messages.value = []; draft.value = null; action.value = null; links.value = []; prompt.value = ''; error.value = ''; files.value = []; pendingDraft.value = null }
   function resetAccount() { clear(); contextGeneration++; context.value = null; projectId.value = ''; vaultId.value = ''; recordKey.value = ''; capabilities.value = false }
   watch(() => auth.user?.id, resetAccount)
   watch(visible, value => { if (!value) { open.value = false; resetAccount() } })
@@ -49,6 +52,7 @@ export function useLocalAssistant() {
     const request = { ...pendingRequest }, kind = choice.value.kind
     if (kind === 'vault') await changeVault(option.id)
     if (kind === 'project') projectId.value = option.id
+    if (kind === 'task') conversation.value = { ...conversation.value, topic: 'task', taskId: option.id }
     if (kind === 'record') recordKey.value = option.id
     if (kind === 'person') conversation.value = { ...conversation.value, personId: option.id, personName: option.label, topic: 'person' }
     choice.value = null
@@ -96,11 +100,16 @@ export function useLocalAssistant() {
         if (item.type === 'reply') {
           queueStatus.value = null
           const reply = item.reply as AssistantReply
+          message.downloads = reply.downloads || []
           message.content = reply.message; message.complete = true; complete = true
           if (reply.conversation) conversation.value = { ...conversation.value, ...reply.conversation }
           choice.value = reply.choice || null
           pendingRequest = reply.choice ? { content, mode } : null
           if (reply.projectId && projectId.value !== reply.projectId) projectId.value = reply.projectId
+          structure.value = reply.structure || null
+          if (reply.structure) { draft.value = null; action.value = null }
+          edit.value = reply.edit || null
+          if (reply.edit) { draft.value = null; action.value = null }
           if (reply.draft) draft.value = reply.draft
           action.value = reply.choice ? null : reply.action ?? action.value; links.value = reply.links || []
         }
@@ -128,9 +137,9 @@ export function useLocalAssistant() {
     await navigateTo('/password')
   }
   async function actionDone(message: string) {
-    addMessage(message); action.value = null
+    addMessage(message); structure.value = null; edit.value = null; action.value = null
     await loadContext()
     window.dispatchEvent(new CustomEvent('assistant:updated'))
   }
-  return { visible, open, capabilities, prompt, error, status, queueStatus, busy, messages, chatMessages, draft, action, links, files, context, contextBusy, projectId, vaultId, recordKey, choice, conversation, selectChoice, changeVault, send, stop, clear, review, loadContext, chooseFiles, actionDone, addMessage, assistantActionKind }
+  return { structure, downloadsFor, edit, visible, open, capabilities, prompt, error, status, queueStatus, busy, messages, chatMessages, draft, action, links, files, context, contextBusy, projectId, vaultId, recordKey, choice, conversation, selectChoice, changeVault, send, stop, clear, review, loadContext, chooseFiles, actionDone, addMessage, assistantActionKind }
 }

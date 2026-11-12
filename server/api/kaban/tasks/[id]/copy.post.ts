@@ -9,9 +9,9 @@ export default defineEventHandler(async event=>{
  const access=await context.client.rpc('kaban_task_access',{p_actor:context.user.id,p_task:id,p_write:true,p_board:body.boardId})
  if(access.error)kabanFailure(access.error)
  if(access.data.revision!==body.revision)kabanFailure({message:'REVISION_CONFLICT'})
- const board=await context.client.from('kaban_boards').select('stages').eq('id',body.boardId).single()
+ const board=await context.client.rpc('kaban_category_stages',{p_board:body.boardId,p_category:body.categoryId})
  if(board.error)kabanFailure(board.error)
- const stage=board.data!.stages.find((item:any)=>!item.done)||board.data!.stages[0]
+ const stage=board.data!.find((item:any)=>!item.done)||board.data![0]
  const currentFiles=await context.client.from('kaban_files').select('*').eq('task_id',id)
  if(currentFiles.error)kabanFailure(currentFiles.error)
  const newId=randomUUID(),copied:string[]=[],files=[]

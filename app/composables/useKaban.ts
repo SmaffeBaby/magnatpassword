@@ -1,3 +1,4 @@
+import { kabanCategoryStages, kabanTaskStage, kabanTaskScope } from '~~/shared/utils/kaban-stages'
 import { kabanClosedInRange } from '~~/shared/utils/kaban-closed'
 import { sourceEntries } from '~~/shared/utils/vault-sources'
 import { projectSharedCards } from '~~/shared/utils/shared-card-sources'
@@ -21,6 +22,7 @@ export function useKaban() {
  const taskSettings=ref(false),closedFrom=ref(''),closedUntil=ref('')
  const editorOpen=ref(false),draft=ref<KabanTask|null>(null),formError=ref(''),deleteOpen=ref(false)
  const files=ref<KabanFile[]>([]),filesLoading=ref(false),pendingFiles=shallowRef<{file:File;blockId?:string}[]>([]),preview=ref(''),previewName=ref('')
+ const stageCategoryId=ref(''),stageInherit=ref(false)
  const stagesOpen=ref(false),stageDraft=ref<KabanStage[]>([]),stageRevision=ref(0),stageError=ref('')
  const categoryOpen=ref(false),categoryError=ref(''),categoryForm=reactive({id:'',name:'',parentId:null as string|null,color:'#6366f1',revision:0})
  let generation=0,editorSession=0,requestNumber=0,timer:ReturnType<typeof setInterval>|undefined
@@ -59,13 +61,13 @@ export function useKaban() {
   if(!vault.unlocked||!auth.user)return
   const attempt=generation,id=workspaceId.value,request=++requestNumber
   const oldSaved=draft.value?data.value?.tasks.find(task=>task.id===draft.value?.id):null
-  const syncDraft=editorOpen.value&&!taskSettings.value&&!!oldSaved&&!!draft.value&&!pendingFiles.value.length&&JSON.stringify(taskBody(oldSaved))===JSON.stringify(taskBody(draft.value))
+  const syncDraft=editorOpen.value&&!taskSettings.value&&!!oldSaved&&!!draft.value&&!pendingFiles.value.length&&JSON.stringify(taskBody(oldSaved,draft.value?.scopeCategoryId))===JSON.stringify(taskBody(draft.value))
   const session=editorSession
   if(!quiet)loading.value=true
   try{const ids=id==='all'?sources.value.map(source=>source.id):[id];const results=await Promise.all(ids.map(vault=>sharedRequest<KabanWorkspace>('/api/kaban?'+new URLSearchParams({vault}))));if(attempt===generation&&request===requestNumber){workspaces.value=results;data.value=results.find(item=>item.board.id===draft.value?.boardId)||results[0]||null;error.value='';
-   if(syncDraft&&session===editorSession&&!taskSettings.value&&draft.value&&oldSaved&&!pendingFiles.value.length&&JSON.stringify(taskBody(oldSaved))===JSON.stringify(taskBody(draft.value))){
+   if(syncDraft&&session===editorSession&&!taskSettings.value&&draft.value&&oldSaved&&!pendingFiles.value.length&&JSON.stringify(taskBody(oldSaved,draft.value?.scopeCategoryId))===JSON.stringify(taskBody(draft.value))){
     const current=results.flatMap(item=>item.tasks).find(task=>task.id===draft.value?.id)
-    if(current){draft.value=JSON.parse(JSON.stringify(current));const loaded=await sharedRequest<KabanFile[]>(`/api/kaban/tasks/${current.id}/files`);if(attempt===generation&&session===editorSession)files.value=loaded}
+    if(current){draft.value=JSON.parse(JSON.stringify({...current,scopeCategoryId:draft.value?.scopeCategoryId,stageId:kabanTaskStage(current,draft.value?.scopeCategoryId)}));const loaded=await sharedRequest<KabanFile[]>(`/api/kaban/tasks/${current.id}/files`);if(attempt===generation&&session===editorSession)files.value=loaded}
     else{closeEditor();error.value='Задача удалена или больше недоступна.'}
    }
    void openLinkedTask();if(view.value==='history')void loadHistory()}}
@@ -79,7 +81,9 @@ export function useKaban() {
   if(!task&&workspaceId.value==='all'&&selectedCategory.value.includes(':'))data.value=workspaces.value.find(item=>item.board.id===selectedCategory.value.split(':')[0])||data.value
   if(!data.value)return
   editorSession++;const session=editorSession,attempt=generation
-  draft.value=task?JSON.parse(JSON.stringify(task)):{id:'',boardId:data.value.board.id,stageId:stageId||data.value.board.stages[0]!.id,creatorId:auth.user!.id,participantIds:[],closerIds:[],locations:[],canEdit:true,categoryIds:selectedCategory.value==='all'?[]:[workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value],revision:0,createdAt:new Date().toISOString(),closedAt:null,updatedAt:new Date().toISOString(),fileCount:0,archived:false,title:'',description:'',dueOn:'',todos:[]}
+  const selectedScope=selectedCategory.value==='all'?undefined:workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value
+  const scope=task?kabanTaskScope(data.value,task.categoryIds,selectedScope):undefined
+  draft.value=task?JSON.parse(JSON.stringify({...task,scopeCategoryId:scope,stageId:kabanTaskStage(task,scope)})):{id:'',boardId:data.value.board.id,stageId:stageId||kabanCategoryStages(data.value,selectedCategory.value==='all'?undefined:(workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value))[0]!.id,creatorId:auth.user!.id,participantIds:[],closerIds:[],locations:[],canEdit:true,categoryIds:selectedCategory.value==='all'?[]:[workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value],revision:0,createdAt:new Date().toISOString(),closedAt:null,updatedAt:new Date().toISOString(),fileCount:0,archived:false,title:'',description:'',dueOn:'',todos:[]}
   taskSettings.value=!task||settings
   if(!task)draft.value!.blocks=[{id:createId(),type:'description',title:'Описание',value:''},{id:createId(),type:'todo',title:'To-do список',items:[]},{id:createId(),type:'files',title:'Файлы и фотографии'}]
   editorOpen.value=true;formError.value='';files.value=[];filesLoading.value=false;pendingFiles.value=[];clearPreview()
@@ -113,16 +117,18 @@ export function useKaban() {
    draft.value=JSON.parse(JSON.stringify(saved))
    while(pendingFiles.value.length){const file=pendingFiles.value[0]!,body=new FormData();body.append('file',file.file);if(file.blockId)body.append('blockId',file.blockId);const uploaded=await sharedRequest<KabanFile>(`/api/kaban/tasks/${result.id}/files`,{method:'POST',body});if(attempt!==generation)return;files.value.push(uploaded);pendingFiles.value=pendingFiles.value.slice(1)}
    await load();if(attempt!==generation)return
-   if(options?.keepOpen){const updated=data.value?.tasks.find(item=>item.id===result.id);if(updated)draft.value=JSON.parse(JSON.stringify(updated))}else{editorOpen.value=false;editorSession++;draft.value=null;clearPreview()}toast.add({title:'Задача сохранена',color:'success'})
+   if(options?.keepOpen){const updated=data.value?.tasks.find(item=>item.id===result.id);if(updated)draft.value=JSON.parse(JSON.stringify({...updated,scopeCategoryId:draft.value?.scopeCategoryId,stageId:kabanTaskStage(updated,draft.value?.scopeCategoryId)}))}else{editorOpen.value=false;editorSession++;draft.value=null;clearPreview()}toast.add({title:'Задача сохранена',color:'success'})
   }catch(failure){if(attempt===generation)formError.value=message(failure)}finally{if(attempt===generation)busy.value=false}
  }
- function taskBody(task:KabanTask){return {boardId:task.boardId,revision:task.revision,stageId:task.stageId,participantIds:task.participantIds,closerIds:task.closerIds,categoryIds:task.categoryIds,data:{title:task.title,description:task.description,dueOn:task.dueOn,todos:task.todos,...(task.blocks?{...kabanBlockSummary(task.blocks),blocks:task.blocks}:{})}}}
+ function taskBody(task:KabanTask,selectedScope?:string){const scope=selectedScope||task.scopeCategoryId||task.categoryIds[0];return {scopeCategoryId:scope,boardId:task.boardId,revision:task.revision,stageId:selectedScope?kabanTaskStage(task,scope):task.stageId,participantIds:task.participantIds,closerIds:task.closerIds,categoryIds:task.categoryIds,data:{title:task.title,description:task.description,dueOn:task.dueOn,todos:task.todos,...(task.blocks?{...kabanBlockSummary(task.blocks),blocks:task.blocks}:{})}}}
  async function moveTask(task:KabanTask,stageId:string){
-  if(!task.canEdit||busy.value||task.stageId===stageId)return
+  const selected=selectedCategory.value==='all'?undefined:workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value
+  const scope=kabanTaskScope(workspaces.value.find(w=>w.board.id===task.boardId)||data.value,task.categoryIds,selected)
+  if(!task.canEdit||busy.value||kabanTaskStage(task,scope)===stageId)return
   const target=workspaces.value.find(item=>item.board.stages.some(stage=>stage.id===stageId))
   if(target&&target.board.id!==task.boardId){if(!canOwn(task)){error.value='Перемещать задачу между хранилищами может только её создатель.';return}await openTask(task);openLocation();targetVaultId.value=target.board.vaultId||'personal';locationMove.value=true;return}
   const attempt=generation;busy.value=true
-  try{await sharedRequest(`/api/kaban/tasks/${task.id}`,{method:'PUT',body:taskBody({...task,stageId})});if(attempt===generation)await load()}
+  try{await sharedRequest(`/api/kaban/tasks/${task.id}`,{method:'PUT',body:taskBody({...task,stageId,scopeCategoryId:scope})});if(attempt===generation)await load()}
   catch(failure){if(attempt===generation){await load(true);if(attempt===generation)error.value=message(failure)}}finally{if(attempt===generation)busy.value=false}
  }
  async function removeTask(){
@@ -141,25 +147,27 @@ export function useKaban() {
   const attempt=generation;busy.value=true
   try{await sharedRequest(`/api/kaban/tasks/${draft.value.id}/files/${file.id}`,{method:'DELETE'});if(attempt===generation){files.value=files.value.filter(item=>item.id!==file.id);await load()}}catch(failure){if(attempt===generation)formError.value=message(failure)}finally{if(attempt===generation)busy.value=false}
  }
- function editStages(){if(!data.value?.canManage)return;stageDraft.value=JSON.parse(JSON.stringify(data.value.board.stages));stageRevision.value=data.value.board.revision;stageError.value='';stagesOpen.value=true}
+ function fillStageDraft(){if(!data.value)return;const category=data.value.categories.find(c=>c.id===stageCategoryId.value);stageDraft.value=JSON.parse(JSON.stringify(kabanCategoryStages(data.value,category?.id)));stageRevision.value=category?.revision||data.value.board.revision;stageInherit.value=false;stageError.value=''}
+ watch(stageCategoryId,fillStageDraft)
+ function editStages(){if(workspaceId.value==='all'&&selectedCategory.value.includes(':'))data.value=workspaces.value.find(w=>w.board.id===selectedCategory.value.split(':')[0])||data.value;if(!data.value?.canManage)return;stageCategoryId.value=selectedCategory.value==='all'?'':(workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value)||'';fillStageDraft();stagesOpen.value=true}
  function addStage(){if(stageDraft.value.length<12)stageDraft.value.push({id:createId(),name:'Новая стадия',color:'#64748b',done:false})}
  function shiftStage(index:number,delta:number){const target=index+delta;if(target<0||target>=stageDraft.value.length)return;const [item]=stageDraft.value.splice(index,1);stageDraft.value.splice(target,0,item!)}
- const stageCount=(id:string)=>data.value?.tasks.filter(task=>task.stageId===id).length??0
+ const stageCount=(id:string)=>data.value?.tasks.filter(task=>stageCategoryId.value?kabanTaskStage(task,stageCategoryId.value)===id:task.stageId===id||Object.values(task.categoryStageIds||{}).includes(id)).length??0
  async function saveStages(){
   if(!data.value?.canManage||busy.value)return
   const attempt=generation;busy.value=true;stageError.value=''
-  try{await sharedRequest(`/api/kaban/boards/${data.value.board.id}/stages`,{method:'PUT',body:{revision:stageRevision.value,stages:stageDraft.value}});if(attempt===generation){stagesOpen.value=false;await load()}}catch(failure){if(attempt===generation)stageError.value=message(failure)}finally{if(attempt===generation)busy.value=false}
+  try{await sharedRequest(`/api/kaban/boards/${data.value.board.id}/stages`,{method:'PUT',body:{revision:stageRevision.value,stages:stageDraft.value,...(stageCategoryId.value?{categoryId:stageCategoryId.value,inherit:stageInherit.value}:{})}});if(attempt===generation){stagesOpen.value=false;await load()}}catch(failure){if(attempt===generation)stageError.value=message(failure)}finally{if(attempt===generation)busy.value=false}
  }
  const categoryContains=(id:string,ids:string[],boardId?:string)=>{
   let localId=id,board=data.value
   if(workspaceId.value==='all'){const split=id.indexOf(':');if(split<0)return false;const selectedBoard=id.slice(0,split);if(boardId!==selectedBoard)return false;localId=id.slice(split+1);board=workspaces.value.find(item=>item.board.id===boardId)||null}
   return ids.includes(localId)||!!board?.categories.some(category=>category.parentId===localId&&ids.includes(category.id))
  }
- const tasks=computed(()=>displayData.value?.tasks.filter(task=>task.archived===(view.value==='closed')&&(view.value!=='closed'||kabanClosedInRange(task.closedAt,closedFrom.value,closedUntil.value))&&(selectedCategory.value==='all'||categoryContains(selectedCategory.value,task.categoryIds,task.boardId))&&(!onlyMine.value||task.creatorId===auth.user?.id||task.participantIds.includes(auth.user?.id??''))&&(!onlyOverdue.value||kabanOverdue(task,displayData.value?.board.stages.find(stage=>stage.id===task.stageId)?.done))&&`${task.title} ${task.description} ${task.blocks?.map(block=>block.title+('value' in block?' '+block.value:'')).join(' ')||''}`.toLowerCase().includes(search.value.trim().toLowerCase()))??[])
+ const tasks=computed(()=>displayData.value?.tasks.filter(task=>task.archived===(view.value==='closed')&&(view.value!=='closed'||kabanClosedInRange(task.closedAt,closedFrom.value,closedUntil.value))&&(selectedCategory.value==='all'||categoryContains(selectedCategory.value,task.categoryIds,task.boardId))&&(!onlyMine.value||task.creatorId===auth.user?.id||task.participantIds.includes(auth.user?.id??''))&&(!onlyOverdue.value||kabanOverdue(task,displayData.value?.board.stages.find(stage=>stage.id===task.stageId)?.done))&&`${task.title} ${task.description} ${task.blocks?.map(block=>block.title+('value' in block?' '+block.value:'')).join(' ')||''}`.toLowerCase().includes(search.value.trim().toLowerCase())).map(task=>{const category=selectedCategory.value==='all'?undefined:(workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value);return category?{...task,stageId:kabanTaskStage(task,kabanTaskScope(workspaces.value.find(w=>w.board.id===task.boardId)||data.value,task.categoryIds,category))}:task})??[])
  const closedTasks=computed(()=>[...tasks.value].sort((a,b)=>(b.closedAt||'').localeCompare(a.closedAt||'')))
  const taskStamp=(value:string)=>new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'}).format(new Date(value))
  const totalTasks=computed(()=>[...new Map(workspaces.value.flatMap(item=>item.tasks).map(task=>[task.id,task])).values()])
- const boardStages=computed(()=>workspaceId.value==='all'?displayData.value?.board.stages.filter(stage=>tasks.value.some(task=>task.stageId===stage.id))||[]:displayData.value?.board.stages||[])
+ const boardStages=computed(()=>{if(workspaceId.value==='all')return displayData.value?.board.stages.filter(stage=>tasks.value.some(task=>task.stageId===stage.id))||[];const category=selectedCategory.value==='all'?undefined:selectedCategory.value;const base=kabanCategoryStages(data.value,category);const extras=data.value?.board.stages.filter(stage=>!base.some(s=>s.id===stage.id)&&tasks.value.some(task=>task.stageId===stage.id))||[];return [...base,...extras.map(stage=>{const category=data.value?.categories.find(c=>c.stages?.some(s=>s.id===stage.id));return category?{...stage,name:category.name+' · '+stage.name}:stage})]})
  const canComplete=(task:KabanTask)=>task.canEdit&&(task.creatorId===auth.user?.id||task.closerIds.includes(auth.user?.id||''))
  const canOwn=(task:KabanTask)=>task.canEdit&&kabanCanEditPlanning(auth.user?.id,task)
  const taskSourceNames=(task:KabanTask)=>task.locations.map(location=>sources.value.find(source=>source.id===(location.vaultId||'personal'))?.name||'Хранилище').join(' · ')
@@ -193,7 +201,7 @@ export function useKaban() {
  function openCategoryAction(action:'move'|'copy'){
   if(!draft.value?.id||!draft.value.canEdit)return
   const saved=data.value?.tasks.find(task=>task.id===draft.value?.id)
-  if(!saved||JSON.stringify(taskBody(saved))!==JSON.stringify(taskBody(draft.value))||pendingFiles.value.length){formError.value='Сначала сохраните изменения задачи.';return}
+  if(!saved||JSON.stringify(taskBody(saved,draft.value?.scopeCategoryId))!==JSON.stringify(taskBody(draft.value))||pendingFiles.value.length){formError.value='Сначала сохраните изменения задачи.';return}
   categoryAction.value=action;actionCategory.value='';categoryActionError.value='';categoryActionOpen.value=true
  }
  async function saveCategoryAction(){
@@ -202,7 +210,7 @@ export function useKaban() {
   try{
    const result=categoryAction.value==='copy'
     ?await sharedRequest<{id:string}>(`/api/kaban/tasks/${task.id}/copy`,{method:'POST',body:{boardId:task.boardId,revision:task.revision,categoryId:actionCategory.value}})
-    :await sharedRequest<{id:string}>(`/api/kaban/tasks/${task.id}`,{method:'PUT',body:taskBody({...task,categoryIds:[actionCategory.value]})})
+    :await sharedRequest<{id:string}>(`/api/kaban/tasks/${task.id}`,{method:'PUT',body:taskBody({...task,categoryIds:[actionCategory.value],scopeCategoryId:actionCategory.value,stageId:kabanCategoryStages(data.value,actionCategory.value).find(s=>!s.done)?.id||kabanCategoryStages(data.value,actionCategory.value)[0]!.id})})
    if(attempt!==generation)return
    await load();categoryActionOpen.value=false
    const next=data.value?.tasks.find(item=>item.id===result.id)
@@ -221,8 +229,9 @@ export function useKaban() {
  const locationSources=computed(()=>sources.value.filter(source=>source.id!==(data.value?.board.vaultId||'personal')&&(source.id==='personal'||shared.groups.find(group=>group.id===source.id)?.canEdit)))
  const targetCategoryOptions=computed(()=>targetWorkspace.value?.categories.filter(category=>!category.archived).map(category=>({label:category.name,value:category.id}))||[])
  let targetRequest=0
- watch(targetVaultId,async id=>{const ticket=++targetRequest;targetWorkspace.value=null;targetCategory.value='';targetStage.value='';newLocationCategory.value='';locationError.value='';if(!id)return;locationLoading.value=true;try{const result=await sharedRequest<KabanWorkspace>('/api/kaban?'+new URLSearchParams({vault:id}));if(ticket!==targetRequest)return;targetWorkspace.value=result;targetCategory.value=result.categories.find(category=>!category.archived)?.id||'';targetStage.value=result.board.stages[0]?.id||''}catch(failure){if(ticket===targetRequest)locationError.value=message(failure)}finally{if(ticket===targetRequest)locationLoading.value=false}})
- function openLocation(){if(!draft.value?.id||!canOwn(draft.value))return;const saved=data.value?.tasks.find(task=>task.id===draft.value?.id);if(!saved||JSON.stringify(taskBody(saved))!==JSON.stringify(taskBody(draft.value))||pendingFiles.value.length){formError.value='Сначала сохраните изменения задачи, затем откройте «Хранилища задачи».';return}locationOpen.value=true;targetVaultId.value='';targetWorkspace.value=null;locationError.value='';locationMove.value=false}
+ watch(targetVaultId,async id=>{const ticket=++targetRequest;targetWorkspace.value=null;targetCategory.value='';targetStage.value='';newLocationCategory.value='';locationError.value='';if(!id)return;locationLoading.value=true;try{const result=await sharedRequest<KabanWorkspace>('/api/kaban?'+new URLSearchParams({vault:id}));if(ticket!==targetRequest)return;targetWorkspace.value=result;targetCategory.value=result.categories.find(category=>!category.archived)?.id||'';targetStage.value=kabanCategoryStages(result,targetCategory.value)[0]?.id||''}catch(failure){if(ticket===targetRequest)locationError.value=message(failure)}finally{if(ticket===targetRequest)locationLoading.value=false}})
+ watch(targetCategory,id=>{const stages=kabanCategoryStages(targetWorkspace.value,id);if(!stages.some(s=>s.id===targetStage.value))targetStage.value=stages.find(s=>!s.done)?.id||stages[0]?.id||''})
+ function openLocation(){if(!draft.value?.id||!canOwn(draft.value))return;const saved=data.value?.tasks.find(task=>task.id===draft.value?.id);if(!saved||JSON.stringify(taskBody(saved,draft.value?.scopeCategoryId))!==JSON.stringify(taskBody(draft.value))||pendingFiles.value.length){formError.value='Сначала сохраните изменения задачи, затем откройте «Хранилища задачи».';return}locationOpen.value=true;targetVaultId.value='';targetWorkspace.value=null;locationError.value='';locationMove.value=false}
  async function saveLocation(){
   if(!draft.value||!canOwn(draft.value)||!targetWorkspace.value||busy.value||locationLoading.value)return
   const task=draft.value,target=targetWorkspace.value,attempt=generation;busy.value=true;locationError.value=''
@@ -263,5 +272,5 @@ export function useKaban() {
  const assistantUpdated=()=>{if(!busy.value&&!editorOpen.value)void load(true)}
  onMounted(()=>{window.addEventListener('assistant:updated',assistantUpdated);void load();timer=setInterval(()=>{if(!realtimeConnected.value&&!busy.value&&!editorOpen.value&&!stagesOpen.value&&document.visibilityState==='visible')void load(true)},30000)})
  onBeforeUnmount(()=>{window.removeEventListener('assistant:updated',assistantUpdated);generation++;editorSession++;clearInterval(timer);clearPreview()})
- return {realtimeConnected,closedFrom,closedUntil,closedTasks,taskStamp,categoryActionOpen,categoryAction,actionCategory,categoryActionError,openCategoryAction,saveCategoryAction,taskSettings,passwordOptions,passwordEntry,totalTasks,boardStages,changeDraftVault,displayData,canComplete,canOwn,taskSourceNames,workspaces,sourceName,locationOpen,targetVaultId,targetWorkspace,targetCategory,targetStage,locationMove,locationError,locationLoading,newLocationCategory,locationSources,targetCategoryOptions,openLocation,saveLocation,view,history,historyBefore,historyLoading,loadHistory,setView,categoryContains,categoryParent,parentOptions,archiveTask,archiveCategory,auth,vault,shared,filters,data,loading,busy,error,mobileOpen,workspaceId,workspaceName,sources,currentSource,visibleSources,categories,categoryOptions,canCategorize,structureBusy,canEdit,load,selectedCategory,search,onlyMine,onlyOverdue,tasks,categoryCount,chooseCategory,editorOpen,draft,formError,deleteOpen,openTask,closeEditor,chooseFiles,saveTask,moveTask,removeTask,files,filesLoading,pendingFiles,preview,previewName,clearPreview,openFile,removeFile,stagesOpen,stageDraft,stageError,editStages,addStage,shiftStage,stageCount,saveStages,peopleOptions,person,categoryOpen,categoryError,categoryForm,editCategory,saveCategory,dateLabel,todayDate,kabanOverdue}
+ return {stageCategoryId,stageInherit,realtimeConnected,closedFrom,closedUntil,closedTasks,taskStamp,categoryActionOpen,categoryAction,actionCategory,categoryActionError,openCategoryAction,saveCategoryAction,taskSettings,passwordOptions,passwordEntry,totalTasks,boardStages,changeDraftVault,displayData,canComplete,canOwn,taskSourceNames,workspaces,sourceName,locationOpen,targetVaultId,targetWorkspace,targetCategory,targetStage,locationMove,locationError,locationLoading,newLocationCategory,locationSources,targetCategoryOptions,openLocation,saveLocation,view,history,historyBefore,historyLoading,loadHistory,setView,categoryContains,categoryParent,parentOptions,archiveTask,archiveCategory,auth,vault,shared,filters,data,loading,busy,error,mobileOpen,workspaceId,workspaceName,sources,currentSource,visibleSources,categories,categoryOptions,canCategorize,structureBusy,canEdit,load,selectedCategory,search,onlyMine,onlyOverdue,tasks,categoryCount,chooseCategory,editorOpen,draft,formError,deleteOpen,openTask,closeEditor,chooseFiles,saveTask,moveTask,removeTask,files,filesLoading,pendingFiles,preview,previewName,clearPreview,openFile,removeFile,stagesOpen,stageDraft,stageError,editStages,addStage,shiftStage,stageCount,saveStages,peopleOptions,person,categoryOpen,categoryError,categoryForm,editCategory,saveCategory,dateLabel,todayDate,kabanOverdue}
 }

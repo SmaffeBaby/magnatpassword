@@ -16,7 +16,7 @@ export const kabanBlocksSchema=z.array(z.discriminatedUnion('type',[
  z.object({...blockBase,type:z.literal('files')}).strict()
 ])).max(40).refine(blocks=>new Set(blocks.map(block=>block.id)).size===blocks.length).refine(blocks=>{const summary=kabanBlockSummary(blocks);return summary.description.length<=20000&&summary.todos.length<=100&&new Set(summary.todos.map(item=>item.id)).size===summary.todos.length})
 export const kabanDataSchema=z.object({title:z.string().trim().min(1).max(200),description:z.string().max(20000),dueOn:z.string().refine(value=>!value||validDate(value)),todos:todoSchema,blocks:kabanBlocksSchema.optional()}).strict()
-export const kabanTaskSchema = z.object({ boardId: z.uuid(), stageId: z.uuid(), participantIds: z.array(z.uuid()).max(50), closerIds: z.array(z.uuid()).max(50).optional(), categoryIds: z.array(z.string().min(1).max(128)).min(1).max(50), data: kabanDataSchema }).strict()
+export const kabanTaskSchema = z.object({ scopeCategoryId: z.string().min(1).max(128).optional(), boardId: z.uuid(), stageId: z.uuid(), participantIds: z.array(z.uuid()).max(50), closerIds: z.array(z.uuid()).max(50).optional(), categoryIds: z.array(z.string().min(1).max(128)).min(1).max(50), data: kabanDataSchema }).strict()
 export const kabanStagesSchema = z.array(z.object({ id: z.uuid(), name: z.string().trim().min(1).max(60), color: z.string().regex(/^#[\da-fA-F]{6}$/), done: z.boolean() }).strict()).min(1).max(12).refine(stages => new Set(stages.map(stage => stage.id)).size === stages.length)
 export const kabanBucket = 'kaban-files'
 export function kabanFailure(error: { message: string }) {
@@ -30,9 +30,10 @@ export function kabanFailure(error: { message: string }) {
   if (text.includes('KABAN_NOT_FOUND')) throw createError({ statusCode: 404, message: 'Задача или доска не найдена.' })
   if (text.includes('STAGE_IN_USE')) throw createError({ statusCode: 400, message: 'Сначала перенесите задачи из удаляемой стадии.' })
   if (text.includes('INVALID_PARTICIPANT')) throw createError({ statusCode: 400, message: 'Ответственные должны иметь доступ к хранилищу и категориям задачи.' })
+  if (text.includes('CATEGORY_STAGES_IN_USE')) throw createError({statusCode:400,message:'У категории есть задачи с унаследованными стадиями. Сначала сохраните для неё собственный набор стадий, затем меняйте родительскую категорию.'})
   if (text.includes('INVALID_CATEGORY')) throw createError({ statusCode: 400, message: 'Выберите открытую категорию Кабана. Проверьте вложенность подкатегорий.' })
   if (text.includes('CATEGORY_ARCHIVED')) throw createError({ statusCode: 400, message: 'Сначала восстановите родительскую категорию.' })
-  if (text.includes('INVALID_STAGE')) throw createError({ statusCode: 400, message: 'Стадия больше не существует. Обновите доску.' })
+  if (text.includes('INVALID_STAGE')) throw createError({ statusCode: 400, message: 'Эта стадия недоступна в выбранной категории. Обновите доску и выберите стадию категории.' })
   if (text.includes('FILE_LIMIT')) throw createError({ statusCode: 400, message: 'К задаче можно прикрепить до 20 файлов.' })
   if (text.includes('TASK_LIMIT')) throw createError({ statusCode: 400, message: 'Достигнут предел в 5000 задач на доске.' })
   throw createError({ statusCode: 503, message: 'Не удалось сохранить или загрузить доску.' })
@@ -64,7 +65,7 @@ export async function writeKabanTask(event: H3Event, id: string, create = false)
     // The mutation checks this same revision under a row lock, so concurrent edits cannot bypass this comparison.
   }
   if(body.data.blocks)Object.assign(body.data,kabanBlockSummary(body.data.blocks))
-  const { error } = await context.client.rpc('kaban_task_mutate', { p_actor: context.user.id, p_board: body.boardId, p_id: id, p_revision: body.revision, p_payload: { activity:activityChanges(activityPrevious,body.data,id),stageId: body.stageId, participantIds: [...new Set(body.participantIds)], ...(body.closerIds ? { closerIds: [...new Set(body.closerIds)] } : {}), categoryIds: [...new Set(body.categoryIds)], encryptedData: sealSharedVault(body.data, sharedSecret(event), `kaban-task:${id}`, 1) } })
+  const { error } = await context.client.rpc('kaban_task_mutate', { p_actor: context.user.id, p_board: body.boardId, p_id: id, p_revision: body.revision, p_payload: { ...(body.scopeCategoryId ? { scopeCategoryId: body.scopeCategoryId } : {}), activity:activityChanges(activityPrevious,body.data,id),stageId: body.stageId, participantIds: [...new Set(body.participantIds)], ...(body.closerIds ? { closerIds: [...new Set(body.closerIds)] } : {}), categoryIds: [...new Set(body.categoryIds)], encryptedData: sealSharedVault(body.data, sharedSecret(event), `kaban-task:${id}`, 1) } })
   if (error) kabanFailure(error)
   return { id }
 }

@@ -5,14 +5,15 @@ export function useAdminPage() {
   const identity = ref<{ id: string; email?: string } | null>(null), checking = ref(true), accessError = ref('')
   type AdminOverview = { vaults: number; totalUsers: number; users: { isHidden?:boolean; id: string; email?: string; createdAt: string; lastSignIn?: string }[] }
   const overview = ref<AdminOverview | null>(null), switchingAccount = ref(false)
-  const section = computed(() => route.path === '/admin/projects' ? 'projects' : ['categories', 'credentials', 'users', 'security', 'team', 'releases'].includes(String(route.query.section)) ? String(route.query.section) : 'overview')
-  const titles: Record<string, string> = { releases: 'Версии приложения', projects: 'Доступ к проектам', overview: 'Обзор хранилища', categories: 'Категории', credentials: 'Пароли', team:'Команда и роли', users: 'Пользователи', security: 'Безопасность' }
+  const section = computed(() => route.path === '/admin/projects' ? 'projects' : ['categories', 'credentials', 'users', 'security', 'team', 'releases', 'assistant'].includes(String(route.query.section)) ? String(route.query.section) : 'overview')
+  const titles: Record<string, string> = { assistant: 'История обновлений помощника', releases: 'Версии приложения', projects: 'Доступ к проектам', overview: 'Обзор хранилища', categories: 'Категории', credentials: 'Пароли', team:'Команда и роли', users: 'Пользователи', security: 'Безопасность' }
   const navigation = computed(() => [{ label: 'Пароли', icon: 'i-lucide-panels-top-left', defaultOpen: true, children: [
     { label: 'Обзор', icon: 'i-lucide-chart-no-axes-combined', to: '/admin/password', active: section.value === 'overview' },
     { label: 'Категории', icon: 'i-lucide-folders', to: '/admin/password?section=categories', active: section.value === 'categories' },
     { label: 'Пароли', icon: 'i-lucide-key-round', to: '/admin/password?section=credentials', active: section.value === 'credentials' },
     { label: 'Команда и роли', icon:'i-lucide-network',to:'/admin/password?section=team',active:section.value==='team' },
     { label: 'Пользователи', icon: 'i-lucide-users', to: '/admin/password?section=users', active: section.value === 'users' },
+    { label: 'Обновления помощника', icon: 'i-lucide-sparkles', to: '/admin/password?section=assistant', active: section.value === 'assistant' },
     { label: 'Версии приложения', icon: 'i-lucide-package-check', to: '/admin/password?section=releases', active: section.value === 'releases' },
     { label: 'Безопасность', icon: 'i-lucide-shield-check', to: '/admin/password?section=security', active: section.value === 'security' }
   ] }, { label: 'Проекты', icon: 'i-lucide-folder-kanban', defaultOpen: true, children: [

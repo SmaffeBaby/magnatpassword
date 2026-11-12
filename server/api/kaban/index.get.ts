@@ -1,3 +1,4 @@
+import { scopeKabanStages } from '../../utils/kaban-stage-scope'
 import { z } from 'zod'
 import { teamPeople, teamUnits } from '../../utils/team'
 import { kabanFailure, readKabanTaskData } from '../../utils/kaban'
@@ -8,6 +9,7 @@ export default defineEventHandler(async event => {
   if (!vault.success) throw createError({ statusCode: 400, message: 'Выберите хранилище.' })
   const { data, error } = await context.client.rpc('kaban_load', { p_actor: context.user.id, p_vault: vault.data === 'personal' ? null : vault.data })
   if (error) kabanFailure(error)
+  scopeKabanStages(data)
   // One-time import of names for categories already referenced by older tasks.
   // Empty password categories are never imported into Kaban.
   if(data.categories?.some((category:any)=>category.legacyId)){
@@ -35,5 +37,5 @@ export default defineEventHandler(async event => {
   ])
   if (profiles.error || assignments.error) throw createError({ statusCode: 503, message: 'Не удалось загрузить участников.' })
   const people = await teamPeople(context, (profiles.data ?? []).map(profile => ({ ...profile, role_ids: (assignments.data ?? []).filter(item => item.user_id === profile.user_id).map(item => item.role_id) })))
-  return { ...data, people, units, eligibleIds: members, tasks: data.tasks.map((row: any) => ({ ...readKabanTaskData(event, row), id: row.id, boardId: row.board_id, stageId: row.stage_id, creatorId: row.creator_id, participantIds: row.participant_ids, closerIds: row.closer_ids, locations: row.locations, canEdit: data.canEdit, categoryIds: row.category_ids, revision: row.revision, createdAt: row.created_at, closedAt:row.closed_at, updatedAt: row.updated_at, fileCount: Number(row.file_count),archived:row.archived })) }
+  return { ...data, people, units, eligibleIds: members, tasks: data.tasks.map((row: any) => ({ ...readKabanTaskData(event, row), id: row.id, boardId: row.board_id, stageId: row.stage_id, categoryStageIds: row.category_stage_ids || {}, creatorId: row.creator_id, participantIds: row.participant_ids, closerIds: row.closer_ids, locations: row.locations, canEdit: data.canEdit, categoryIds: row.category_ids, revision: row.revision, createdAt: row.created_at, closedAt:row.closed_at, updatedAt: row.updated_at, fileCount: Number(row.file_count),archived:row.archived })) }
 })

@@ -1,9 +1,31 @@
 <script setup lang="ts">
 // Layout and Nuxt UI chat primitives follow nuxt-ui-templates/chat (MIT).
+import StructurePanel from './Assistant/StructurePanel.vue'
+import FileDownloads from './Assistant/FileDownloads.vue'
+import EditPanel from './Assistant/EditPanel.vue'
+import Updates from './Assistant/Updates.vue'
+const updatesOpen = ref(false)
 import ChoiceCard from './Assistant/ChoiceCard.vue'
 import ActionPanel from './Assistant/ActionPanel.vue'
 import { useLocalAssistant } from '~/composables/useLocalAssistant'
 const c = reactive(useLocalAssistant())
+const chatViewport = ref<HTMLElement | null>(null)
+let scrollFrame: number | undefined
+function scrollToLatest() {
+  if (!c.open) return
+  if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+  // Wait for the message and its files/action panels to render, then scroll the actual chat viewport.
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = undefined
+    if (c.open && chatViewport.value) chatViewport.value.scrollTo({ top: chatViewport.value.scrollHeight, behavior: 'instant' })
+  })
+}
+watch([
+  () => c.open, chatViewport, () => c.messages.length, () => c.messages.at(-1)?.content,
+  () => c.status, () => c.links, () => c.choice, () => c.draft, () => c.edit, () => c.action,
+  () => c.structure, () => c.contextBusy, () => c.error
+], scrollToLatest, { flush: 'post' })
+onBeforeUnmount(() => { if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame) })
 const team = useTeamStore(), auth = useAuthStore()
 const person = computed(() => team.me?.person.id === auth.user?.id ? team.me?.person : null)
 watch(() => c.open, open => { if (open) void team.refreshMe() })
@@ -20,12 +42,12 @@ const quickChats = [
 ]
 const capabilities = [
   { icon: 'i-lucide-compass', title: 'Объяснять сайт', text: 'Расскажу о разделах, кнопках и порядке работы. Учитываю открытую страницу.' },
-  { icon: 'i-lucide-folder-kanban', title: 'Отвечать по проектам', text: 'Объясню формулы прибыли, НДС, выручки и рентабельности с подстановкой текущих сумм. Посчитаю числовое выражение, назову позиции сметы, сроки и участников проекта. Расскажу о договорах, входных данных, исполнении и закрытии по реальным отметкам.' },
+  { icon: 'i-lucide-folder-kanban', title: 'Отвечать по проектам', text: 'Подготовлю изменение названия проекта, реквизитов, полей позиций сметы и входных данных через черновик. Объясню формулы прибыли, НДС, выручки и рентабельности с подстановкой текущих сумм. Посчитаю числовое выражение, назову позиции сметы, сроки и участников проекта. Расскажу о договорах, входных данных, исполнении и закрытии по реальным отметкам.' },
   { icon: 'i-lucide-users-round', title: 'Показывать команду', text: 'Назову доступных сотрудников и их должности. Участников проекта покажу отдельно по вопросу о команде проекта.' },
-  { icon: 'i-lucide-paperclip', title: 'Прикреплять файлы', text: 'Загружу файлы в выбранный договор, карточку входных данных или поле вложений задачи Кабана. До 20 МБ на файл. Место назначения выбираете вы.' },
-  { icon: 'i-lucide-square-check-big', title: 'Работать с Кабаном', text: 'Подготовлю создание, редактирование или перемещение задачи. Можно менять доступные поля, чек-листы и ссылки. Срок и ответственных меняет создатель; права проверяет сервер.' },
-  { icon: 'i-lucide-workflow', title: 'Объяснять взаимосвязи', text: 'Покажу связанные карточки и домены у сервиса с указанием явной связи или совпадения поля. Найду явные связи доступной карточки пароля с подписками, их стоимость и оплаченный срок. Совпадение названий не считаю доказательством связи.' },
-  { icon: 'i-lucide-key-round', title: 'Готовить пароли', text: 'Составлю черновик карточки из переписки. При отсутствии пароля редактор создаст случайный. Сохранение — через обычную форму.' }
+  { icon: 'i-lucide-paperclip', title: 'Прикреплять и скачивать файлы', text: 'Покажу вложения договоров, входных данных и задач с кнопками скачивания прямо в чате. Загружу файлы в выбранный договор, карточку входных данных или поле вложений задачи Кабана. До 20 МБ на файл. Место назначения выбираете вы.' },
+  { icon: 'i-lucide-square-check-big', title: 'Работать с Кабаном', text: 'Подготовлю создание, редактирование или перемещение задачи, создание и изменение категорий. У каждой категории могут быть свои стадии; подкатегории наследуют стадии родителя, пока для них не задан собственный набор. Можно менять доступные поля, чек-листы и ссылки. Срок и ответственных меняет создатель; права проверяет сервер.' },
+  { icon: 'i-lucide-workflow', title: 'Объяснять взаимосвязи', text: 'Подготовлю создание, замену или удаление связи подписки с паролем через черновик. Покажу связанные карточки и домены у сервиса с указанием явной связи или совпадения поля. Найду явные связи доступной карточки пароля с подписками, их стоимость и оплаченный срок. Совпадение названий не считаю доказательством связи.' },
+  { icon: 'i-lucide-key-round', title: 'Готовить пароли', text: 'Открою доступную карточку и подготовлю изменение её конкретного поля. Составлю черновик новой карточки из переписки. При отсутствии пароля редактор создаст случайный. Сохранение — через обычную форму.' }
 ]
 function choose(event: Event) { const input = event.target as HTMLInputElement; c.chooseFiles(Array.from(input.files || [])); input.value = '' }
 function drop(event: DragEvent) { dragging.value = false; c.chooseFiles(Array.from(event.dataTransfer?.files || [])) }
@@ -40,14 +62,17 @@ function uploaded(file: File) { c.files = c.files.filter(item => item !== file) 
         <div class="assistant-shell" @dragover.prevent="dragging = true" @dragleave.self="dragging = false" @drop.prevent="drop">
           <div v-if="dragging" class="assistant-drop" @dragleave.prevent="dragging = false"><UIcon name="i-lucide-cloud-upload" /><strong>Прикрепите файлы к работе</strong><span>После выбора укажите место загрузки</span></div>
           <section class="assistant-chat" aria-label="Переписка с помощником">
-            <div class="assistant-toolbar"><UButton label="Новый диалог" icon="i-lucide-square-pen" color="neutral" variant="ghost" :disabled="c.busy" @click="c.clear" /><UButton label="Что я умею" icon="i-lucide-circle-help" color="neutral" variant="ghost" @click="c.capabilities = true" /></div>
-            <div class="assistant-scroll">
+            <div class="assistant-toolbar"><UButton label="Новый диалог" icon="i-lucide-square-pen" color="neutral" variant="ghost" :disabled="c.busy" @click="c.clear" /><UButton label="История обновлений" icon="i-lucide-history" color="neutral" variant="ghost" @click="updatesOpen = true" /><UButton label="Что я умею" icon="i-lucide-circle-help" color="neutral" variant="ghost" @click="c.capabilities = true" /></div>
+            <div ref="chatViewport" class="assistant-scroll">
               <div v-if="!c.messages.length" class="assistant-welcome"><span class="assistant-welcome-icon"><UIcon name="i-lucide-sparkles" /></span><h2>Чем помочь в работе?</h2><p>Спросите о проекте, поручите задачу или прикрепите документ.</p><div class="assistant-quick"><UButton v-for="quick in quickChats" :key="quick.label" :label="quick.label" :icon="quick.icon" color="neutral" variant="outline" class="rounded-full" @click="c.prompt = quick.prompt" /></div></div>
-              <UChatMessages v-else :messages="c.chatMessages" :status="c.status" should-auto-scroll :assistant="{ icon: 'i-lucide-sparkles', ui: { content: 'whitespace-pre-wrap break-words leading-7' } }" :user="userPresentation">
+              <UChatMessages v-else :messages="c.chatMessages" :status="c.status" :should-auto-scroll="false" :should-scroll-to-bottom="false" :assistant="{ icon: 'i-lucide-sparkles', ui: { content: 'whitespace-pre-wrap break-words leading-7' } }" :user="userPresentation">
+                <template #content="{ message }"><template v-for="(part, index) in message.parts" :key="index">{{ part.type === 'text' ? part.text : '' }}</template><FileDownloads :files="c.downloadsFor(message.id)" /></template>
                 <template #indicator><div class="assistant-thinking" role="status"><span class="assistant-dots"><i /><i /><i /></span><span v-if="c.queueStatus?.state === 'queued'" class="assistant-queue-label">Ожидаю модель · место в очереди: {{ c.queueStatus.position }}<small>Перед вами {{ c.queueStatus.position }} {{ c.queueStatus.position === 1 ? 'запрос' : c.queueStatus.position < 5 ? 'запроса' : 'запросов' }}. Можно отменить ожидание кнопкой остановки.</small></span><UChatShimmer v-else text="Готовлю ответ…" /></div></template>
               </UChatMessages>
               <nav v-if="c.links.length" class="assistant-links" aria-label="Разделы по вопросу"><UButton v-for="link in c.links" :key="link.to + link.label" :to="link.to" :label="link.label" trailing-icon="i-lucide-arrow-up-right" color="neutral" variant="outline" size="xs" @click="c.open = false" /></nav>
               <div v-if="c.draft" class="assistant-draft"><div><UIcon name="i-lucide-key-round" /><strong>{{ c.draft.title }}</strong></div><span>{{ c.draft.username || 'Логин не указан' }}</span><span>{{ c.draft.url }}</span><small>{{ c.draft.password ? 'Пароль указан' : 'Пароль будет сгенерирован в редакторе' }}</small><UButton label="Проверить и добавить в связку" icon="i-lucide-arrow-up-right" @click="c.review" /></div>
+              <StructurePanel v-if="c.structure" :draft="c.structure" :context="c.context" :vault-id="c.vaultId" :context-busy="c.contextBusy" @vault="c.changeVault" @done="c.actionDone" @cancel="c.structure = null" @refresh="c.loadContext" />
+              <EditPanel v-if="c.edit" :edit="c.edit" :project-id="c.projectId" :projects="c.context?.projects || []" @cancel="c.edit = null" @done="c.actionDone" />
               <ChoiceCard v-if="c.choice" :choice="c.choice" :disabled="c.busy || c.contextBusy" @select="c.selectChoice" />
               <ActionPanel v-if="c.action" :key="c.action.kind + c.action.taskName + c.action.title" :action="c.action" :context="c.context" :files="c.files" :project-id="c.projectId" :vault-id="c.vaultId" :context-busy="c.contextBusy" @vault="c.changeVault" @project="c.projectId = $event" @cancel="c.action = null" @done="c.actionDone" @message="c.addMessage($event)" @uploaded="uploaded" @refresh="c.loadContext" />
               <UAlert v-if="c.error" color="error" :description="c.error" class="my-4" />
@@ -64,6 +89,7 @@ function uploaded(file: File) { c.files = c.files.filter(item => item !== file) 
         </div>
       </template>
     </USlideover>
+    <UModal v-model:open="updatesOpen" title="История обновлений" description="Нововведения и исправления помощника" :ui="{ content: 'max-w-2xl' }"><template #body><Updates /></template></UModal>
     <UModal v-model:open="c.capabilities" title="Что я умею" description="Помощник для работы в Magnat и Light" :ui="{ content: 'max-w-2xl' }"><template #body><div class="assistant-capabilities"><article v-for="item in capabilities" :key="item.title"><UIcon :name="item.icon" /><div><h3>{{ item.title }}</h3><p>{{ item.text }}</p></div></article></div><p class="mt-6 text-sm text-muted">Если нет доступа к записи или функции, помощник не сможет обойти ограничение. Если для запроса нужен проект, хранилище или карточка, помощник предложит выбор прямо в диалоге.</p></template></UModal>
   </template>
 </template>

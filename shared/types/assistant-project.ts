@@ -10,7 +10,7 @@ export interface AssistantProjectSnapshot {
   estimate?: AssistantEstimate | null
   inputs?: ProjectInputs | null
   process?: ProjectProcess | null
-  contractFiles?: { contract: string; files: { name: string; size: number }[] }[]
+  contractFiles?: { contractId: string; contract: string; files: { id: string; name: string; size: number }[] }[]
   financials?: Omit<ProjectProcess['estimate'], 'itemCount' | 'fields'>
   documents?: { title: string; text: string }[]
   warnings: string[]

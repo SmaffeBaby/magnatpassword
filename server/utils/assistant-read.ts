@@ -1,3 +1,5 @@
+import { assistantFileTopic, isAssistantFileRequest } from '../../shared/utils/assistant-files'
+import { assistantTaskFilesRead } from './assistant-files-read'
 import { assistantSubscriptionsRead } from './assistant-subscriptions-read'
 import { assistantGraphRead } from './assistant-graph-read'
 import { arithmeticReply, isFinancialFormula, financialFormulaReply } from '../../shared/utils/assistant-calculations'
@@ -18,7 +20,9 @@ import { renderClosingDocument } from '../../shared/utils/project-closing'
 import { personSearchText, companyBrand, personPositionReply, personQuestion, siteSectionReply } from '../../shared/utils/assistant-dialog'
 import { assistantFetch } from './assistant-context'
 
-export async function assistantRead(event: H3Event, question: string, selection: { projectId?: string; recordKey?: string } = {}, previousQuestion = '', memory: AssistantConversation = {}): Promise<AssistantReply | null> {
+export async function assistantRead(event: H3Event, question: string, selection: { projectId?: string; recordKey?: string; vaultId?: string } = {}, previousQuestion = '', memory: AssistantConversation = {}): Promise<AssistantReply | null> {
+  const taskFiles = await assistantTaskFilesRead(event, question, selection, memory)
+  if (taskFiles) return taskFiles
   const calculation = arithmeticReply(question)
   if (calculation) return calculation
   const subscriptions = await assistantSubscriptionsRead(event, question, selection.recordKey)
@@ -38,7 +42,7 @@ export async function assistantRead(event: H3Event, question: string, selection:
     return { message: directory.people.length ? 'Нашёл несколько сотрудников. Уточните, о ком рассказать.' : 'В доступном справочнике сотрудник не найден. Уточните имя и фамилию.', draft: null, ...(directory.people.length ? { choice: { kind: 'person' as const, prompt: 'Выберите сотрудника', options: directory.people.map(person => ({ id: person.id, label: person.fullName || person.email })) } } : {}) }
   }
   if (/парол|подпис|кабан|задач/iu.test(question) && !/проект|смет|договор/iu.test(question)) return null
-  let topic = projectReadTopic(question)
+  let topic = assistantFileTopic(question, previousQuestion, memory)
   if (!topic && /^(?:а |и |ещ[её]|дальше|подробнее|страниц)/iu.test(question.trim())) topic = projectReadTopic(previousQuestion)
   if (!topic) return null
   const query = normalizeAssistantName(question)
@@ -65,7 +69,7 @@ export async function assistantRead(event: H3Event, question: string, selection:
   if (!project) {
     const list = projects.slice(0, 30).map(project => `• ${project.name}`).join('\n')
     if (isFinancialFormula(question)) return { ...financialFormulaReply(), ...(projects.length ? { choice: { kind: 'project' as const, prompt: 'Показать расчёт на данных проекта', options: projects.map(project => ({ id: project.id, label: project.name })) } } : {}) }
-    return { message: projects.length ? `О каком проекте рассказать? Выберите его ниже или напишите название. Доступные проекты:\n${list}` : 'Нет доступных проектов. Участие и доступ к разделу выдаёт администратор.', draft: null, choice: { kind: 'project', prompt: 'Выберите проект', options: projects.map(project => ({ id: project.id, label: project.name })) }, links: [{ label: 'Проекты', to: '/projects' }] }
+    return { message: projects.length ? `О каком проекте рассказать? Выберите его ниже или напишите название. Доступные проекты:\n${list}` : 'Нет доступных проектов. Участие и доступ к разделу выдаёт администратор.', draft: null, conversation: { topic: 'project', projectTopic: topic }, choice: { kind: 'project', prompt: 'Выберите проект', options: projects.map(project => ({ id: project.id, label: project.name })) }, links: [{ label: 'Проекты', to: '/projects' }] }
   }
   const snapshot: AssistantProjectSnapshot = { project, warnings: [] }
   async function read<T>(path: string, label: string): Promise<T | null> {
@@ -89,11 +93,12 @@ export async function assistantRead(event: H3Event, question: string, selection:
     snapshot.estimate = { ...estimate, items: estimate.items.map(({ image: _image, ...item }, index) => ({ ...item, ...amounts[index]!, counterparty: estimate.counterparties.find(party => party.id === item.counterpartyId)?.company || '' })) }
     snapshot.financials = estimateFinancials(estimate)
   }
-  if (topic === 'contracts' && /файл|вложен|прикреп/u.test(query) && process) {
+  if ((topic === 'contracts' || topic === 'overview' && isAssistantFileRequest(question)) && process) {
     const matching = process.contracts.filter(contract => contract.number && query.includes(normalizeAssistantName(contract.number)))
-    const contracts = matching.length ? matching : process.contracts.slice(0, 20)
-    snapshot.contractFiles = await Promise.all(contracts.map(async contract => ({ contract: contract.number, files: await read<{ name: string; size: number }[]>(`/api/projects/${project.id}/contracts/${contract.id}/files`, `Файлы договора ${contract.number}`) || [] })))
-    if (!matching.length && process.contracts.length > 20) snapshot.warnings.push('Файлы показаны для первых 20 договоров; уточните номер договора')
+    const start = (Math.max(1, Number(question.match(/страниц[аыеу]?\s*(\d+)/iu)?.[1]) || 1) - 1) * 40
+    const contracts = matching.length ? matching : process.contracts.slice(start, start + 20)
+    snapshot.contractFiles = await Promise.all(contracts.map(async contract => ({ contractId: contract.id, contract: contract.number || contract.code, files: await read<{ id: string; name: string; size: number }[]>(`/api/projects/${project.id}/contracts/${contract.id}/files`, `Файлы договора ${contract.number}`) || [] })))
+    if (!matching.length && process.contracts.length > start + 20) snapshot.warnings.push('Файлы показаны для первых 20 договоров на странице; уточните номер договора')
   }
   if (['contracts', 'execution', 'closing'].includes(topic) && /текст|содержим|полный документ/u.test(query) && process) {
     const closing = topic === 'closing' ? await read<ProjectClosing>(`/api/projects/${project.id}/closing`, 'Текст закрывающих документов') : null
@@ -107,5 +112,5 @@ export async function assistantRead(event: H3Event, question: string, selection:
       } catch { snapshot.warnings.push(`Текст ${doc.title} требует проверки исходных данных`) }
     }
   }
-  return { ...projectDataReply(snapshot, topic as ProjectReadTopic, question), projectId: project.id, conversation: { topic: 'project' } }
+  return { ...projectDataReply(snapshot, topic as ProjectReadTopic, question), projectId: project.id, conversation: { topic: 'project', projectTopic: topic as ProjectReadTopic } }
 }
