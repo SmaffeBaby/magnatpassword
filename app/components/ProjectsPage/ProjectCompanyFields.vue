@@ -6,7 +6,7 @@ defineProps<{ disabled?: boolean }>()
 
 <template>
   <div class="company-fields">
-    <label v-for="field in companyFields" :key="field.key">{{ field.label }}<input v-model="draft[field.key]" :maxlength="field.max" :required="field.key === 'company'" :disabled="disabled" :inputmode="['inn', 'kpp', 'bankAccount'].includes(field.key) ? 'numeric' : 'text'"/></label>
+    <label v-for="field in companyFields" :key="field.key">{{ field.label }}<input v-model="draft[field.key]" :maxlength="field.max" :required="field.key === 'company'" :disabled="disabled" :inputmode="['inn', 'kpp', 'ogrn'].includes(field.key) ? 'numeric' : 'text'"/></label>
     <label class="company-own-check"><input v-model="draft.isOwnLegalEntity" type="checkbox" :disabled="disabled"/>Наше юридическое лицо</label>
   </div>
 </template>

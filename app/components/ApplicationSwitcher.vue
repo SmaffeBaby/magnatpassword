@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContractRegisterCard from '~/components/ContractRegisterCard.vue'
 import PasswordCard from './PasswordPage/PasswordCard.vue'
 import FinanceCard from './FinanceCard.vue'
 import RelationshipsCard from './RelationshipsCard.vue'
@@ -9,8 +10,8 @@ const projectAccess=useProjectAccess(),home=useHomeLayoutStore(),auth=useAuthSto
 const open=ref(false)
 const { application } = useAccountBrand()
 const currentServiceName = computed(() => application.value?.name || 'Все сервисы')
-const components={passwords:PasswordCard,finances:FinanceCard,relationships:RelationshipsCard,projects:ProjectsCard,team:TeamCard,kaban:KabanCard}
-const rows=computed(()=>home.display.rows.map(row=>({...row,cards:row.cards.filter(id=>id!=='projects'||projectAccess.data.value?.allowed)})).filter(row=>row.cards.length))
+const components={contracts:ContractRegisterCard,passwords:PasswordCard,finances:FinanceCard,relationships:RelationshipsCard,projects:ProjectsCard,team:TeamCard,kaban:KabanCard}
+const rows=computed(()=>home.display.rows.map(row=>({...row,cards:row.cards.filter(id=>!['projects','contracts'].includes(id)||projectAccess.data.value?.allowed)})).filter(row=>row.cards.length))
 watch(()=>route.path,()=>{open.value=false})
 watch(()=>auth.user?.id,()=>{open.value=false})
 watch(open,value=>{if(value&&!home.ready&&!home.loading)void home.load()})

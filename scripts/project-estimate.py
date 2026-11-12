@@ -41,6 +41,40 @@ def local_date(value):
 
 
 def build_sheet():
+    if data.get('target') == 'contract-card':
+        contract = data['contract']
+        title = 'ДОГОВОР № '+contract['number']
+        entries = [{'number':1,'values':[title,''],'styles':[52,52],'height':max(40,math.ceil(len(title)/60)*24+12),'formulas':{}},
+                   {'number':3,'values':['Поле','Значение'],'styles':[55,55],'height':26,'formulas':{}}]
+        rows = [('Проект / источник',contract.get('projectName') or 'Без проекта'),
+                ('Номер договора',contract['number']),('Продавец / исполнитель',contract['seller']),
+                ('Покупатель / заказчик',contract['buyer']),('Дата договора',local_date(contract['date'])),
+                ('Срок','Без срока' if contract.get('noDeadline') else local_date(contract['deadline'])+(' · Автопродление' if contract.get('autoRenew') else '')),('Сумма с НДС, ₽',contract['amount']),('НДС, ₽',contract['vatAmount'])]
+        for field in contract.get('fields',[]):
+            value = field['value']
+            if field['type'] in ['money','number'] and value:
+                value = float(value)
+            elif field['type'] == 'date':
+                value = local_date(value)
+            elif field['type'] == 'checkbox':
+                value = 'Да' if value == 'true' else 'Нет'
+            rows.append((field['label']+(' (₽)' if field['type']=='money' else ''),value))
+        for file in data.get('files',[]):
+            rows.append(('Доп. соглашение' if file.get('kind')=='supplement' else 'Файл договора',file['name']))
+        for label,value in rows:
+            if value is None:
+                value = '-'
+            # Split long text into readable rows to stay below Excel's row-height limit.
+            import textwrap
+            parts = [value]
+            if isinstance(value,str):
+                lines = [wrapped for line in value.split('\n') for wrapped in (textwrap.wrap(line,70,replace_whitespace=False,drop_whitespace=False) or [''])]
+                parts = ['\n'.join(lines[index:index+20]) for index in range(0,len(lines),20)]
+            for index,part in enumerate(parts):
+                lines = max(math.ceil((len(label)+15)/32),sum(max(1,math.ceil(len(line)/70)) for line in str(part or '').split('\n')))
+                entries.append({'number':len(entries)+2,'values':[label if index==0 else label+' (продолжение)',part],
+                                'styles':[0,38 if isinstance(part,(int,float)) and (label.endswith('₽') or label.endswith('(₽)')) else 0],'height':min(400,max(28,lines*15+10)),'formulas':{}})
+        return {'name':'Договор','entries':entries,'merges':['A1:B1'],'layout':{'headers':['Поле','Значение'],'widths':[34,85]},'header':3,'title':title}
     details = data['details']
     party_names = {p['id']: p['company'] for p in data['counterparties']}
     entries = []
@@ -56,23 +90,24 @@ def build_sheet():
         row(1,[title]+['']*7,[52]*8,36);merges.append('A1:H1')
         row(3,layout['headers'],[55]*8,32)
         for index,contract in enumerate(data['contracts']):
-            values=[contract['code'],contract['number'],contract['seller'],contract['buyer'],local_date(contract['date']),local_date(contract['deadline']),contract['amount'],contract['vatAmount']]
+            values=[contract['code'],contract['number'],contract['seller'],contract['buyer'],local_date(contract['date']),'Без срока' if contract.get('noDeadline') else local_date(contract['deadline'])+(' · Автопродление' if contract.get('autoRenew') else ''),contract['amount'],contract['vatAmount']]
             height=max(25,max(math.ceil(len(str(values[i]))/max(8,layout['widths'][i]-2)) for i in range(6))*14+8)
             row(index+4,values,[0]*6+[38]*2,height)
         return {'name':'Договора','entries':entries,'merges':merges,'layout':layout,'header':3,'title':title}
     if is_parties:
+        layout={'headers':['Компания','ИНН','КПП','ОГРН / ОГРНИП','Адрес'],'widths':[38,18,15,23,65]}
         title = data.get('counterpartyTitle') or ('КОНТРАГЕНТЫ · ТЕСТОВЫЕ РЕКВИЗИТЫ' if details['notice'] else 'КОНТРАГЕНТЫ')
-        row(1, [title]+['']*5, [52]*6, 36)
-        merges.append('A1:F1')
-        row(3, layout['headers'], [54]*6, 28)
+        row(1, [title]+['']*4, [52]*5, 36)
+        merges.append('A1:E1')
+        row(3, layout['headers'], [54]*5, 28)
         for index, party in enumerate(data['counterparties']):
-            values = [party[key] for key in ['company','inn','kpp','director','address','bankAccount']]
+            values = [party.get(key,'') for key in ['company','inn','kpp','ogrn','address']]
             height = max(25, 15 * max(math.ceil(len(str(value)) / max(8, layout['widths'][i]-2)) for i, value in enumerate(values)) + 9)
-            row(index+4, values, [0,61,61,0,0,61], height=height)
+            row(index+4, values, [0,61,61,61,0], height=height)
         if details['counterpartyNote']:
             number = len(data['counterparties'])+5
-            row(number, [details['counterpartyNote']]+['']*5, [35]*6, 35)
-            merges.append(f'A{number}:F{number}')
+            row(number, [details['counterpartyNote']]+['']*4, [35]*5, 35)
+            merges.append(f'A{number}:E{number}')
         return {'name':'Контрагенты','entries':entries,'merges':merges,'layout':layout,'header':3,'title':title}
     title = 'СМЕТА ПРОЕКТА'
     name = details['title'] or data['projectName']
@@ -172,11 +207,15 @@ def xlsx(sheet):
     for ref in sheet['merges']:
         ET.SubElement(merges,tag('mergeCell'),ref=ref)
     ET.SubElement(worksheet,tag('pageMargins'),left='0.25',right='0.25',top='0.4',bottom='0.4',header='0.2',footer='0.2')
-    ET.SubElement(worksheet,tag('pageSetup'),orientation='landscape',paperSize='9',fitToWidth='1',fitToHeight='0')
+    ET.SubElement(worksheet,tag('pageSetup'),orientation='portrait' if data.get('target')=='contract-card' else 'landscape',paperSize='9',fitToWidth='1',fitToHeight='0')
     styles = ET.parse(root / 'estimate-styles.xml').getroot()
     formats = styles.find(tag('numFmts'))
     ET.SubElement(formats,tag('numFmt'),numFmtId='203',formatCode='0.######'); formats.set('count',str(len(formats)))
     xfs = styles.find(tag('cellXfs')); quantity = copy.deepcopy(xfs[47]);quantity.set('numFmtId','203');xfs.append(quantity);xfs.set('count',str(len(xfs)))
+    if data.get('target') == 'contract-card':
+        for index in [0,38,52]:
+            xfs[index].set('applyAlignment','1')
+            ET.SubElement(xfs[index],tag('alignment'),wrapText='1',vertical='top')
     text_style = copy.deepcopy(xfs[0]); text_style.set('numFmtId','49');text_style.set('applyNumberFormat','1');xfs.append(text_style);xfs.set('count',str(len(xfs)))
     out = io.BytesIO()
     with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as archive:
@@ -211,13 +250,13 @@ def pdf(sheet):
     def para(value,style=normal):
         return Paragraph(escape(clean(value)).replace('\n','<br/>'),style)
     out = io.BytesIO()
-    doc = SimpleDocTemplate(out,pagesize=landscape(A4),leftMargin=24,rightMargin=24,topMargin=26,bottomMargin=30,title=sheet['title'],author='Проекты')
+    doc = SimpleDocTemplate(out,pagesize=A4 if data.get('target')=='contract-card' else landscape(A4),leftMargin=24,rightMargin=24,topMargin=26,bottomMargin=30,title=sheet['title'],author='Проекты')
     content = []
     title = Table([[para(sheet['title'],heading)]],colWidths=[doc.width])
     title.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#16344c')),('LEFTPADDING',(0,0),(-1,-1),12),('TOPPADDING',(0,0),(-1,-1),10),('BOTTOMPADDING',(0,0),(-1,-1),10)]))
     content.extend([title,Spacer(1,12)])
     is_parties = data.get('target') == 'counterparties'
-    is_registry = data.get('target') in ['counterparties','contracts']
+    is_registry = data.get('target') in ['counterparties','contracts','contract-card']
     if not is_registry:
         details = data['details']
         if details['notice']:
@@ -238,7 +277,7 @@ def pdf(sheet):
         values = []
         for i,value in enumerate(entry['values']):
             if isinstance(value,(int,float)):
-                value = (f'{value:,.2f}' if not is_parties and i>=5 else f'{value:,g}').replace(',',' ').replace('.',',')
+                value = ((f'{value:,.2f}' if entry['styles'][i]==38 else str(value)) if data.get('target')=='contract-card' else (f'{value:,.2f}' if not is_parties and i>=5 else f'{value:,g}')).replace(',',' ').replace('.',',')
             values.append(para(value))
         rows.append(values)
     total_width = sum(sheet['layout']['widths'])

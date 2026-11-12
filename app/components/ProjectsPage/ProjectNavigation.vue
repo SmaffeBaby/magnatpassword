@@ -2,16 +2,21 @@
 import BrandLogo from '../BrandLogo.vue'
 import { projectStages } from '~~/shared/utils/project-dashboard'
 
+const props=defineProps<{registry?:boolean}>()
 const emit = defineEmits<{ navigate: [] }>()
 const route = useRoute(), access = useProjectAccess(), projects = useProjectsData()
 const project = computed(() => projects.data.value?.find(item => item.id === route.params.id))
-const directoryLinks = [
+const directoryLinks = computed(() => props.registry ? [
+  { to:'/contract-register',label:'Все договоры',icon:'i-lucide-notebook-tabs',tab:'contracts' },
+  { to:'/contract-register?tab=counterparties',label:'Контрагенты',icon:'i-lucide-building-2',tab:'counterparties' },
+  { to:'/contract-register?tab=legal-entities',label:'Наши юр. лица',icon:'i-lucide-landmark',tab:'legal-entities' }
+] : [
   { to: '/projects', label: 'Все проекты', icon: 'i-lucide-folder-kanban', tab: 'projects' },
   { to: '/projects?tab=counterparties', label: 'Контрагенты', icon: 'i-lucide-building-2', tab: 'counterparties' },
   { to: '/projects?tab=legal-entities', label: 'Наши юр. лица', icon: 'i-lucide-landmark', tab: 'legal-entities' },
   { to: '/projects?tab=document-templates', label: 'Шаблоны документов', icon: 'i-lucide-files', tab: 'document-templates' }
-]
-const directoryTab = computed(() => ['counterparties', 'legal-entities', 'document-templates'].includes(String(route.query.tab)) ? String(route.query.tab) : 'projects')
+])
+const directoryTab = computed(() => (props.registry ? ['counterparties','legal-entities'] : ['counterparties','legal-entities','document-templates']).includes(String(route.query.tab)) ? String(route.query.tab) : props.registry?'contracts':'projects')
 const projectLinks = computed(() => project.value ? [
   { to: `/projects/${project.value.id}`, label: 'Обзор проекта', icon: 'i-lucide-layout-dashboard', number: '' },
   ...projectStages.map(stage => ({ to: `/projects/${project.value!.id}/${stage.key}`, ...stage })),
@@ -23,8 +28,7 @@ const projectLinks = computed(() => project.value ? [
   <div class="projects-navigation">
     <div class="projects-navigation-brand" @click="emit('navigate')"><BrandLogo/></div>
     <template v-if="access.data.value?.allowed">
-      <nav class="projects-navigation-group" aria-label="Разделы проектов">
-        <p class="projects-navigation-label">РАБОЧЕЕ ПРОСТРАНСТВО</p>
+      <nav class="projects-navigation-group" :aria-label="registry?'Разделы реестра договоров':'Разделы проектов'">
         <NuxtLink v-for="link in directoryLinks" :key="link.tab" :to="link.to" :aria-current="!route.params.id && directoryTab === link.tab ? 'page' : undefined" @click="emit('navigate')"><UIcon :name="link.icon"/><span>{{ link.label }}</span></NuxtLink>
       </nav>
       <nav v-if="project" class="projects-navigation-group project-navigation-stages" aria-label="Разделы открытого проекта">

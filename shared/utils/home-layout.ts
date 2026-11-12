@@ -4,6 +4,7 @@ export const homeApps = {
   passwords: { label: 'Пароли', actionLabel: 'Пароли', icon: 'i-lucide-key-round' },
   finances: { label: 'Финансы', actionLabel: 'Финансы', icon: 'i-lucide-chart-no-axes-combined' },
   relationships: { label: 'Взаимосвязи', actionLabel: 'Взаимосвязи', icon: 'i-lucide-network' },
+  contracts: { label: 'Реестр договоров', actionLabel: 'Реестр договоров', icon: 'i-lucide-notebook-tabs' },
   projects: { label: 'Проекты', actionLabel: 'Проекты', icon: 'i-lucide-folder-kanban' },
   team: { label: 'Команда', actionLabel: 'Команду', icon: 'i-lucide-users-round' },
   kaban: { label: 'Кабан', actionLabel: 'Кабан', icon: 'i-lucide-columns-3' }

@@ -2,7 +2,7 @@
 import type { DirectoryCompany } from '~~/shared/types/project-companies'
 import ProjectCompanyFields from './ProjectCompanyFields.vue'
 import { companyInputSchema, newCompanyDraft } from '~~/shared/utils/project-companies'
-const props=defineProps<{ownOnly:boolean}>(),route=useRoute()
+const props=defineProps<{ownOnly:boolean;basePath?:string}>(),route=useRoute()
 const {query,refresh}=useProjectCompanies(),auth=useAuthStore(),supabase=useNuxtApp().$supabase
 const openedFromRoute=ref('')
 const search=ref(''),open=ref(false),busy=ref(false),error=ref(''),exporting=ref('')
@@ -13,7 +13,7 @@ const projectFilter=ref<string[]>([]),ownership=ref('all'),usage=ref('all'),sort
 const scopeRows=computed(()=>query.data.value?.filter(row=>row.isOwnLegalEntity===props.ownOnly)??[])
 const projectOptions=computed(()=>{const projects=new Map<string,string>();for(const row of scopeRows.value)for(const project of row.projects??[])projects.set(project.id,project.name);return [...projects].map(([value,label])=>({value,label})).sort((a,b)=>a.label.localeCompare(b.label,'ru'))})
 const rows=computed(()=>scopeRows.value.filter(row=>{
- const text=[row.company,row.inn,row.director,...(row.projects??[]).map(project=>project.name)].join(' ').toLocaleLowerCase('ru').replace(/ё/g,'е')
+ const text=[row.company,row.inn,row.ogrn,...(row.projects??[]).map(project=>project.name)].join(' ').toLocaleLowerCase('ru').replace(/ё/g,'е')
  if(!search.value.trim().toLocaleLowerCase('ru').replace(/ё/g,'е').split(/\s+/).every(term=>text.includes(term)))return false
  if(ownership.value==='mine'&&!row.canEdit||ownership.value==='others'&&row.canEdit)return false
  if(usage.value==='used'&&!row.projectCount||usage.value==='unused'&&!!row.projectCount)return false
@@ -30,7 +30,7 @@ const hasFilters=computed(()=>!!search.value.trim()||projectFilter.value.length>
 const sortOptions=[{value:'name',label:'По названию А–Я'},{value:'name-desc',label:'По названию Я–А'},{value:'projects',label:'По количеству проектов ↓'},{value:'updated',label:'Сначала обновлённые'},{value:'inn',label:'По ИНН'}]
 function resetFilters(){search.value='';projectFilter.value=[];ownership.value='all';usage.value='all';sort.value='name'}
 
-function show(row?:DirectoryCompany){selected.value=row??null;draft.value=row?{company:row.company,inn:row.inn,kpp:row.kpp,director:row.director,address:row.address,bankAccount:row.bankAccount,isOwnLegalEntity:row.isOwnLegalEntity}:fresh();error.value='';open.value=true}
+function show(row?:DirectoryCompany){selected.value=row??null;draft.value=row?{company:row.company,inn:row.inn,kpp:row.kpp,ogrn:row.ogrn||'',director:row.director,address:row.address,bankAccount:row.bankAccount,isOwnLegalEntity:row.isOwnLegalEntity}:fresh();error.value='';open.value=true}
 watch(()=>props.ownOnly,()=>{resetFilters();open.value=false})
 watch([()=>route.query.company,()=>query.data.value],()=>{const id=String(route.query.company??'');const row=query.data.value?.find(row=>row.id===id);if(!id)openedFromRoute.value='';else if(row&&openedFromRoute.value!==id){openedFromRoute.value=id;show(row)}},{immediate:true})
 async function submit(remove=false){
@@ -43,7 +43,7 @@ async function submit(remove=false){
   else await sharedRequest('/api/projects/companies',{method:'POST',body:parsed.data})
   if(auth.user?.id!==userId)return
   open.value=false
-  await navigateTo({path:'/projects',query:{tab:draft.value.isOwnLegalEntity?'legal-entities':'counterparties'}},{replace:true})
+  await navigateTo({path:props.basePath||'/projects',query:{tab:draft.value.isOwnLegalEntity?'legal-entities':'counterparties'}},{replace:true})
   await refresh()
  }catch(failure:any){error.value=failure?.data?.message||failure.message;if(failure?.statusCode===409)await query.refetch()}
  finally{busy.value=false}
@@ -57,14 +57,14 @@ async function download(format:'xlsx'|'pdf'){
 </script>
 <template>
  <section class="company-directory" :aria-label="ownOnly?'База наших юридических лиц':'Общая база контрагентов'">
-  <div class="company-toolbar"><UInput v-model="search" icon="i-lucide-search" placeholder="Компания, ИНН, директор или проект" aria-label="Поиск компании" class="company-search"/><UButton label="Excel" icon="i-lucide-file-spreadsheet" color="neutral" variant="outline" :disabled="!!exporting||query.isPending.value||!!query.error.value" :loading="exporting==='xlsx'" @click="download('xlsx')"/><UButton label="PDF" icon="i-lucide-file-text" color="neutral" variant="outline" :disabled="!!exporting||query.isPending.value||!!query.error.value" :loading="exporting==='pdf'" @click="download('pdf')"/><UButton :label="ownOnly?'Добавить юр. лицо':'Добавить контрагента'" icon="i-lucide-plus" @click="show()"/></div>
+  <div class="company-toolbar"><UInput v-model="search" icon="i-lucide-search" placeholder="Компания, ИНН, ОГРН или проект" aria-label="Поиск компании" class="company-search"/><UButton label="Excel" icon="i-lucide-file-spreadsheet" color="neutral" variant="outline" :disabled="!!exporting||query.isPending.value||!!query.error.value" :loading="exporting==='xlsx'" @click="download('xlsx')"/><UButton label="PDF" icon="i-lucide-file-text" color="neutral" variant="outline" :disabled="!!exporting||query.isPending.value||!!query.error.value" :loading="exporting==='pdf'" @click="download('pdf')"/><UButton :label="ownOnly?'Добавить юр. лицо':'Добавить контрагента'" icon="i-lucide-plus" @click="show()"/></div>
   <div class="company-filterbar"><USelectMenu v-model="projectFilter" :items="projectOptions" value-key="value" multiple placeholder="Любые проекты" aria-label="Фильтр компаний по проектам" class="company-project-filter"/><USelect v-model="ownership" :items="[{value:'all',label:'Все авторы'},{value:'mine',label:'Добавлены мной'},{value:'others',label:'Добавлены другими'}]" aria-label="Автор компании"/><USelect v-model="usage" :items="[{value:'all',label:'Любые связи'},{value:'used',label:'Есть проекты'},{value:'unused',label:'Без проектов'}]" aria-label="Использование компании в проектах"/><USelect v-model="sort" :items="sortOptions" aria-label="Сортировка компаний"/></div>
   <div class="company-results" role="status"><span>Найдено {{rows.length}} из {{scopeRows.length}}</span><UButton v-if="hasFilters" label="Сбросить фильтры" icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="resetFilters"/></div>
   <UAlert v-if="error&&!open" color="error" :description="error" class="mb-5"/>
   <p v-if="query.isPending.value" class="company-muted">Загружаем общую базу…</p><UAlert v-else-if="query.error.value" title="Не удалось загрузить компании" color="error" :actions="[{label:'Повторить',onClick:()=>query.refetch()}]"/>
   <div v-else-if="rows.length" class="company-grid">
    <article v-for="row in rows" :key="row.id" class="company-card">
-    <button type="button" class="company-card-main" :aria-label="`Открыть реквизиты ${row.company}`" @click="show(row)"><span class="company-card-header"><span class="company-icon"><UIcon :name="row.isOwnLegalEntity?'i-lucide-landmark':'i-lucide-building-2'"/></span><span class="company-own">{{row.canEdit?'Добавлена вами':'Общая база'}}</span></span><strong>{{row.company}}</strong><small>{{row.inn?'ИНН '+row.inn:'ИНН не указан'}}</small><small v-if="row.director">{{row.director}}</small><span class="company-detail-link">{{row.canEdit?'Реквизиты и настройки':'Реквизиты'}}<UIcon name="i-lucide-arrow-up-right"/></span></button>
+    <button type="button" class="company-card-main" :aria-label="`Открыть реквизиты ${row.company}`" @click="show(row)"><span class="company-card-header"><span class="company-icon"><UIcon :name="row.isOwnLegalEntity?'i-lucide-landmark':'i-lucide-building-2'"/></span><span class="company-own">{{row.canEdit?'Добавлена вами':'Общая база'}}</span></span><strong>{{row.company}}</strong><small>{{row.inn?'ИНН '+row.inn:'ИНН не указан'}}</small><small v-if="row.ogrn">ОГРН / ОГРНИП {{row.ogrn}}</small><span class="company-detail-link">{{row.canEdit?'Реквизиты и настройки':'Реквизиты'}}<UIcon name="i-lucide-arrow-up-right"/></span></button>
     <div class="company-project-links"><h3>Проекты <span>{{row.projectCount}}</span></h3><div v-if="row.projects?.length"><NuxtLink v-for="project in row.projects.slice(0,3)" :key="project.id" :to="`/projects/${project.id}`"><UIcon name="i-lucide-folder-kanban"/><span>{{project.name}}</span><UIcon name="i-lucide-arrow-up-right"/></NuxtLink><UButton v-if="row.projects.length>3" :label="`Ещё ${row.projects.length-3}`" color="neutral" variant="ghost" size="xs" @click="show(row)"/></div><p v-else>{{row.projectCount?'Нет доступных вам проектов':'Пока не подключена к проектам'}}</p></div>
    </article>
   </div>
