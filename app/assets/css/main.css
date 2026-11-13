@@ -191,9 +191,9 @@
 .home-shell{min-height:100svh;display:flex;flex-direction:column;background:radial-gradient(ellipse at 50% 48%,#edf0f780,transparent 48%),#f8fafc}
 .home-topbar{display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:88px;padding:16px clamp(24px,5vw,80px);border-bottom:1px solid #e2e8f070;background:#ffffff45}
 .home-brand{display:flex;align-items:center;flex-shrink:0;border-radius:10px}
-.home-brand img{width:32px;height:32px;object-fit:contain}
+.home-brand-icon{width:32px;height:32px}.home-brand img{width:32px;height:32px;object-fit:contain}
 .home-brand-desktop{display:none}
-@media(min-width:768px){.home-brand{gap:12px}.home-brand-compact{display:none}.home-brand-desktop{display:flex;align-items:center}.home-brand-light{padding:8px 12px;border-radius:9px;background:#26263e}.home-brand-light img{width:139px;height:30px}.home-brand-magnat{gap:6px;font-size:20px;font-weight:700;letter-spacing:-.5px;color:#172332}.home-brand-magnat>span{font-weight:400;color:#718095}}
+@media(min-width:768px){.home-brand{gap:12px}.home-brand-compact{display:none}.home-brand-desktop{display:flex;align-items:center}.home-brand-light{padding:8px 12px;border-radius:9px;background:#26263e}.home-brand-light img{width:139px;height:30px}.home-brand-magnat{gap:6px;font-size:20px;font-weight:700;letter-spacing:-.5px;color:#172332}.home-brand-magnat>.home-brand-subtitle{font-weight:400;color:#718095}}
 .home-brand:focus-visible{outline:2px solid var(--ui-primary);outline-offset:5px}
 .home-account{gap:26px}
 .home-account .password-profile{max-width:280px;padding:5px 15px 5px 5px;gap:12px}
@@ -336,3 +336,8 @@
 .projects-topbar.is-hidden{transform:translateY(-100%);pointer-events:none}
 .projects-topbar:focus-within{transform:translateY(0);pointer-events:auto}
 @media(prefers-reduced-motion:reduce){.projects-topbar{transition:none}}
+
+/* Reveal the brand colour from left to right on both the icon and wordmark. */
+.brand-hover-sweep{position:absolute;inset:0;pointer-events:none;color:var(--brand-hover-color,#000);mask-image:linear-gradient(to right,#000 33.333%,transparent 66.667%);mask-size:300% 100%;mask-position:100% 0;transition:mask-position .65s ease-in-out}
+:is(.brand,.home-brand):is(:hover,:focus-visible) .brand-hover-sweep{mask-position:0 0}
+@media(prefers-reduced-motion:reduce){.brand-hover-sweep{transition:none}}
