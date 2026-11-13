@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import NotificationCenter from './NotificationCenter.vue'
-import PersonAvatar from './PersonAvatar.vue'
+import CurrentAccountAvatar from './CurrentAccountAvatar.vue'
 import type { AppNotification } from '~~/shared/types/subscriptions'
 import { isNativeShell } from '~/utils/native-shell'
 
@@ -30,7 +30,7 @@ const profileItems = computed(() => [
     <div class="password-notifications"><NotificationCenter @open-entry="emit('openEntry', $event)" /></div>
     <UDropdownMenu :items="profileItems" :content="{ align: 'end' }">
       <button class="password-profile" :aria-label="`Меню профиля: ${name}`">
-        <PersonAvatar :name="name" :src="team.me?.person.avatarUrl" />
+        <CurrentAccountAvatar :name="name" />
         <span class="password-profile-name">{{ team.me?.person.fullName || 'Мой профиль' }}</span>
         <UIcon name="i-lucide-chevron-down" class="password-profile-chevron" />
       </button>

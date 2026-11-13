@@ -3,6 +3,7 @@ export interface SavedAccount {
   email: string
   name: string
   avatar?: string
+  avatarSource?: string
 }
 
 export const savedAccountsKey = 'magnat-saved-accounts-v1'
@@ -19,7 +20,8 @@ export function parseSavedAccounts(value: string | null): SavedAccount[] {
         || typeof item.email !== 'string' || item.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item.email)) continue
       if (accounts.some(account => account.id === item.id || account.email === item.email.trim().toLowerCase())) continue
       accounts.push({ id: item.id, email: item.email.trim().toLowerCase(), name: typeof item.name === 'string' ? item.name.slice(0, 160) : '',
-        ...(typeof item.avatar === 'string' && item.avatar.length < 100_000 && /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(item.avatar) ? { avatar: item.avatar } : {}) })
+        ...(typeof item.avatar === 'string' && item.avatar.length < 100_000 && /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(item.avatar) ? { avatar: item.avatar,
+          ...(typeof item.avatarSource === 'string' && /^\/supabase\/storage\/v1\/object\/sign\/profile-avatars\/[a-f0-9-]+\/[a-f0-9-]+\.(?:png|jpe?g|webp)$/i.test(item.avatarSource) ? { avatarSource: item.avatarSource } : {}) } : {}) })
       if (accounts.length === maxAccounts) break
     }
     return accounts

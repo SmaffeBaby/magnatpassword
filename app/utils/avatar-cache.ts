@@ -1,4 +1,12 @@
-// Signed avatar URLs expire after an hour. Keep a small local preview for the login screen.
+// A renewed signature does not change the immutable avatar file.
+export function profileAvatarKey(url: string): string {
+  try {
+    const parsed = new URL(url, 'https://avatar.invalid')
+    return /^\/supabase\/storage\/v1\/object\/sign\/profile-avatars\//.test(parsed.pathname) ? parsed.pathname : url
+  } catch { return url }
+}
+
+// Keep a small local preview for account controls as well as the login screen.
 export async function cacheProfileAvatar(url: string): Promise<string> {
   const image = new Image()
   image.crossOrigin = 'anonymous'

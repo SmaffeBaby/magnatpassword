@@ -3,7 +3,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import { normalizeAccountBrand, type AccountBrand } from '~~/shared/utils/branding'
 import { parseSavedAccounts, rememberAccount, savedAccountsKey, type SavedAccount } from '~/utils/saved-accounts'
 import { accountAccessKey, accountIdleExpired, defaultAccountAccess, logoutOptions, parseAccountAccess, type AccountAccess } from '~/utils/account-access'
-import { cacheProfileAvatar } from '~/utils/avatar-cache'
+import { cacheProfileAvatar, profileAvatarKey } from '~/utils/avatar-cache'
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const checking = ref(true), pending = ref(false), error = ref('')
@@ -13,6 +13,8 @@ export const useAuthStore = defineStore('auth', () => {
   const accessSettings = computed(() => user.value ? access.value[user.value.id] ?? defaultAccountAccess() : defaultAccountAccess())
   let paused = false, sessionUserId = '', lastActivityWrite = 0
   const avatarRequests = new Map<string, string>()
+  const profileAvatar = ref<{ userId: string; source: string; image: string } | null>(null)
+  watch(() => user.value?.id, () => { profileAvatar.value = null; avatarRequests.clear() }, { flush: 'sync' })
   const client = () => useNuxtApp().$supabase
   function loadAccessSettings() {
     try {
@@ -141,23 +143,37 @@ export const useAuthStore = defineStore('auth', () => {
     savedAccounts.value = rememberAccount(savedAccounts.value, {
       id: current.id, email: current.email.trim().toLowerCase(),
       name: previous?.name || (typeof current.user_metadata?.full_name === 'string' ? current.user_metadata.full_name : ''),
-      ...(previous?.avatar ? { avatar: previous.avatar } : {})
+      ...(previous?.avatar ? { avatar: previous.avatar, avatarSource: previous.avatarSource } : {})
     })
     persistSavedAccounts()
   }
   async function updateSavedProfile(id: string, name: string, avatarUrl?: string) {
     const account = savedAccounts.value.find(item => item.id === id)
-    if (!account) return
-    if (account.name !== name) { account.name = name.slice(0, 160); persistSavedAccounts() }
-    if (avatarUrl === undefined || avatarRequests.get(id) === avatarUrl) return
-    avatarRequests.set(id, avatarUrl)
-    if (!avatarUrl) { delete account.avatar; persistSavedAccounts(); return }
+    if (account && account.name !== name) { account.name = name.slice(0, 160); persistSavedAccounts() }
+    if (avatarUrl === undefined || user.value?.id !== id) return
+    const source = profileAvatarKey(avatarUrl)
+    if (!avatarUrl) {
+      avatarRequests.set(id, '')
+      profileAvatar.value = null
+      if (account) { delete account.avatar; delete account.avatarSource; persistSavedAccounts() }
+      return
+    }
+    const cached = profileAvatar.value?.userId === id && profileAvatar.value.source === source ? profileAvatar.value.image
+      : account?.avatarSource === source ? account.avatar : undefined
+    if (cached) {
+      profileAvatar.value = { userId: id, source, image: cached }
+      if (account && account.avatarSource !== source) { account.avatar = cached; account.avatarSource = source; persistSavedAccounts() }
+      return
+    }
+    if (avatarRequests.get(id) === source) return
+    avatarRequests.set(id, source)
     try {
       const avatar = await cacheProfileAvatar(avatarUrl)
       const current = savedAccounts.value.find(item => item.id === id)
-      if (!current || avatarRequests.get(id) !== avatarUrl) return
-      current.avatar = avatar; persistSavedAccounts()
-    } catch { avatarRequests.delete(id) /* Keep the previous local preview if loading fails. */ }
+      if (user.value?.id !== id || avatarRequests.get(id) !== source) return
+      profileAvatar.value = { userId: id, source, image: avatar }
+      if (current) { current.avatar = avatar; current.avatarSource = source; persistSavedAccounts() }
+    } catch { if (avatarRequests.get(id) === source) avatarRequests.delete(id) /* Retry after a failed download. */ }
   }
   async function restore() {
     loadSavedAccounts()
@@ -245,6 +261,6 @@ export const useAuthStore = defineStore('auth', () => {
     updateAccess(id, { signedOut: true, session: undefined })
     try { await client().auth.signOut({ scope: 'local' }) } catch { /* The server has already revoked this device. */ }
   }
-  return { user, checking, pending, error, savedAccounts, storageError, accessSettings, loadAccessSettings, saveAccessSettings,
+  return { user, checking, pending, error, savedAccounts, profileAvatar, storageError, accessSettings, loadAccessSettings, saveAccessSettings,
     hasQuickLogin, resumeAccount, touchActivity, idleExpired, handleSession, syncAccessPolicy, invalidateSession, loadSavedAccounts, forgetAccount, updateSavedProfile, restore, authenticate, authenticateQr, logout }
 })
