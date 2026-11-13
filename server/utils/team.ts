@@ -2,6 +2,9 @@ import { z } from 'zod'
 import type { H3Event } from 'h3'
 import type { TeamUnit, TeamPerson, TeamProfile } from '../../shared/types/team'
 import { normalizeTelegram, normalizePeopleQuery } from '../../shared/utils/team'
+import { createAvatarUrlCache } from './avatar-cache'
+
+const signedAvatars = createAvatarUrlCache()
 export const profileSchema = z.object({ fullName: z.string().trim().min(2).max(120), workEmail: z.union([z.email().max(254),z.literal('')]), telegram: z.string().max(120).transform((value,context) => { try { return normalizeTelegram(value) } catch { context.addIssue({code:'custom',message:'Некорректный Telegram'}); return z.NEVER } }) }).strict()
 export const unitSchema = z.object({ id:z.uuid().optional(), name:z.string().trim().min(1).max(80), kind:z.enum(['company','department','role']), parentId:z.uuid().nullable(), brand:z.enum(['magnat','light']).nullable().optional() }).strict()
 type Context = Awaited<ReturnType<typeof requireSharedUser>>
@@ -11,8 +14,15 @@ export async function teamUnits(context:Context):Promise<TeamUnit[]> {
  return data.map(row=>({id:row.id,parentId:row.parent_id,name:row.name,kind:row.kind,brand:row.brand}))
 }
 export async function teamPeople(context:Context,rows:any[]):Promise<TeamPerson[]> {
- const paths=[...new Set(rows.map(row=>row.avatar_path).filter(Boolean))] as string[],urls=new Map<string,string>()
- if(paths.length){const {data}=await context.client.storage.from('profile-avatars').createSignedUrls(paths,3600);for(const item of data??[])if(item.signedUrl&&item.path){const url=new URL(item.signedUrl);urls.set(item.path,`/supabase${url.pathname}${url.search}`)}}
+ const paths=[...new Set(rows.map(row=>row.avatar_path).filter(Boolean))] as string[]
+ const urls=await signedAvatars(context.user.id,paths,async missing=>{
+  const {data}=await context.client.storage.from('profile-avatars').createSignedUrls(missing,3600)
+  return (data??[]).flatMap(item=>{
+   if(!item.signedUrl||!item.path)return []
+   const url=new URL(item.signedUrl)
+   return [{path:item.path,signedUrl:`/supabase${url.pathname}${url.search}`}]
+  })
+ })
  return rows.map(row=>({isHidden:!!row.is_hidden,id:row.user_id,fullName:row.full_name,email:row.account_email,workEmail:row.work_email,telegram:row.telegram,brand:row.brand,avatarUrl:urls.get(row.avatar_path)??'',roleIds:row.role_ids??[],commonVaultCount:Number(row.common_vault_count??0)}))
 }
 export async function teamDirectory(context:Context,query:string,page=1,company:string|null=null,limit=50,includeHidden=false){
