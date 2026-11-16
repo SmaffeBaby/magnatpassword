@@ -14,6 +14,7 @@ import { quickTaskAction } from '../../../shared/utils/assistant-dialog'
 import { assistantVaultOptions } from '../../utils/assistant-options'
 import { assistantKabanReply } from '../../utils/assistant-kaban'
 import { assistantRead } from '../../utils/assistant-read'
+import { assistantRegistryRead } from '../../utils/assistant-registry-read'
 import { assistantEditRequest } from '../../../shared/utils/assistant-edit'
 import { safeUrl } from '../../../shared/utils/crypto'
 
@@ -22,7 +23,7 @@ const queue = new AssistantQueue()
 const draftSchema = z.object({ title: z.string().trim().min(1).max(200), url: z.string().max(2000), username: z.string().max(500), password: z.string().max(500), notes: z.string().max(2000) }).strict()
 const inputSchema = z.object({
   mode: z.enum(['chat', 'credential', 'create_task', 'edit_task', 'move_task', 'attach_files']).default('chat'),
-  conversation: z.object({ kabanTopic: z.enum(['tasks', 'categories', 'stages']).optional(), projectTopic: z.enum(['overview', 'estimate', 'finance', 'members', 'companies', 'contracts', 'inputs', 'execution', 'closing', 'relationships']).optional(), taskId: z.uuid().optional(), personId: z.uuid().optional(), personName: z.string().max(120).optional(), recordKey: z.string().max(100).optional(), relationQuery: z.string().max(300).optional(), topic: z.enum(['person', 'site', 'project', 'relationships', 'task', 'kaban']).optional() }).strict().optional(),
+  conversation: z.object({ contractKey: z.string().regex(/^(project|standalone)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).optional(), contractQuery: z.string().max(3000).optional(), kabanTopic: z.enum(['tasks', 'categories', 'stages']).optional(), projectTopic: z.enum(['overview', 'estimate', 'finance', 'members', 'companies', 'contracts', 'inputs', 'execution', 'closing', 'relationships']).optional(), taskId: z.uuid().optional(), personId: z.uuid().optional(), personName: z.string().max(120).optional(), recordKey: z.string().max(100).optional(), relationQuery: z.string().max(300).optional(), topic: z.enum(['person', 'site', 'project', 'relationships', 'task', 'kaban', 'contracts']).optional() }).strict().optional(),
   stream: z.boolean().default(false),
   selection: z.object({ projectId: z.uuid().optional(), vaultId: z.union([z.literal('personal'), z.uuid()]).optional(), recordKey: z.string().max(100).optional() }).strict().optional(),
   page: z.string().max(120).refine(path => assistantPage(path) === path).default('/'),
@@ -53,6 +54,8 @@ export default defineEventHandler(async event => {
   const acknowledgement = /^(?:хорошо|ок|окей|понятно|спасибо|благодарю)[.!\s]*$/iu.test(question.trim()) ? { message: previous ? 'Черновик остаётся ниже. Его можно дополнить сообщением или открыть кнопкой «Проверить и добавить в связку».' : 'Пожалуйста! Если появятся вопросы по сайту, пишите.', draft: null, links: [] } : null
   async function prepare() {
   const previousQuestion = messages.slice(0, -1).filter(message => message.role === 'user').at(-1)?.content || ''
+  const registry = !actionKind && !creating && !lookup && !acknowledgement ? await assistantRegistryRead(event, question, input.conversation, page, input.selection?.projectId) : null
+  if (registry) return { facts: registry, instructions: '', help: [], needsData: true, actionSchema: z.object({}) }
   const kaban = await assistantKabanReply(event, question, input.selection, input.conversation, previousQuestion, page)
   if (kaban) return { facts: kaban, instructions: '', help: [], needsData: true, actionSchema: z.object({}) }
   const edit = actionKind || creating && !!previous && !/(?:у|в)\s+(?:парол|карточ)/iu.test(question) ? null : assistantEditRequest(question)
@@ -68,7 +71,7 @@ export default defineEventHandler(async event => {
   }
   if (!actionKind && !creating && !lookup && !acknowledgement) {
     const previousQuestion = messages.slice(0, -1).filter(message => message.role === 'user').at(-1)?.content || ''
-    const direct = await assistantRead(event, question, input.selection, previousQuestion, input.conversation)
+    const direct = await assistantRead(event, question, input.selection, previousQuestion, input.conversation, page)
     if (direct) return { facts: direct, instructions: '', help: [], needsData: true, actionSchema: z.object({ title: z.string(), description: z.string(), dueOn: z.string(), taskName: z.string(), stageName: z.string() }) }
   }
   const help = findAssistantHelp(question, page)

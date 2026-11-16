@@ -19,9 +19,10 @@ export function assistantFileTopic(question: string, previousQuestion: string, m
 // Only these authenticated application routes may receive a download request. No model-provided URLs.
 export function assistantDownloadPath(file: AssistantDownload): string {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  const ids = file.kind === 'task' ? [file.taskId, file.fileId] : file.kind === 'contract' ? [file.projectId, file.contractId, file.fileId] : file.kind === 'input' ? [file.projectId, file.fileId] : []
+  const ids = file.kind === 'task' ? [file.taskId, file.fileId] : file.kind === 'registry' && ['project','standalone'].includes(file.origin) ? [file.contractId,file.fileId] : file.kind === 'contract' ? [file.projectId, file.contractId, file.fileId] : file.kind === 'input' ? [file.projectId, file.fileId] : []
   if (!ids.length || ids.some(id => !uuid.test(id))) throw new Error('Некорректная ссылка на файл. Запросите список файлов заново.')
   if (file.kind === 'task') return `/api/kaban/tasks/${file.taskId}/files/${file.fileId}`
+  if (file.kind === 'registry') return `/api/contract-register/${file.origin}/${file.contractId}/files/${file.fileId}`
   if (file.kind === 'contract') return `/api/projects/${file.projectId}/contracts/${file.contractId}/files/${file.fileId}`
   return `/api/projects/${file.projectId}/input-data/file?file=${file.fileId}`
 }

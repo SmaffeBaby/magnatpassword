@@ -19,8 +19,11 @@ import { renderExecutionDocument } from '../../shared/utils/project-execution'
 import { renderClosingDocument } from '../../shared/utils/project-closing'
 import { personSearchText, companyBrand, personPositionReply, personQuestion, siteSectionReply } from '../../shared/utils/assistant-dialog'
 import { assistantFetch } from './assistant-context'
+import { assistantRegistryRead } from './assistant-registry-read'
 
-export async function assistantRead(event: H3Event, question: string, selection: { projectId?: string; recordKey?: string; vaultId?: string } = {}, previousQuestion = '', memory: AssistantConversation = {}): Promise<AssistantReply | null> {
+export async function assistantRead(event: H3Event, question: string, selection: { projectId?: string; recordKey?: string; vaultId?: string } = {}, previousQuestion = '', memory: AssistantConversation = {}, page = ''): Promise<AssistantReply | null> {
+  const contracts = await assistantRegistryRead(event, question, memory, page, selection.projectId)
+  if (contracts) return contracts
   const taskFiles = await assistantTaskFilesRead(event, question, selection, memory)
   if (taskFiles) return taskFiles
   const calculation = arithmeticReply(question)

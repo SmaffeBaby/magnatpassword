@@ -2,6 +2,7 @@ export type AssistantDownload = { name: string; size: number; source: string } &
   | { kind: 'input'; projectId: string; fileId: string }
   | { kind: 'contract'; projectId: string; contractId: string; fileId: string }
   | { kind: 'task'; taskId: string; fileId: string }
+  | { kind: 'registry'; origin: 'project' | 'standalone'; contractId: string; fileId: string }
 )
 export interface AssistantDraft {
   title: string
@@ -61,11 +62,13 @@ export interface AssistantQueueStatus {
 }
 
 export interface AssistantChoice {
-  kind: 'project' | 'vault' | 'record' | 'person' | 'task'
+  kind: 'project' | 'vault' | 'record' | 'person' | 'task' | 'registry-contract'
   prompt: string
   options: { id: string; label: string; disabled?: boolean }[]
 }
 export interface AssistantConversation {
+  contractKey?: string
+  contractQuery?: string
   kabanTopic?: 'tasks' | 'categories' | 'stages'
   projectTopic?: import('./assistant-project').ProjectReadTopic
   taskId?: string
@@ -73,5 +76,5 @@ export interface AssistantConversation {
   personName?: string
   recordKey?: string
   relationQuery?: string
-  topic?: 'person' | 'site' | 'project' | 'relationships' | 'task' | 'kaban'
+  topic?: 'person' | 'site' | 'project' | 'relationships' | 'task' | 'kaban' | 'contracts'
 }

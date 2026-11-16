@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
-import type { ContractRegisterResult, RegisterContract } from '~~/shared/types/contract-register'
+import type { ContractRegisterResult, RegisterContract, RegisterContractDetail } from '~~/shared/types/contract-register'
 import ContractRegisterDetail from './ContractRegisterDetail.vue'
 const auth=useAuthStore(),access=useProjectAccess()
+const route=useRoute(),router=useRouter(),linkError=ref('')
 const {query:companies}=useProjectCompanies()
 const companyOptions=(own:boolean)=>[{label:'Все',value:'all'},...(companies.data.value||[]).filter(row=>row.isOwnLegalEntity===own).map(row=>({label:row.company,value:row.id,inn:row.inn,description:row.inn?'ИНН '+row.inn:''}))]
 const q=ref(''),search=ref(''),page=ref(1),editing=ref(false),selected=ref<RegisterContract|null>(null)
@@ -22,11 +23,21 @@ function sortBy(key:string){filters.sort=filters.sort===key+'-asc'?key+'-desc':k
 function sortState(key:string){return filters.sort===key+'-asc'?'ascending':filters.sort===key+'-desc'?'descending':'none'}
 watch(()=>query.data.value,data=>{if(data&&data.page!==page.value)page.value=data.page})
 function open(row:RegisterContract|null){selected.value=row;editing.value=true}
+watch([()=>route.query.contract,()=>auth.user?.id,()=>access.data.value?.allowed],async([key,userId,allowed],_previous,onCleanup)=>{
+ linkError.value=''
+ if(typeof key!=='string'||!userId||!allowed)return
+ if(!/^(project|standalone)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)){linkError.value='Некорректная ссылка на договор.';return}
+ const controller=new AbortController();onCleanup(()=>controller.abort())
+ try{const detail=await sharedRequest<RegisterContractDetail>(`/api/contract-register/${key}`,{signal:controller.signal});if(!controller.signal.aborted&&auth.user?.id===userId&&route.query.contract===key)open(detail.contract)}
+ catch(failure:any){if(!controller.signal.aborted)linkError.value=failure?.data?.message||'Договор удалён или больше недоступен.'}
+},{immediate:true})
+watch(editing,value=>{if(!value&&route.query.contract)void router.replace({query:{...route.query,contract:undefined}})})
 const money=(value:number|null)=>value===null?'—':new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(value)
 const date=(value:string)=>value?value.split('-').reverse().join('.'):'—'
 </script>
 <template>
  <section class="registry" aria-label="Общий реестр договоров">
+  <UAlert v-if="linkError" color="error" :description="linkError" class="mb-4"/>
   <header class="registry-intro"><p>Договоры этапа «Договора» отображаются автоматически и обновляются вместе со сметой. Здесь же можно добавить договор и файлы без привязки к проекту.</p><UButton label="Добавить договор" icon="i-lucide-plus" @click="open(null)"/></header>
   <div class="registry-filters">
    <UFormField label="Поиск" class="registry-search"><UInput v-model="q" icon="i-lucide-search" placeholder="Номер, стороны или проект" :maxlength="300" class="w-full"/></UFormField>
@@ -47,7 +58,7 @@ const date=(value:string)=>value?value.split('-').reverse().join('.'):'—'
   <div v-else-if="query.data.value?.contracts.length" class="registry-table-wrap"><table class="registry-table"><colgroup><col v-for="(width,index) in [11,12,15,15,9,9,11,11,7]" :key="index" :style="{width:width+'%'}"/></colgroup><thead><tr><th v-for="column in columns" :key="column.key" :aria-sort="sortState(column.key)"><button type="button" class="inline-flex items-center gap-2 text-left" @click="sortBy(column.key)">{{column.label}}<UIcon :name="sortState(column.key)==='ascending'?'i-lucide-arrow-up':sortState(column.key)==='descending'?'i-lucide-arrow-down':'i-lucide-arrow-up-down'" class="shrink-0"/></button></th></tr></thead><tbody><tr v-for="row in query.data.value.contracts" :key="row.origin+row.id"><td><button class="registry-contract-link" @click="open(row)">{{ row.number }}</button><small v-if="row.issue" class="registry-issue">Требует проверки</small></td><td><span>{{ row.projectName || 'Без проекта' }}</span><small>{{ row.source==='revenue'?'Выручка сметы':row.source==='expenses'?'Затраты сметы':'Добавлен вручную' }}</small></td><td>{{ row.seller || '—' }}</td><td>{{ row.buyer || '—' }}</td><td class="registry-nowrap">{{ date(row.date) }}</td><td class="registry-nowrap">{{ row.noDeadline?'Без срока':date(row.deadline) }}<small v-if="row.autoRenew">Автопродление</small></td><td class="registry-nowrap">{{ money(row.amount) }}</td><td class="registry-nowrap">{{ money(row.vatAmount) }}</td><td><UButton :label="row.fileCount?String(row.fileCount):undefined" :icon="row.fileCount?'i-lucide-paperclip':'i-lucide-eye'" color="neutral" variant="ghost" :title="`Открыть договор ${row.number}, файлов: ${row.fileCount}`" :aria-label="`Открыть договор ${row.number}, файлов: ${row.fileCount}`" @click="open(row)"/></td></tr></tbody></table></div>
   <div v-else-if="!query.isPending.value && !query.error.value" class="registry-empty"><UIcon name="i-lucide-notebook-tabs"/><h2>Договоры не найдены</h2><p>Измените фильтры или добавьте договор без проекта. Договоры из проектов появятся здесь автоматически.</p></div>
   <footer v-if="query.data.value" class="registry-pagination flex-wrap"><span>Страница {{query.data.value.page}} из {{query.data.value.pages}} · Всего {{query.data.value.total}}</span><UPagination v-model:page="page" :total="query.data.value.total" :items-per-page="query.data.value.pageSize" :disabled="query.isFetching.value" :sibling-count="1" show-edges/></footer>
-  <ContractRegisterDetail v-if="editing" :contract="selected" @close="editing=false; selected=null" @changed="query.refetch()"/>
+  <ContractRegisterDetail v-if="editing" :key="selected?selected.origin+'/'+selected.id:'new'" :contract="selected" @close="editing=false; selected=null" @changed="query.refetch()"/>
  </section>
 </template>
 <style scoped>

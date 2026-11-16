@@ -53,6 +53,7 @@ export function useLocalAssistant() {
     if (kind === 'vault') await changeVault(option.id)
     if (kind === 'project') projectId.value = option.id
     if (kind === 'task') conversation.value = { ...conversation.value, topic: 'task', taskId: option.id }
+    if (kind === 'registry-contract') conversation.value = { topic: 'contracts', contractKey: option.id }
     if (kind === 'record') recordKey.value = option.id
     if (kind === 'person') conversation.value = { ...conversation.value, personId: option.id, personName: option.label, topic: 'person' }
     choice.value = null
@@ -102,7 +103,7 @@ export function useLocalAssistant() {
           const reply = item.reply as AssistantReply
           message.downloads = reply.downloads || []
           message.content = reply.message; message.complete = true; complete = true
-          if (reply.conversation) conversation.value = { ...conversation.value, ...reply.conversation }
+          if (reply.conversation) conversation.value = reply.conversation.topic === 'contracts' ? reply.conversation : { ...conversation.value, ...reply.conversation }
           choice.value = reply.choice || null
           pendingRequest = reply.choice ? { content, mode } : null
           if (reply.projectId && projectId.value !== reply.projectId) projectId.value = reply.projectId
