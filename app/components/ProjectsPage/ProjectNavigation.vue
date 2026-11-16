@@ -8,6 +8,7 @@ const route = useRoute(), access = useProjectAccess(), projects = useProjectsDat
 const project = computed(() => projects.data.value?.find(item => item.id === route.params.id))
 const directoryLinks = computed(() => props.registry ? [
   { to:'/contract-register',label:'Все договоры',icon:'i-lucide-notebook-tabs',tab:'contracts' },
+  { to:'/contract-register?tab=calendar',label:'Календарь договоров',icon:'i-lucide-calendar-days',tab:'calendar' },
   { to:'/contract-register?tab=counterparties',label:'Контрагенты',icon:'i-lucide-building-2',tab:'counterparties' },
   { to:'/contract-register?tab=legal-entities',label:'Наши юр. лица',icon:'i-lucide-landmark',tab:'legal-entities' }
 ] : [
@@ -16,7 +17,7 @@ const directoryLinks = computed(() => props.registry ? [
   { to: '/projects?tab=legal-entities', label: 'Наши юр. лица', icon: 'i-lucide-landmark', tab: 'legal-entities' },
   { to: '/projects?tab=document-templates', label: 'Шаблоны документов', icon: 'i-lucide-files', tab: 'document-templates' }
 ])
-const directoryTab = computed(() => (props.registry ? ['counterparties','legal-entities'] : ['counterparties','legal-entities','document-templates']).includes(String(route.query.tab)) ? String(route.query.tab) : props.registry?'contracts':'projects')
+const directoryTab = computed(() => (props.registry ? ['calendar','counterparties','legal-entities'] : ['counterparties','legal-entities','document-templates']).includes(String(route.query.tab)) ? String(route.query.tab) : props.registry?'contracts':'projects')
 const projectLinks = computed(() => project.value ? [
   { to: `/projects/${project.value.id}`, label: 'Обзор проекта', icon: 'i-lucide-layout-dashboard', number: '' },
   ...projectStages.map(stage => ({ to: `/projects/${project.value!.id}/${stage.key}`, ...stage })),

@@ -1,3 +1,4 @@
+import { useMonthCalendar } from './useMonthCalendar'
 import type { VaultSource } from '~~/shared/types/sharing'
 import { unpaidProjectedCharges, sourcePayments, recordedCharges, currencyTotals, amountLabel } from '~~/shared/utils/subscription-finances'
 import { addPeriod, todayDate, subscriptionRows, subscriptionCardReferences, subscriptionCardKey, matchesSubscriptionCard, dateLabel, moneyLabel, periodLabel } from '~~/shared/utils/subscriptions'
@@ -26,10 +27,8 @@ export function useSubscriptionSidebar(props:{entries:ScopedCredential[]}) {
 export function useSubscriptionCalendar(props:{entries:ScopedCredential[];sources?:VaultSource[]}) {
  const common=useSubscriptionFilters(props,'calendar')
  const {month,selected}=toRefs(useFiltersStore().calendar)
- const monthTitle=computed(()=>new Intl.DateTimeFormat('ru-RU',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(month.value+'T12:00:00Z')))
- const selectedMonth=computed({get:()=>month.value.slice(5,7),set:value=>{month.value=month.value.slice(0,5)+value+'-01'}})
- const selectedYear=computed({get:()=>Number(month.value.slice(0,4)),set:value=>{if(Number.isInteger(value)&&value>=1900&&value<=9998)month.value=String(value).padStart(4,'0')+month.value.slice(4)}})
- const monthOptions=Array.from({length:12},(_,i)=>({label:new Intl.DateTimeFormat('ru-RU',{month:'long',timeZone:'UTC'}).format(new Date(Date.UTC(2026,i,1))),value:String(i+1).padStart(2,'0')}))
+ const calendar=useMonthCalendar(month,selected,common.today)
+ const {monthTitle,selectedMonth,selectedYear,monthOptions,move,goToday}=calendar
  const payments=computed(()=>sourcePayments(props.sources??[]))
  const charges=computed(()=>{
   const from=addPeriod(month.value,-6,'day'),to=addPeriod(month.value,42,'day')
@@ -37,7 +36,7 @@ export function useSubscriptionCalendar(props:{entries:ScopedCredential[];source
   const paid=recordedCharges(payments.value,props.entries).filter(event=>event.date>=from&&event.date<=to&&(common.group.value==='all'||event.payment.vaultIds.includes(common.group.value))&&(common.currency.value==='all'||event.currency===common.currency.value)&&`${event.payment.service} ${event.payment.label} ${event.payment.vaultNames.join(' ')}`.toLowerCase().includes(common.search.value.trim().toLowerCase()))
   return [...planned,...paid].sort((a,b)=>a.date.localeCompare(b.date))
  })
- const cells=computed(()=>{const weekday=(new Date(month.value+'T12:00:00Z').getUTCDay()+6)%7;return Array.from({length:42},(_,i)=>{const date=addPeriod(month.value,i-weekday,'day'),events=charges.value.filter(event=>event.date===date);return {date,day:Number(date.slice(-2)),outside:date.slice(0,7)!==month.value.slice(0,7),events,totals:currencyTotals(events.filter(event=>!event.paid).map(event=>({amount:event.amount,currency:event.currency})))}})})
+ const cells=computed(()=>calendar.dates.value.map(cell=>{const events=charges.value.filter(event=>event.date===cell.date);return {...cell,events,totals:currencyTotals(events.filter(event=>!event.paid).map(event=>({amount:event.amount,currency:event.currency})))}}))
  const selectedRows=computed(()=>charges.value.filter(event=>event.date===selected.value))
  const monthTotals=computed(()=>currencyTotals(charges.value.filter(event=>event.charge&&!event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
  const monthRenewalTotals=computed(()=>currencyTotals(charges.value.filter(event=>!event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
@@ -45,8 +44,5 @@ export function useSubscriptionCalendar(props:{entries:ScopedCredential[];source
  const monthPaidTotals=computed(()=>currencyTotals(charges.value.filter(event=>event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
  const selectedEndingTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>!event.charge&&!event.paid)))
  const selectedPaidTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>event.paid)))
- function move(delta:number){const next=addPeriod(month.value,delta,'month');if(next)month.value=next}
- function goToday(){month.value=common.today.value.slice(0,7)+'-01';selected.value=common.today.value}
- watch(month,value=>{selected.value=value})
  return {...common,month,selected,monthTitle,cells,selectedRows,move,goToday,selectedMonth,selectedYear,monthOptions,monthTotals,monthRenewalTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,selectedEndingTotals,amountLabel}
 }
