@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import ContractRegisterCard from '~/components/ContractRegisterCard.vue'
+import ContractRegisterCard from '~/components/ProjectsPage/ContractRegisterCard.vue'
 import ProjectsCard from '~/components/ProjectsPage/ProjectsCard.vue'
-import RelationshipsCard from '~/components/RelationshipsCard.vue'
-import FinanceCard from '~/components/FinanceCard.vue'
+import RelationshipsCard from '~/components/Relationships/RelationshipsCard.vue'
+import FinanceCard from '~/components/Finances/FinanceCard.vue'
 import PasswordCard from '~/components/PasswordPage/PasswordCard.vue'
-import TeamCard from '~/components/TeamCard.vue'
-import KabanCard from '~/components/KabanCard.vue'
+import TeamCard from '~/components/AccountPage/TeamCard.vue'
+import KabanCard from '~/components/Kaban/KabanCard.vue'
 definePageMeta({ layout: 'home' })
 const projectAccess = useProjectAccess()
 const home = useHomeLayoutStore()

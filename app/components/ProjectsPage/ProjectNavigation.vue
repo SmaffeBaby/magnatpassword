@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import ProjectBoardNavigation from '../Kaban/ProjectBoardNavigation.vue'
-import BrandLogo from '../BrandLogo.vue'
+import BrandLogo from '~/components/Brand/BrandLogo.vue'
 import { projectStages } from '~~/shared/utils/project-dashboard'
 
 const props=defineProps<{registry?:boolean}>()

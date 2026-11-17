@@ -1,4 +1,4 @@
-import { useMonthCalendar } from './useMonthCalendar'
+import { useMonthCalendar } from '~/composables/shared/useMonthCalendar'
 import type { VaultSource } from '~~/shared/types/sharing'
 import { unpaidProjectedCharges, sourcePayments, recordedCharges, currencyTotals, amountLabel } from '~~/shared/utils/subscription-finances'
 import { addPeriod, todayDate, subscriptionRows, subscriptionCardReferences, subscriptionCardKey, matchesSubscriptionCard, dateLabel, moneyLabel, periodLabel } from '~~/shared/utils/subscriptions'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import ApplicationSwitcher from '../ApplicationSwitcher.vue'
-import AccountControls from '../AccountControls.vue'
+import ApplicationSwitcher from '~/components/Layout/ApplicationSwitcher.vue'
+import AccountControls from '~/components/AccountPage/AccountControls.vue'
 import type { AppNotification } from '~~/shared/types/subscriptions'
 
 defineProps<{ workspaceName: string; title: string }>()

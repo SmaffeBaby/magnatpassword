@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import ContractRegisterCard from '~/components/ContractRegisterCard.vue'
-import PasswordCard from './PasswordPage/PasswordCard.vue'
-import FinanceCard from './FinanceCard.vue'
-import RelationshipsCard from './RelationshipsCard.vue'
-import ProjectsCard from './ProjectsPage/ProjectsCard.vue'
-import TeamCard from './TeamCard.vue'
-import KabanCard from './KabanCard.vue'
+import ContractRegisterCard from '~/components/ProjectsPage/ContractRegisterCard.vue'
+import PasswordCard from '~/components/PasswordPage/PasswordCard.vue'
+import FinanceCard from '~/components/Finances/FinanceCard.vue'
+import RelationshipsCard from '~/components/Relationships/RelationshipsCard.vue'
+import ProjectsCard from '~/components/ProjectsPage/ProjectsCard.vue'
+import TeamCard from '~/components/AccountPage/TeamCard.vue'
+import KabanCard from '~/components/Kaban/KabanCard.vue'
 const projectAccess=useProjectAccess(),home=useHomeLayoutStore(),auth=useAuthStore(),route=useRoute()
 const open=ref(false)
 const { application } = useAccountBrand()

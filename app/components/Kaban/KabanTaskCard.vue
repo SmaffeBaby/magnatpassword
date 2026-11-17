@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type {UnwrapNestedRefs} from 'vue'
-import type {useKaban} from '~/composables/useKaban'
+import type {useKaban} from '~/composables/kaban/useKaban'
 import type {KabanTask} from '~~/shared/types/kaban'
-import PersonAvatar from '../PersonAvatar.vue'
+import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 const props=defineProps<{controller:UnwrapNestedRefs<ReturnType<typeof useKaban>>;task:KabanTask;done?:boolean}>()
 const c=props.controller
 const stage=computed(()=>({done:!!props.done}))

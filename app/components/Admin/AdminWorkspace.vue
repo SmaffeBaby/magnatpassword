@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import AssistantUpdates from '~/components/Assistant/Updates.vue'
-import ReleaseSettings from '~/components/ReleaseSettings.vue'
+import ReleaseSettings from '~/components/Admin/ReleaseSettings.vue'
 import TeamSettings from '~/components/PasswordPage/Admin/TeamSettings.vue'
 import ProjectAccess from '~/components/ProjectsPage/Admin/ProjectAccess.vue'
-import AuthGate from '~/components/AuthGate.vue'
-import BrandLogo from '~/components/BrandLogo.vue'
+import AuthGate from '~/components/Auth/AuthGate.vue'
+import BrandLogo from '~/components/Brand/BrandLogo.vue'
 import VaultWorkspace from '~/components/PasswordPage/VaultWorkspace.vue'
-import { useAdminPage } from '~/composables/useAdminPage'
+import { useAdminPage } from '~/composables/admin/useAdminPage'
 
 const { setTeamVisibility, visibilityBusy, auth, vault, identity, checking, accessError, overview, section, titles, navigation, restore, switchAccount, switchingAccount, date, productName } = useAdminPage()
 </script>

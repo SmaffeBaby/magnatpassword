@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query'
-import UserPicker from '../UserPicker.vue'
-import PersonAvatar from '../PersonAvatar.vue'
+import UserPicker from '~/components/Shared/UserPicker.vue'
+import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 import ProjectEstimate from './ProjectEstimate.vue'
 import ProjectInputData from './ProjectInputData.vue'
 import ProjectContracts from './ProjectContracts.vue'

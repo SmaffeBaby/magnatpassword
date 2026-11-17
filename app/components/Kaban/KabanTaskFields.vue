@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { UnwrapNestedRefs } from 'vue'
-import type { useKaban } from '~/composables/useKaban'
+import type { useKaban } from '~/composables/kaban/useKaban'
 import type { KabanBlock, KabanFile } from '~~/shared/types/kaban'
 import { createId } from '~/utils/browser'
 import KabanTaskField from './KabanTaskField.vue'

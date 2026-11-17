@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { useBrandLogo } from '../composables/useBrandLogo'
-import BrandWordmark from './BrandWordmark.vue'
-import BrandIcon from './BrandIcon.vue'
+import { useBrandLogo } from '~/composables/branding/useBrandLogo'
+import BrandWordmark from '~/components/Brand/BrandWordmark.vue'
+import BrandIcon from '~/components/Brand/BrandIcon.vue'
 
 const props = withDefaults(defineProps<{ to?: string; compact?: boolean; admin?: boolean }>(), { to: '/' })
 const { brand, label, application } = useBrandLogo(props)

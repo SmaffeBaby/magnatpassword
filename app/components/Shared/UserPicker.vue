@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
-import PersonAvatar from './PersonAvatar.vue'
+import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 import { normalizePeopleQuery } from '~~/shared/utils/team'
 import type { TeamPerson } from '~~/shared/types/team'
 const person=defineModel<TeamPerson|null>({default:null})

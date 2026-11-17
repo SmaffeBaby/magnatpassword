@@ -11,6 +11,7 @@ export default defineNuxtConfig({
   nitro: { ...(webBuildRoot ? {output:{dir:`${webBuildRoot}/.output`}} : {}), ...(native ? {output:{dir:nativeBuildRoot?`${nativeBuildRoot}/.output-native`:'.output-native'},prerender:{crawlLinks:false,routes:['/']}} : {}), experimental:{websocket:true} },
   compatibilityDate: '2026-10-15',
   srcDir: 'app/', serverDir: 'server/',
+  imports: { dirs: ['composables/**'] },
   devtools: { enabled: false },
   app: { head: { title: 'Magnat', htmlAttrs: { lang: 'ru' }, link: [{ key: 'brand-favicon', rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }], meta: [{ name: 'description', content: 'Личное зашифрованное хранилище паролей' }, { name: 'robots', content: 'noindex, nofollow' }] } },
   css: ['~/assets/css/main.css', '~/assets/css/kaban.css', '~/assets/css/native.css'],

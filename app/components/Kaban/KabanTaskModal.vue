@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { kabanCategoryStages, kabanTaskStage } from '~~/shared/utils/kaban-stages'
 import type { UnwrapNestedRefs } from 'vue'
-import type { useKaban } from '~/composables/useKaban'
+import type { useKaban } from '~/composables/kaban/useKaban'
 import KabanPerson from './KabanPerson.vue'
 import KabanTaskFields from './KabanTaskFields.vue'
 import type { KabanTask } from '~~/shared/types/kaban'

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import KabanNavigation from '~/components/Kaban/KabanNavigation.vue'
-import ApplicationSwitcher from '~/components/ApplicationSwitcher.vue'
-import AuthGate from '~/components/AuthGate.vue'
-import AccountControls from '~/components/AccountControls.vue'
+import ApplicationSwitcher from '~/components/Layout/ApplicationSwitcher.vue'
+import AuthGate from '~/components/Auth/AuthGate.vue'
+import AccountControls from '~/components/AccountPage/AccountControls.vue'
 import ProjectNavigation from '~/components/ProjectsPage/ProjectNavigation.vue'
-import HomeCustomization from '~/components/HomeCustomization.vue'
-import BrandWordmark from '~/components/BrandWordmark.vue'
-import BrandIcon from '~/components/BrandIcon.vue'
+import HomeCustomization from '~/components/Home/HomeCustomization.vue'
+import BrandWordmark from '~/components/Brand/BrandWordmark.vue'
+import BrandIcon from '~/components/Brand/BrandIcon.vue'
 import type { AppNotification } from '~~/shared/types/subscriptions'
 
 const route = useRoute()

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import PersonAvatar from '../PersonAvatar.vue'
+import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 import ProjectOverviewMetrics from './ProjectOverviewMetrics.vue'
 import ProjectCounterparties from './ProjectCounterparties.vue'
 import { projectStages, dashboardBlocks } from '~~/shared/utils/project-dashboard'

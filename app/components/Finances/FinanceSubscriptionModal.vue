@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import SubscriptionEditor from './PasswordPage/SubscriptionEditor.vue'
+import SubscriptionEditor from '~/components/PasswordPage/SubscriptionEditor.vue'
 const props = defineProps<{ controller: ReturnType<typeof useFinanceSubscriptions>; busy: boolean }>()
 const finance = reactive(props.controller)
 </script>

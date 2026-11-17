@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
-import MonthCalendar from '../MonthCalendar.vue'
+import MonthCalendar from '~/components/Shared/MonthCalendar.vue'
 import ContractRegisterDetail from './ContractRegisterDetail.vue'
-import { useMonthCalendar } from '~/composables/useMonthCalendar'
+import { useMonthCalendar } from '~/composables/shared/useMonthCalendar'
 import { contractCalendarEvents, type ContractCalendarKind } from '~~/shared/utils/contract-calendar'
 import { todayDate,dateLabel } from '~~/shared/utils/subscriptions'
 import type { RegisterContract } from '~~/shared/types/contract-register'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {useQuery} from '@tanstack/vue-query'
-import BrandLogo from '../BrandLogo.vue'
+import BrandLogo from '~/components/Brand/BrandLogo.vue'
 const emit=defineEmits<{navigate:[]}>()
 const route=useRoute(),projects=useProjectsData(),access=useProjectAccess(),auth=useAuthStore()
 const {search,folder}=useKabanDirectoryNavigation(),expanded=ref<string[]>([])

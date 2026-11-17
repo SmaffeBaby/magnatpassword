@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import AuthGate from '~/components/AuthGate.vue'
+import AuthGate from '~/components/Auth/AuthGate.vue'
 import { isNativeShell } from '~/utils/native-shell'
 import { qrSecretPattern } from '~~/shared/utils/qr-login'
 

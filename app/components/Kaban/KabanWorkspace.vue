@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { svgImageUrl } from '~~/shared/utils/media'
-import { useKaban } from '~/composables/useKaban'
-import WorkspaceSidebar from '../WorkspaceSidebar.vue'
+import { useKaban } from '~/composables/kaban/useKaban'
+import WorkspaceSidebar from '~/components/Layout/WorkspaceSidebar.vue'
 import PasswordHeader from '../PasswordPage/PasswordHeader.vue'
 import KabanCategoryNav from './KabanCategoryNav.vue'
 import KabanCategoryBrowser from './KabanCategoryBrowser.vue'
 import type { KabanCategory } from '~~/shared/types/kaban'
 import KabanTaskCard from './KabanTaskCard.vue'
-import BoarLogo from '../BoarLogo.vue'
+import BoarLogo from '~/components/Brand/BoarLogo.vue'
 import KabanTaskModal from './KabanTaskModal.vue'
 import KabanHistorySettings from './KabanHistorySettings.vue'
 const props=defineProps<{projectId?:string}>()
@@ -79,7 +79,7 @@ function notification(notification:{entryId:string|null;vaultId:string|null}){na
     <KabanCategoryBrowser v-else-if="c.displayData&&c.view==='categories'" :categories="c.categories" :count="c.categoryCount" :can-create="c.canCreateCategories" :can-add-child="c.canAddSubcategory" @select="c.chooseCategory" @create="c.createCategory()" @create-child="c.createCategory"/>
     <template v-else-if="c.displayData&&c.view==='history'">
      <div class="kaban-history-toolbar"><p class="kaban-help">Все изменения задач, категорий, стадий и вложений. Время указано по Москве.</p><div class="kaban-history-actions"><KabanHistorySettings :key="c.workspaceId" :boards="c.workspaces.filter(item=>item.canManage).map(item=>({id:item.board.id,label:c.sourceName(item.board.id)}))" @changed="c.loadHistory()"/><UButton label="Обновить историю" icon="i-lucide-refresh-cw" color="neutral" variant="outline" :loading="c.historyLoading" @click="c.loadHistory()"/></div></div>
-     <div class="kaban-history"><article v-for="event in c.history" :key="event.id"><PersonAvatar :name="event.actor?.fullName||'Система'" :src="event.actor?.avatarUrl"/><div><strong>{{event.label}}</strong><p v-for="detail in event.details" :key="detail">{{detail}}</p><small>{{event.actor?.fullName||event.actor?.email||'Система'}} · {{new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'}).format(new Date(event.createdAt))}}</small></div></article><p v-if="!c.history.length&&!c.historyLoading" class="kaban-help">Изменений пока нет.</p></div><UButton v-if="c.historyBefore" label="Показать ещё" color="neutral" variant="outline" :loading="c.historyLoading" @click="c.loadHistory(true)"/>
+     <div class="kaban-history"><article v-for="event in c.history" :key="event.id"><SharedPersonAvatar :name="event.actor?.fullName||'Система'" :src="event.actor?.avatarUrl"/><div><strong>{{event.label}}</strong><p v-for="detail in event.details" :key="detail">{{detail}}</p><small>{{event.actor?.fullName||event.actor?.email||'Система'}} · {{new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'}).format(new Date(event.createdAt))}}</small></div></article><p v-if="!c.history.length&&!c.historyLoading" class="kaban-help">Изменений пока нет.</p></div><UButton v-if="c.historyBefore" label="Показать ещё" color="neutral" variant="outline" :loading="c.historyLoading" @click="c.loadHistory(true)"/>
     </template>
     <template v-else-if="c.displayData">
      <div class="kaban-toolbar"><UInput v-model="c.search" icon="i-lucide-search" placeholder="Найти задачу…" aria-label="Поиск задач" class="flex-1"/><UButton v-if="!projectId" color="neutral" :variant="c.onlyMine?'soft':'ghost'" label="Мои задачи" :aria-pressed="c.onlyMine" @click="c.onlyMine=!c.onlyMine"/><UButton v-if="!projectId" color="neutral" :variant="c.onlyOverdue?'soft':'ghost'" label="Просроченные" :aria-pressed="c.onlyOverdue" @click="c.onlyOverdue=!c.onlyOverdue"/><UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" aria-label="Обновить доску" :loading="c.loading" @click="c.load()"/></div>

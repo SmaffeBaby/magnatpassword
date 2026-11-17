@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import PersonAvatar from '../PersonAvatar.vue'
+import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 import type { TeamPerson, TeamUnit } from '~~/shared/types/team'
 import { unitPath } from '~~/shared/utils/team'
 const props=defineProps<{person?:TeamPerson;units:TeamUnit[];label?:string}>()

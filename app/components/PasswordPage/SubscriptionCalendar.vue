@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import MonthCalendar from '../MonthCalendar.vue'
+import MonthCalendar from '~/components/Shared/MonthCalendar.vue'
 import SubscriptionFilters from './SubscriptionFilters.vue'
-import { useSubscriptionCalendar } from '../../composables/useSubscriptions'
+import { useSubscriptionCalendar } from '~/composables/finances/useSubscriptions'
 
 import type { VaultSource } from '~~/shared/types/sharing'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'

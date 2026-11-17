@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import BrandLogo from './BrandLogo.vue'
-import CurrentAccountAvatar from './CurrentAccountAvatar.vue'
-import VaultSwitcher from './PasswordPage/VaultSwitcher.vue'
+import BrandLogo from '~/components/Brand/BrandLogo.vue'
+import CurrentAccountAvatar from '~/components/AccountPage/CurrentAccountAvatar.vue'
+import VaultSwitcher from '~/components/PasswordPage/VaultSwitcher.vue'
 defineProps<{ open?: boolean; section: string }>()
 const vaultId = defineModel<string>('vaultId', { default: 'all' })
 const auth = useAuthStore(), team = useTeamStore()

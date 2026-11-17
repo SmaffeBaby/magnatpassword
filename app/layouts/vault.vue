@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import AuthGate from '../components/AuthGate.vue'
+import AuthGate from '~/components/Auth/AuthGate.vue'
 import VaultWorkspace from '../components/PasswordPage/VaultWorkspace.vue'
 
 const route = useRoute()

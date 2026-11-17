@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useCredentialDetails } from '../../composables/useCredentialDetails'
+import { useCredentialDetails } from '~/composables/password/useCredentialDetails'
 
 import type {ScopedCredential,ScopedCategory} from '~~/shared/utils/vault-sources'
 const props=defineProps<{entry:ScopedCredential|null;subscriptionEntries?:ScopedCredential[];open:boolean;categories:ScopedCategory[];links:{id:string;label:string;target:string}[];busy:boolean;readonly?:boolean}>()

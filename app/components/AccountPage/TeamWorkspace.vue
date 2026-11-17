@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import PersonAvatar from '../PersonAvatar.vue'
+import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 import { unitLabel,unitPath } from '~~/shared/utils/team'
 import type { TeamDirectory,TeamPerson } from '~~/shared/types/team'
 const team=useTeamStore(),data=ref<TeamDirectory|null>(null),query=ref(''),company=ref('all'),page=ref(1),view=ref<'people'|'structure'>('structure'),loading=ref(false),error=ref('')

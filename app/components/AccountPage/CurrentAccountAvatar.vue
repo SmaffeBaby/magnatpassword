@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import PersonAvatar from './PersonAvatar.vue'
+import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 import { profileAvatarKey } from '~/utils/avatar-cache'
 
 const props = defineProps<{ name?: string }>()

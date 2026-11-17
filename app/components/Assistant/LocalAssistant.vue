@@ -1,13 +1,13 @@
 <script setup lang="ts">
 // Layout and Nuxt UI chat primitives follow nuxt-ui-templates/chat (MIT).
-import StructurePanel from './Assistant/StructurePanel.vue'
-import FileDownloads from './Assistant/FileDownloads.vue'
-import EditPanel from './Assistant/EditPanel.vue'
-import Updates from './Assistant/Updates.vue'
+import StructurePanel from '~/components/Assistant/StructurePanel.vue'
+import FileDownloads from '~/components/Assistant/FileDownloads.vue'
+import EditPanel from '~/components/Assistant/EditPanel.vue'
+import Updates from '~/components/Assistant/Updates.vue'
 const updatesOpen = ref(false)
-import ChoiceCard from './Assistant/ChoiceCard.vue'
-import ActionPanel from './Assistant/ActionPanel.vue'
-import { useLocalAssistant } from '~/composables/useLocalAssistant'
+import ChoiceCard from '~/components/Assistant/ChoiceCard.vue'
+import ActionPanel from '~/components/Assistant/ActionPanel.vue'
+import { useLocalAssistant } from '~/composables/assistant/useLocalAssistant'
 const c = reactive(useLocalAssistant())
 const chatViewport = ref<HTMLElement | null>(null)
 let scrollFrame: number | undefined

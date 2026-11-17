@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useNotificationCenter } from '../composables/useNotificationCenter'
+import { useNotificationCenter } from '~/composables/notifications/useNotificationCenter'
 
 import type { AppNotification } from '~~/shared/types/subscriptions'
 const emit=defineEmits<{openEntry:[notification:AppNotification]}>()

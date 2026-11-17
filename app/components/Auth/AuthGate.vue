@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { isNativeShell } from '~/utils/native-shell'
-import BrandLogo from './BrandLogo.vue'
-import PersonAvatar from './PersonAvatar.vue'
-import QrLogin from './QrLogin.vue'
-import { useAuthGate } from '../composables/useAuthGate'
+import BrandLogo from '~/components/Brand/BrandLogo.vue'
+import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
+import QrLogin from '~/components/Auth/QrLogin.vue'
+import { useAuthGate } from '~/composables/auth/useAuthGate'
 
 const native = ref(false)
 onMounted(() => { native.value = isNativeShell() })

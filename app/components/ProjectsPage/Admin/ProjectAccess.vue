@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import UserPicker from '../../UserPicker.vue'
-import PersonAvatar from '../../PersonAvatar.vue'
+import UserPicker from '~/components/Shared/UserPicker.vue'
+import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 import type { TeamPerson } from '~~/shared/types/team'
 import type { ProjectAccessUser } from '~~/shared/types/projects'
 const auth = useAuthStore(), client = useQueryClient(), person = ref<TeamPerson | null>(null), busy = ref(false), error = ref('')

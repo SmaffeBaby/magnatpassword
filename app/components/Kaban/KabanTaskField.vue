@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { UnwrapNestedRefs } from 'vue'
-import type { useKaban } from '~/composables/useKaban'
+import type { useKaban } from '~/composables/kaban/useKaban'
 import type { KabanBlock, KabanFile } from '~~/shared/types/kaban'
 import { kabanLink } from '~~/shared/utils/kaban'
 import { createId } from '~/utils/browser'
-import FileUpload from '../FileUpload.vue'
+import FileUpload from '~/components/Shared/FileUpload.vue'
 const props=defineProps<{controller:UnwrapNestedRefs<ReturnType<typeof useKaban>>;editing:boolean;active?:boolean;field:KabanBlock;index:number}>()
 const field=toRef(props,'field')
 const linkValue=computed(()=>field.value.type==='link'?field.value.value:'')

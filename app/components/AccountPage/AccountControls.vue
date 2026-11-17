@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import NotificationCenter from './NotificationCenter.vue'
-import CurrentAccountAvatar from './CurrentAccountAvatar.vue'
+import NotificationCenter from '~/components/Notifications/NotificationCenter.vue'
+import CurrentAccountAvatar from '~/components/AccountPage/CurrentAccountAvatar.vue'
 import type { AppNotification } from '~~/shared/types/subscriptions'
 import { isNativeShell } from '~/utils/native-shell'
 
