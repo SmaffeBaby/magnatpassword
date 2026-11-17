@@ -19,17 +19,18 @@ const directoryLinks = computed(() => props.registry ? [
 const directoryTab = computed(() => (props.registry ? ['calendar','counterparties','legal-entities'] : ['counterparties','legal-entities','document-templates']).includes(String(route.query.tab)) ? String(route.query.tab) : props.registry?'contracts':'projects')
 const projectLinks = computed(() => project.value ? [
   { to: `/projects/${project.value.id}`, label: 'Обзор проекта', icon: 'i-lucide-layout-dashboard', number: '' },
+  {to:`/projects/${project.value.id}/passwords`,label:'Пароли проекта',icon:'i-lucide-key-round',number:''},
   {to:`/projects/${project.value.id}/documents`,label:'Документы проекта',icon:'i-lucide-folder-open',number:''},
   {to:`/projects/${project.value.id}/tasks`,label:'Задачи · Кабан',icon:'i-lucide-columns-3',number:''},
   {to:`/projects/${project.value.id}/economy`,label:'Экономика проекта',icon:'i-lucide-chart-no-axes-combined',number:''},
-  ...(['/tasks','/documents'].some(suffix => route.path.endsWith(suffix)) ? [] : route.path !== `/projects/${project.value.id}` ? [
+  ...(['/tasks','/documents','/passwords'].some(suffix => route.path.endsWith(suffix)) ? [] : route.path !== `/projects/${project.value.id}` ? [
    ...projectStages.map(stage => ({to:`/projects/${project.value!.id}/${stage.key}`,...stage})),
    {to:`/projects/${project.value.id}/counterparties`,label:'Контрагенты',icon:'i-lucide-building-2',number:''},
    {to:`/projects/${project.value.id}/legal-entities`,label:'Наши юр. лица',icon:'i-lucide-landmark',number:''},
    {to:`/projects/${project.value.id}/document-templates`,label:'Шаблоны документов',icon:'i-lucide-files',number:''},
    {to:`/projects/${project.value.id}/relationships`,label:'Взаимосвязь',icon:'i-lucide-workflow',number:''}
   ] : [])
-] .filter(link => canViewProjectSection(project.value!, link.to.endsWith('/tasks') ? 'tasks' : link.to.endsWith('/documents') ? 'documents' : 'economy') || link.to === `/projects/${project.value!.id}`) : [])
+] .filter(link => link.to.endsWith('/passwords') || canViewProjectSection(project.value!, link.to.endsWith('/tasks') ? 'tasks' : link.to.endsWith('/documents') ? 'documents' : 'economy') || link.to === `/projects/${project.value!.id}`) : [])
 </script>
 
 <template>
