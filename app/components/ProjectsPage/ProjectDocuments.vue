@@ -80,6 +80,8 @@ watch(() => auth.user?.id, () => { operation.value = null; active.value = null; 
 
 const folderId = computed(() => typeof route.query.folder === 'string' ? route.query.folder : null)
 const view = ref<'list'|'tiles'>('list')
+const sidebarOpen = ref(true)
+const expandedFolders = ref(new Set<string>())
 const folderList = computed(() => folders.data.value ?? [])
 function folderPath(id: string | null) {
   const path: ProjectDocumentFolder[] = []
@@ -90,6 +92,50 @@ const breadcrumbs = computed(() => folderPath(folderId.value))
 const missingFolder = computed(() => !!folderId.value && !folders.isPending.value && !folderList.value.some(f => f.id === folderId.value))
 const childFolders = computed(() => folderList.value.filter(f => f.parentId === folderId.value && (!search.value || f.name.toLocaleLowerCase('ru').includes(search.value.toLocaleLowerCase('ru')))).sort((a,b) => a.name.localeCompare(b.name, 'ru', { numeric: true })))
 const folderOptions = computed(() => [{ label: '/ Документы проекта', value: 'root' }, ...folderList.value.map(f => ({ label: '/ ' + folderPath(f.id).map(p => p.name).join(' / '), value: f.id })).sort((a,b) => a.label.localeCompare(b.label, 'ru'))])
+const parentFolderId = computed(() => breadcrumbs.value.at(-1)?.parentId ?? null)
+const treeRows = computed(() => {
+  type TreeRow = { id: string; name: string; depth: number; folder?: ProjectDocumentFolder; file?: ProjectDocument }
+  const rows: TreeRow[] = []
+  const visited = new Set<string>()
+  const children = new Map<string | null, ProjectDocumentFolder[]>()
+  const documents = new Map<string | null, ProjectDocument[]>()
+  for (const folder of folderList.value) {
+    const siblings = children.get(folder.parentId) ?? []
+    siblings.push(folder); children.set(folder.parentId, siblings)
+  }
+  for (const file of query.data.value ?? []) {
+    const siblings = documents.get(file.folderId) ?? []
+    siblings.push(file); documents.set(file.folderId, siblings)
+  }
+  function append(parentId: string | null, depth: number) {
+    for (const folder of (children.get(parentId) ?? []).sort((a,b) => a.name.localeCompare(b.name, 'ru', { numeric: true }))) {
+      if (visited.has(folder.id)) continue
+      visited.add(folder.id)
+      rows.push({ id: folder.id, name: folder.name, depth, folder })
+      if (expandedFolders.value.has(folder.id)) append(folder.id, depth + 1)
+    }
+    for (const file of (documents.get(parentId) ?? []).sort((a,b) => a.name.localeCompare(b.name, 'ru', { numeric: true }))) {
+      rows.push({ id: file.id, name: file.name, depth, file })
+    }
+  }
+  append(null, 0)
+  return rows
+})
+function toggleFolder(id: string) {
+  const expanded = new Set(expandedFolders.value)
+  if (expanded.has(id)) expanded.delete(id)
+  else expanded.add(id)
+  expandedFolders.value = expanded
+}
+watch(breadcrumbs, path => {
+  expandedFolders.value = new Set([...expandedFolders.value, ...path.map(folder => folder.id)])
+}, { immediate: true })
+watch(() => props.project.id, () => { expandedFolders.value = new Set() })
+function openTreeFile(file: ProjectDocument) {
+  navigateFolder(file.folderId)
+  if (documentEditor(file.name)) active.value = { ...file }
+  else void download(file)
+}
 function navigateFolder(id: string | null) { void router.push({ query: { ...route.query, folder: id || undefined } }) }
 type Operation = 'folder'|'rename-folder'|'delete-folder'|'create'|'copy'|'move'|'extract'|'import'
 const operation = ref<Operation | null>(null), operationFile = ref<ProjectDocument | null>(null), operationFolder = ref<ProjectDocumentFolder | null>(null)
@@ -189,9 +235,9 @@ watch(files, visible => { selectedIds.value = selectedIds.value.filter(id => vis
 <template>
   <div class="project-documents">
     <p class="documents-intro">Общие файлы проекта. Word, PDF, таблицы, презентации и изображения открываются во встроенных редакторах. Изменения сохраняются в проект при сохранении в редакторе.</p>
-    <nav class="documents-path" aria-label="Путь внутри проекта"><UButton label="Документы проекта" icon="i-lucide-folder-root" color="neutral" variant="ghost" @click="navigateFolder(null)"/><template v-for="folder in breadcrumbs" :key="folder.id"><span>/</span><UButton :label="folder.name" color="neutral" variant="ghost" @click="navigateFolder(folder.id)"/></template></nav>
     <UAlert v-if="missingFolder" color="warning" title="Папка не найдена" description="Возможно, папка удалена. Вернитесь в корень документов."/>
     <div class="documents-actions">
+      <UButton :icon="sidebarOpen?'i-lucide-panel-left-close':'i-lucide-panel-left-open'" :label="sidebarOpen?'Скрыть дерево':'Показать дерево'" color="neutral" variant="outline" :aria-expanded="sidebarOpen" aria-controls="project-documents-tree" @click="sidebarOpen=!sidebarOpen"/>
       <UButton v-if="canUpload" label="Создать файл" icon="i-lucide-file-plus-2" :disabled="busy||missingFolder" @click="showOperation('create')"/>
       <UButton v-if="canUpload" label="Создать папку" icon="i-lucide-folder-plus" color="neutral" variant="outline" :disabled="busy||missingFolder" @click="showOperation('folder')"/>
       <UButton v-if="canUpload" label="Импорт ZIP" icon="i-lucide-import" color="neutral" variant="outline" :disabled="busy||missingFolder" @click="showOperation('import')"/>
@@ -216,7 +262,31 @@ watch(files, visible => { selectedIds.value = selectedIds.value.filter(id => vis
     <template v-else>
       <div class="documents-result"><span>Найдено: {{files.length}} из {{query.data.value?.length ?? 0}}</span><span>Доступ к файлам настраивает владелец проекта</span></div>
       <div v-if="selectableFiles.length||selectableFolders.length" class="documents-selection"><UCheckbox :model-value="allSelected?true:selectedCount?'indeterminate':false" label="Выбрать всё в списке" :disabled="busy" @update:model-value="value=>selectAll(value===true)"/><span v-if="selectedCount">Выбрано: {{selectedCount}}</span><UButton v-if="selectedCount" label="Удалить выбранные" icon="i-lucide-trash-2" color="error" variant="soft" :disabled="busy" @click="confirmBulkDeletion"/><UButton v-if="selectedCount" label="Снять выделение" color="neutral" variant="ghost" :disabled="busy" @click="clearSelection"/></div>
-      <div v-if="files.length||childFolders.length" class="documents-list" :class="{'documents-tiles':view==='tiles'}">
+    <nav class="documents-path" aria-label="Путь внутри проекта"><UButton label="Документы проекта" icon="i-lucide-folder-root" color="neutral" variant="ghost" @click="navigateFolder(null)"/><template v-for="folder in breadcrumbs" :key="folder.id"><span>/</span><UButton :label="folder.name" color="neutral" variant="ghost" @click="navigateFolder(folder.id)"/></template></nav>
+    <div class="documents-workspace" :class="{'documents-workspace-expanded':sidebarOpen}">
+      <Transition name="documents-sidebar">
+        <div v-if="sidebarOpen" class="documents-sidebar-slot">
+        <aside id="project-documents-tree" class="documents-sidebar" aria-label="Дерево файлов проекта">
+          <div class="documents-sidebar-heading"><strong>Файлы проекта</strong><UButton icon="i-lucide-panel-left-close" aria-label="Скрыть дерево файлов" color="neutral" variant="ghost" @click="sidebarOpen=false"/></div>
+          <nav class="documents-tree" aria-label="Папки и файлы">
+            <button class="documents-tree-link documents-tree-root" :class="{'is-current':!folderId}" :aria-current="!folderId?'location':undefined" @click="navigateFolder(null)"><UIcon name="i-lucide-folder-root"/><span>Документы проекта</span></button>
+            <p v-if="query.isPending.value||folders.isPending.value" class="documents-status">Загружаем дерево…</p>
+            <p v-else-if="query.error.value||folders.error.value" class="documents-status">Не удалось загрузить дерево</p>
+            <template v-else>
+              <div v-for="row in treeRows" :key="`${row.folder?'folder':'file'}-${row.id}`" class="documents-tree-row" :style="{paddingLeft:`${row.depth*16}px`}">
+                <button v-if="row.folder" class="documents-tree-toggle" :aria-label="`${expandedFolders.has(row.id)?'Свернуть':'Раскрыть'} папку: ${row.name}`" :aria-expanded="expandedFolders.has(row.id)" @click="toggleFolder(row.id)"><UIcon :name="expandedFolders.has(row.id)?'i-lucide-chevron-down':'i-lucide-chevron-right'"/></button>
+                <span v-else class="documents-tree-spacer"/>
+                <button class="documents-tree-link" :class="{'is-current':row.folder&&folderId===row.id}" :title="row.name" :aria-current="row.folder&&folderId===row.id?'location':undefined" :disabled="!!row.file&&busy" @click="row.folder?navigateFolder(row.id):row.file&&openTreeFile(row.file)"><UIcon :name="row.folder?(expandedFolders.has(row.id)?'i-lucide-folder-open':'i-lucide-folder'):icon(row.file!)"/><span>{{row.name}}</span></button>
+              </div>
+              <p v-if="!treeRows.length" class="documents-status">Пока нет файлов и папок</p>
+            </template>
+          </nav>
+        </aside>
+        </div>
+      </Transition>
+      <div class="documents-content">
+      <div v-if="folderId||files.length||childFolders.length" class="documents-list" :class="{'documents-tiles':view==='tiles'}">
+        <article v-if="folderId" class="document-row document-parent"><span class="document-select-placeholder"/><button class="document-main" aria-label="На папку вверх" title="На папку вверх" @click="navigateFolder(parentFolderId)"><UIcon name="i-lucide-corner-left-up"/><span><strong>...</strong></span></button></article>
         <article v-for="folder in childFolders" :key="folder.id" class="document-row document-folder" :class="{'document-selected':selectedFolderIds.includes(folder.id)}"><UCheckbox class="document-select" :model-value="selectedFolderIds.includes(folder.id)" :disabled="busy||!canUpload" :aria-label="`Выбрать папку: ${folder.name}`" @update:model-value="value=>selectFolder(folder,value===true)"/><button class="document-main" @click="navigateFolder(folder.id)"><UIcon name="i-lucide-folder"/><span><strong>{{folder.name}}</strong><small>Папка</small></span></button><UDropdownMenu v-if="canUpload" :items="[{label:'Переименовать',icon:'i-lucide-pencil',onSelect:()=>showOperation('rename-folder',undefined,folder)},{label:'Удалить папку',icon:'i-lucide-trash-2',onSelect:()=>showOperation('delete-folder',undefined,folder)}]"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :disabled="busy" :aria-label="`Действия с папкой: ${folder.name}`"/></UDropdownMenu></article>
         <article v-for="file in files" :key="file.id" class="document-row" :class="{'document-selected':selectedIds.includes(file.id)}">
           <UCheckbox class="document-select" :model-value="selectedIds.includes(file.id)" :disabled="busy||!editable(file)" :aria-label="`Выбрать файл: ${file.name}`" @update:model-value="value=>selectFile(file,value===true)"/>
@@ -225,7 +295,9 @@ watch(files, visible => { selectedIds.value = selectedIds.value.filter(id => vis
           <UDropdownMenu :items="actions(file)"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="`Действия: ${file.name}`" :disabled="busy"/></UDropdownMenu>
         </article>
       </div>
-      <div v-else class="documents-empty"><UIcon name="i-lucide-folder-open"/><h2>{{search||kind!=='all'||accessFilter!=='all'?'Файлы не найдены':'Папка пуста'}}</h2><p>{{canUpload?'Создайте файл, загрузите документы или импортируйте ZIP.':'Документы появятся, когда владелец проекта предоставит доступ.'}}</p></div>
+      <div v-if="!files.length&&!childFolders.length" class="documents-empty"><UIcon name="i-lucide-folder-open"/><h2>{{search||kind!=='all'||accessFilter!=='all'?'Файлы не найдены':'Папка пуста'}}</h2><p>{{canUpload?'Создайте файл, загрузите документы или импортируйте ZIP.':'Документы появятся, когда владелец проекта предоставит доступ.'}}</p></div>
+      </div>
+    </div>
     </template>
     <UModal :open="!!bulkDeletion" title="Удалить выбранные файлы и папки?" :description="`Всего будет удалено файлов: ${bulkDeletion?.filesCount??0}, папок: ${bulkDeletion?.foldersCount??0}`" :dismissible="!busy" @update:open="value=>{if(!value)bulkDeletion=null}"><template #body><p class="text-sm text-slate-500">Выбранные файлы и папки со всем вложенным содержимым будут удалены из проекта для всех участников. Восстановить их будет невозможно.</p><ul class="documents-delete-preview"><li v-for="folder in bulkDeletion?.folders" :key="`folder-${folder.id}`">Папка «{{folder.name}}» — со всем содержимым</li><li v-for="file in bulkDeletion?.files" :key="file.id">{{file.name}}</li></ul><UAlert v-if="error" color="error" :description="error"/></template><template #footer><UButton label="Отмена" color="neutral" variant="outline" :disabled="busy" @click="bulkDeletion=null"/><UButton label="Удалить выбранное" color="error" :loading="busy" @click="deleteSelected"/></template></UModal>
     <UModal :open="!!editing" title="Название и метки" :dismissible="!busy" @update:open="value=>{if(!value)editing=null}"><template #body><form class="space-y-4" @submit.prevent="saveMetadata"><UFormField label="Название файла" required><UInput v-model="form.name" :maxlength="240" required class="w-full"/></UFormField><UFormField label="Описание"><UTextarea v-model="form.description" :maxlength="4000" class="w-full"/></UFormField><UFormField label="Метки через запятую"><UInput v-model="form.tags" class="w-full" placeholder="Договор, согласовано"/></UFormField><UAlert v-if="error" color="error" :description="error"/><UButton type="submit" label="Сохранить" :loading="busy"/></form></template></UModal>
@@ -250,4 +322,5 @@ watch(files, visible => { selectedIds.value = selectedIds.value.filter(id => vis
 .project-documents{display:grid;gap:20px}.documents-intro,.documents-status{font-size:13px;line-height:1.8;color:#8292a8}.documents-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.documents-toolbar>:first-child{flex:1;min-width:230px}.documents-result{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:12px;color:#94a3b8}.documents-list{border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;background:#fff}.document-row{display:flex;align-items:center;gap:20px;padding:20px 24px}.document-row+.document-row{border-top:1px solid #e8edf3}.document-main{display:flex;gap:16px;align-items:center;min-width:0;flex:1;text-align:left}.document-main>.iconify{width:30px;height:30px;flex-shrink:0;color:#8292a8}.document-main>span{display:grid;gap:8px;min-width:0}.document-main strong{font-size:14px;color:#475569;overflow-wrap:anywhere}.document-main small{font-size:12px;color:#8292a8;white-space:pre-wrap}.document-tags{display:flex;gap:6px;flex-wrap:wrap}.document-meta{display:grid;gap:5px;text-align:right;flex-shrink:0;color:#64748b;font-size:12px}.document-meta small{font-size:11px;color:#94a3b8}.documents-empty{padding:50px 20px;text-align:center;border:1px dashed #dce2ea;border-radius:20px;color:#8292a8}.documents-empty>.iconify{font-size:36px}.documents-empty h2{font-size:20px;margin:16px 0 10px;color:#475569}.documents-empty p{font-size:13px;line-height:1.7}@media(max-width:650px){.document-row{padding:16px 12px;gap:12px;flex-wrap:wrap}.document-main{flex-basis:70%}.document-meta{text-align:left;padding-left:46px;flex:1;order:2}.documents-toolbar>*{max-width:100%}}
 .documents-actions,.documents-path{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.documents-path{gap:2px;font-size:13px;color:#8292a8;overflow-wrap:anywhere}.documents-view{margin-left:auto;display:flex;gap:4px}.documents-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:14px;border:0;background:transparent;overflow:visible}.documents-tiles .document-row{position:relative;display:grid;grid-template-columns:1fr auto;align-content:start;align-items:start;gap:16px;border:1px solid #e2e8f0;border-radius:16px;padding:20px;background:white}.documents-tiles .document-main{align-items:start;min-height:64px}.documents-tiles .document-meta{grid-row:2;grid-column:1/-1;text-align:left;padding-left:0}.documents-tiles .document-row>.document-meta+*{grid-column:2;grid-row:1}.document-folder .document-main>.iconify{color:#c69838}
 .documents-selection{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:13px;color:#64748b}.document-select,.document-select-placeholder{flex:0 0 16px;align-self:center}.document-select-placeholder{width:16px;height:16px}.document-selected{background:#f0f5ff}.documents-delete-preview{max-height:230px;overflow:auto;margin:16px 0;padding-left:20px;list-style:disc;font-size:13px;line-height:1.8;overflow-wrap:anywhere}.documents-tiles .document-row{grid-template-columns:16px minmax(0,1fr) auto}.documents-tiles .document-main{grid-column:2;grid-row:1}.documents-tiles .document-meta{grid-column:2/-1}.documents-tiles .document-row>.document-meta+*{grid-column:3}.documents-tiles .document-folder>button+*{grid-column:3;grid-row:1}.documents-tiles .document-selected{background:#f0f5ff}
+.documents-workspace{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:stretch}.documents-workspace-expanded{grid-template-columns:260px minmax(0,1fr)}.documents-content{display:grid;gap:20px;min-width:0}.documents-sidebar-slot{position:relative;min-width:0}.documents-sidebar{position:absolute;inset:0;display:flex;flex-direction:column;min-width:0;border:1px solid #e2e8f0;border-radius:16px;background:#fff;overflow:hidden}.documents-sidebar-heading{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 10px 12px 16px;border-bottom:1px solid #e8edf3;font-size:13px;color:#475569}.documents-tree{flex:1;min-height:0;overflow:auto;padding:8px}.documents-tree-row{display:flex;align-items:center;min-width:0}.documents-tree-link{display:flex;align-items:center;gap:8px;min-width:0;flex:1;padding:8px 6px;border-radius:6px;text-align:left;font-size:12px;color:#64748b}.documents-tree-link span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.documents-tree-link>.iconify{flex-shrink:0;width:16px;height:16px}.documents-tree-link:hover,.documents-tree-toggle:hover{background:#f1f5f9}.documents-tree-link.is-current{background:#eef2ff;color:#312e81}.documents-tree-root{width:100%;margin-bottom:4px}.documents-tree-toggle,.documents-tree-spacer{display:flex;align-items:center;justify-content:center;width:24px;height:30px;flex-shrink:0;border-radius:6px;color:#8292a8}.documents-tree-toggle:focus-visible,.documents-tree-link:focus-visible,.document-parent button:focus-visible{outline:2px solid #6366f1;outline-offset:-2px}.documents-sidebar-enter-active,.documents-sidebar-leave-active{transition:opacity .15s ease,transform .15s ease}.documents-sidebar-enter-from,.documents-sidebar-leave-to{opacity:0;transform:translateX(-12px)}.document-parent{padding-top:12px;padding-bottom:12px}.documents-tiles .document-parent .document-main{min-height:0}@media(max-width:900px){.documents-workspace-expanded{grid-template-columns:210px minmax(0,1fr)}}@media(max-width:650px){.documents-workspace-expanded{grid-template-columns:minmax(0,1fr)}.documents-tree{max-height:280px}.documents-sidebar{position:static;width:100%}}@media(prefers-reduced-motion:reduce){.documents-sidebar-enter-active,.documents-sidebar-leave-active{transition:none}}
 </style>
