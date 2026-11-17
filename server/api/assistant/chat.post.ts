@@ -62,11 +62,11 @@ export default defineEventHandler(async event => {
   if (edit) return { facts: { message: 'Подготовил черновик изменения. Выберите запись, проверьте поле и новое значение, затем сохраните.', draft: null, edit, links: [] }, instructions: '', help: [], needsData: false, actionSchema: z.object({}) }
   const emptySchema = z.object({ title: z.string(), description: z.string(), dueOn: z.string(), taskName: z.string(), stageName: z.string() })
   if (actionKind && actionKind !== 'attach_files') {
-    const options = await assistantVaultOptions(event)
-    const selected = options.find(option => option.id === input.selection?.vaultId)
+    const options=(await assistantFetch<import('~~/shared/types/projects').Project[]>(event,'/api/projects')).filter(p=>!p.profile?.archived).map(p=>({id:p.id,label:p.name,disabled:p.permission==='viewer'}))
+    const selected = options.find(option => option.id === input.selection?.projectId)
     if (selected?.disabled) throw createError({ statusCode: 403, message: 'В этом хранилище нет прав на изменение задач.' })
     const action = quickTaskAction(actionKind, question)
-    const facts = selected ? { message: `Хранилище: «${selected.label}». Заполните или проверьте поля задачи ниже.`, draft: null, action, links: [] } : { message: 'В каком хранилище будем работать с задачей?', draft: null, choice: { kind: 'vault' as const, prompt: 'Выберите хранилище для задачи', options }, links: [] }
+    const facts = selected ? { message: `Проект: «${selected.label}». Заполните или проверьте поля задачи ниже.`, draft: null, action, links: [] } : { message: 'В каком проекте будем работать с задачей?', draft: null, choice: { kind: 'project' as const, prompt: 'Выберите проект для задачи', options }, links: [] }
     return { facts: { ...facts, conversation: { topic: 'kaban' as const, kabanTopic: 'tasks' as const } }, instructions: '', help: [], needsData: false, actionSchema: emptySchema }
   }
   if (!actionKind && !creating && !lookup && !acknowledgement) {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ProjectBoardNavigation from '../Kaban/ProjectBoardNavigation.vue'
 import BrandLogo from '../BrandLogo.vue'
 import { projectStages } from '~~/shared/utils/project-dashboard'
 
@@ -12,16 +13,20 @@ const directoryLinks = computed(() => props.registry ? [
   { to:'/contract-register?tab=counterparties',label:'Контрагенты',icon:'i-lucide-building-2',tab:'counterparties' },
   { to:'/contract-register?tab=legal-entities',label:'Наши юр. лица',icon:'i-lucide-landmark',tab:'legal-entities' }
 ] : [
-  { to: '/projects', label: 'Все проекты', icon: 'i-lucide-folder-kanban', tab: 'projects' },
-  { to: '/projects?tab=counterparties', label: 'Контрагенты', icon: 'i-lucide-building-2', tab: 'counterparties' },
-  { to: '/projects?tab=legal-entities', label: 'Наши юр. лица', icon: 'i-lucide-landmark', tab: 'legal-entities' },
-  { to: '/projects?tab=document-templates', label: 'Шаблоны документов', icon: 'i-lucide-files', tab: 'document-templates' }
+  { to: '/projects', label: 'Все проекты', icon: 'i-lucide-folder-kanban', tab: 'projects' }
 ])
 const directoryTab = computed(() => (props.registry ? ['calendar','counterparties','legal-entities'] : ['counterparties','legal-entities','document-templates']).includes(String(route.query.tab)) ? String(route.query.tab) : props.registry?'contracts':'projects')
 const projectLinks = computed(() => project.value ? [
   { to: `/projects/${project.value.id}`, label: 'Обзор проекта', icon: 'i-lucide-layout-dashboard', number: '' },
-  ...projectStages.map(stage => ({ to: `/projects/${project.value!.id}/${stage.key}`, ...stage })),
-  { to: `/projects/${project.value.id}/relationships`, label: 'Взаимосвязь', icon: 'i-lucide-workflow', number: '' }
+  {to:`/projects/${project.value.id}/tasks`,label:'Задачи · Кабан',icon:'i-lucide-columns-3',number:''},
+  {to:`/projects/${project.value.id}/economy`,label:'Экономика проекта',icon:'i-lucide-chart-no-axes-combined',number:''},
+  ...(route.path.endsWith('/tasks') ? [] : route.path !== `/projects/${project.value.id}` ? [
+   ...projectStages.map(stage => ({to:`/projects/${project.value!.id}/${stage.key}`,...stage})),
+   {to:`/projects/${project.value.id}/counterparties`,label:'Контрагенты',icon:'i-lucide-building-2',number:''},
+   {to:`/projects/${project.value.id}/legal-entities`,label:'Наши юр. лица',icon:'i-lucide-landmark',number:''},
+   {to:`/projects/${project.value.id}/document-templates`,label:'Шаблоны документов',icon:'i-lucide-files',number:''},
+   {to:`/projects/${project.value.id}/relationships`,label:'Взаимосвязь',icon:'i-lucide-workflow',number:''}
+  ] : [])
 ] : [])
 </script>
 
@@ -37,6 +42,7 @@ const projectLinks = computed(() => project.value ? [
         <h2 :title="project.name">{{ project.name }}</h2>
         <NuxtLink v-for="link in projectLinks" :key="link.to" :to="link.to" :aria-current="route.path.replace(/\/$/, '') === link.to ? 'page' : undefined" @click="emit('navigate')"><UIcon :name="link.icon"/><span>{{ link.label }}</span><small v-if="link.number">{{ link.number }}</small></NuxtLink>
       </nav>
+      <ProjectBoardNavigation v-if="project&&route.path.endsWith('/tasks')" @navigate="emit('navigate')"/>
     </template>
     <div class="projects-navigation-bottom"><NuxtLink to="/" @click="emit('navigate')"><UIcon name="i-lucide-arrow-left"/>К приложениям</NuxtLink></div>
   </div>

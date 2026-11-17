@@ -1,14 +1,21 @@
+import type { ProjectProfile } from '../utils/project-workspace'
 export type ProjectPermission = 'viewer' | 'editor' | 'hidden'
 export interface ProjectMember {
   userId: string
   fullName: string
   email: string
   permission: ProjectPermission | 'owner'
+  kind?: 'executor' | 'observer'
+  roleIds?: string[]
   hasAccess: boolean
 }
 export interface Project {
   id: string
   name: string
+  profile?: Partial<ProjectProfile>
+  folderId?: string | null
+  favorite?: boolean
+  taskCount?: number
   ownerId: string
   permission: 'owner' | 'viewer' | 'editor'
   revision: number

@@ -13,7 +13,7 @@ const auth = useAuthStore(), busy = ref(false), error = ref('')
 const taskId = ref(''), stageId = ref(''), categoryIds = ref<string[]>([]), participantIds = ref<string[]>([]), closerIds = ref<string[]>([])
 const title = ref(''), dueOn = ref(''), blocks = ref<KabanBlock[]>([]), revision = ref(0)
 const targetId = ref(''), uploadRevision = ref<number | undefined>()
-const board = computed(() => !props.contextBusy && (props.context?.kaban?.board.vaultId || 'personal') === props.vaultId ? props.context?.kaban : undefined)
+const board = computed(() => (props.action.kind==='attach_files'||!!props.projectId) && !props.contextBusy && (props.projectId ? props.context?.kaban?.board.projectId === props.projectId : !props.context?.kaban?.board.projectId && (props.context?.kaban?.board.vaultId || 'personal') === props.vaultId) ? props.context?.kaban : undefined)
 const vaultOptions = computed(() => props.context?.vaults.map(vault => ({ label: vault.name, value: vault.id, disabled: vault.canEdit === false })) || [])
 const projectOptions = computed(() => [{ label: 'Без проекта', value: '' }, ...(props.context?.projects.map(project => ({ label: project.name, value: project.id })) || [])])
 const task = computed(() => board.value?.tasks.find(task => task.id === taskId.value))
@@ -115,7 +115,8 @@ async function upload() {
 <template>
   <section class="assistant-action" aria-label="Подготовленное действие">
     <header><strong>{{ action.kind === 'attach_files' ? 'Прикрепить файлы' : creating ? 'Новая задача Кабана' : action.kind === 'move_task' ? 'Переместить задачу' : 'Изменить задачу' }}</strong><UButton icon="i-lucide-x" aria-label="Отменить действие" color="neutral" variant="ghost" :disabled="busy" @click="emit('cancel')" /></header>
-    <UFormField label="Хранилище Кабана"><USelect :model-value="vaultId" :items="vaultOptions" placeholder="Выберите хранилище" class="w-full" :disabled="busy || contextBusy" @update:model-value="emit('vault', String($event))" /></UFormField>
+    <UFormField v-if="action.kind==='attach_files'&&!projectId" label="Старая доска хранилища"><USelect :model-value="vaultId" :items="vaultOptions" placeholder="Выберите хранилище" class="w-full" :disabled="busy || contextBusy" @update:model-value="emit('vault', String($event))" /></UFormField>
+    <UFormField v-if="action.kind!=='attach_files'" label="Проект Кабана"><USelect :model-value="projectId" :items="projectOptions" placeholder="Выберите проект" class="w-full" :disabled="busy||contextBusy" @update:model-value="emit('project',String($event))"/></UFormField>
     <template v-if="action.kind === 'attach_files'">
       <UFormField label="Проект"><USelect :model-value="projectId" :items="projectOptions" class="w-full" :disabled="busy || contextBusy" @update:model-value="emit('project', String($event))" /></UFormField>
       <p>Куда прикрепить файлы? Выберите договор, карточку входных данных или поле вложений задачи.</p>

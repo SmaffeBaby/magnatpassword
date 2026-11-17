@@ -5,7 +5,7 @@ import { kabanCategoryStages } from '../../shared/utils/kaban-stages'
 import { assistantKabanRequest } from '../../shared/utils/assistant-kaban'
 import { assistantFetch } from './assistant-context'
 import { assistantVaultOptions } from './assistant-options'
-export async function assistantKabanReply(event: H3Event, question: string, selection: { vaultId?: string } = {}, memory: AssistantConversation = {}, previous = '', page = '/'): Promise<AssistantReply | null> {
+export async function assistantKabanReply(event: H3Event, question: string, selection: { projectId?:string; vaultId?: string } = {}, memory: AssistantConversation = {}, previous = '', page = '/'): Promise<AssistantReply | null> {
   const request = assistantKabanRequest(question, memory, previous, page)
   if (!request) return null
   // Normal task commands keep the existing task draft workflow; capability questions just explain it.
@@ -13,10 +13,11 @@ export async function assistantKabanReply(event: H3Event, question: string, sele
   const conversation = { topic: 'kaban' as const, kabanTopic: request.topic }
   const links = [{ label: 'Открыть Кабан', to: '/kaban' }]
   if (request.topic === 'tasks') return { message: 'Да, могу подготовить создание, изменение или перемещение задачи Кабана. Изменения показываю в черновике и сохраняю после проверки кнопкой. Назовите задачу, нужное поле и новое значение.', draft: null, conversation, links }
+  const project=selection.projectId?(await assistantFetch<import('../../shared/types/projects').Project[]>(event,'/api/projects')).find(p=>p.id===selection.projectId):undefined
   const options = await assistantVaultOptions(event)
-  const selected = options.find(o => o.id === selection.vaultId)
+  const selected = project?{id:project.id,label:project.name}:options.find(o => o.id === selection.vaultId)
   if (!selected) return { message: 'Выберите хранилище Кабана для работы с категориями и стадиями.', draft: null, conversation, choice: { kind: 'vault', prompt: 'Хранилище Кабана', options: options.map(o => ({ ...o, disabled: request.draft ? o.disabled : false })) }, links }
-  const workspace = await assistantFetch<KabanWorkspace>(event, `/api/kaban?vault=${encodeURIComponent(selected.id)}`)
+  const workspace = await assistantFetch<KabanWorkspace>(event, project?`/api/kaban?project=${project.id}`:`/api/kaban?vault=${encodeURIComponent(selected.id)}`)
   if (request.draft) {
     const allowed = request.topic === 'stages' ? workspace.canManage : workspace.canEdit
     if (!allowed) return { message: request.topic === 'stages' ? 'Менять стадии этой доски может владелец или управляющий с полным доступом.' : 'Нет прав на изменение категорий в этом хранилище.', draft: null, conversation, links }

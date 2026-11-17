@@ -8,7 +8,7 @@ const props = defineProps<{ draft: AssistantKabanDraft; context: AssistantContex
 const emit = defineEmits<{ vault: [id: string]; done: [message: string]; cancel: []; refresh: [] }>()
 const busy = ref(false), error = ref(''), categoryId = ref(''), name = ref(''), color = ref('#6366f1'), parentId = ref('none'), revision = ref(0), stages = ref<KabanStage[]>([]), inherit = ref(false)
 const controller = new AbortController(); onBeforeUnmount(() => controller.abort())
-const board = computed(() => !props.contextBusy && (props.context?.kaban?.board.vaultId || 'personal') === (props.vaultId || 'personal') ? props.context?.kaban : undefined)
+const board = computed(() => !props.contextBusy && (props.context?.project ? props.context?.kaban?.board.projectId===props.context.project.id : !props.context?.kaban?.board.projectId && (props.context?.kaban?.board.vaultId || 'personal') === (props.vaultId || 'personal')) ? props.context?.kaban : undefined)
 const stageMode = computed(() => props.draft.operation === 'edit_stages'), creating = computed(() => props.draft.operation === 'create_category')
 const categories = computed(() => board.value?.categories.filter(c => !c.archived) || [])
 const selected = computed(() => categories.value.find(c => c.id === categoryId.value))
@@ -49,7 +49,7 @@ async function save() {
 </script>
 <template>
   <section class="my-4 space-y-4 rounded-xl border border-default p-5" aria-label="Черновик структуры Кабана"><header class="flex items-center justify-between"><strong>{{ stageMode ? 'Стадии категории Кабана' : creating ? 'Новая категория Кабана' : 'Изменение категории Кабана' }}</strong><UButton icon="i-lucide-x" aria-label="Отменить черновик" color="neutral" variant="ghost" :disabled="busy" @click="emit('cancel')" /></header>
-    <UFormField label="Хранилище"><USelect :model-value="vaultId" :items="context?.vaults.map(v => ({label:v.name,value:v.id,disabled:v.canEdit===false})) || []" class="w-full" :disabled="busy || contextBusy" @update:model-value="emit('vault', String($event))" /></UFormField>
+    <UFormField v-if="!context?.project" label="Старая доска хранилища"><USelect :model-value="vaultId" :items="context?.vaults.map(v => ({label:v.name,value:v.id,disabled:v.canEdit===false})) || []" class="w-full" :disabled="busy || contextBusy" @update:model-value="emit('vault', String($event))" /></UFormField>
     <p v-if="!allowed && !contextBusy" class="text-sm text-muted">{{ stageMode ? 'Для изменения стадий нужен полный доступ управляющего к доске.' : 'Нет прав на изменение категорий.' }}</p>
     <UFormField v-if="!creating" label="Категория" required><USelectMenu v-model="categoryId" :items="categories.map(c => ({label:c.name,value:c.id}))" value-key="value" class="w-full" :disabled="busy || contextBusy" placeholder="Выберите категорию" /></UFormField>
     <template v-if="!stageMode"><UFormField label="Название" required><UInput v-model="name" :maxlength="60" :disabled="!allowed || busy" class="w-full" /></UFormField><UFormField label="Цвет"><input v-model="color" type="color" :disabled="!allowed || busy" /></UFormField><UFormField label="Родительская категория"><USelect v-model="parentId" :items="parents" :disabled="!allowed || busy" class="w-full" /></UFormField><p class="text-sm text-muted">Новая подкатегория наследует стадии родительской категории.</p></template>

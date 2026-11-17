@@ -31,7 +31,7 @@ export async function assistantContext(event: H3Event, selected: { projectId?: s
     optional<Project[]>('/api/projects', 'Проекты'),
     optional<{ groups: SharedVault[]; cards: SharedCard[] }>('/api/workspace', 'Хранилища'),
     optional<{ data?: VaultData }>('/api/personal-vault', 'Личное хранилище'),
-    optional<KabanWorkspace>(`/api/kaban?vault=${encodeURIComponent(selected.vaultId || 'personal')}`, 'Кабан')
+    optional<KabanWorkspace>(selected.projectId ? `/api/kaban?project=${encodeURIComponent(selected.projectId)}` : `/api/kaban?vault=${encodeURIComponent(selected.vaultId || 'personal')}`, 'Кабан')
   ])
   result.projects = (projects || []).map(({ id, name, permission }) => ({ id, name, permission }))
   result.vaults = [{ id: 'personal', name: personal?.data?.name || 'Личное', canEdit: true }, ...(workspace?.groups || []).map(({ id, name, canEdit }) => ({ id, name, canEdit: canEdit !== false }))]

@@ -1,3 +1,4 @@
+import {projectFailure} from '../../utils/projects'
 import { scopeKabanStages } from '../../utils/kaban-stage-scope'
 import { z } from 'zod'
 import { teamPeople, teamUnits } from '../../utils/team'
@@ -5,9 +6,11 @@ import { kabanFailure, readKabanTaskData } from '../../utils/kaban'
 
 export default defineEventHandler(async event => {
   const context = await requireSharedUser(event)
+  const project = getQuery(event).project
+  if(project && !z.uuid().safeParse(project).success) throw createError({statusCode:400,message:'Некорректный проект'})
   const vault = z.union([z.literal('personal'), z.uuid()]).safeParse(getQuery(event).vault ?? 'personal')
   if (!vault.success) throw createError({ statusCode: 400, message: 'Выберите хранилище.' })
-  const { data, error } = await context.client.rpc('kaban_load', { p_actor: context.user.id, p_vault: vault.data === 'personal' ? null : vault.data })
+  const { data, error } = project ? await context.client.rpc('kaban_project_load',{p_actor:context.user.id,p_project:String(project)}) : await context.client.rpc('kaban_load', { p_actor: context.user.id, p_vault: vault.data === 'personal' ? null : vault.data })
   if (error) kabanFailure(error)
   scopeKabanStages(data)
   // One-time import of names for categories already referenced by older tasks.
@@ -25,7 +28,11 @@ export default defineEventHandler(async event => {
     }
   }
   let members = [context.user.id]
-  if (data.board.vaultId) {
+  if(data.board.projectId){
+    const result=await context.client.rpc('list_projects',{p_actor:context.user.id})
+    if(result.error)projectFailure(result.error)
+    members=(result.data??[]).find((p:any)=>p.id===data.board.projectId)?.members.filter((m:any)=>m.permission!=='hidden'&&m.hasAccess).map((m:any)=>m.userId)||[]
+  } else if (data.board.vaultId) {
     const result = await context.client.from('shared_vault_members').select('user_id').eq('vault_id', data.board.vaultId)
     if (result.error) kabanFailure(result.error)
     members = (result.data ?? []).map(row => row.user_id)

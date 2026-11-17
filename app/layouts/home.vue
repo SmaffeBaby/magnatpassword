@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import KabanNavigation from '~/components/Kaban/KabanNavigation.vue'
 import ApplicationSwitcher from '~/components/ApplicationSwitcher.vue'
 import AuthGate from '~/components/AuthGate.vue'
 import AccountControls from '~/components/AccountControls.vue'
@@ -12,7 +13,8 @@ const route = useRoute()
 const { brand } = useAccountBrand()
 const isProjects = computed(() => route.path === '/projects' || route.path.startsWith('/projects/'))
 const isRegistry = computed(() => route.path === '/contract-register')
-const hasSidebar=computed(()=>isProjects.value||isRegistry.value)
+const isKaban=computed(()=>route.path==='/kaban')
+const hasSidebar=computed(()=>isProjects.value||isRegistry.value||isKaban.value)
 const isTeam = computed(() => route.path === '/team' || route.path.startsWith('/team/'))
 const isAccountPage = computed(() => route.path.startsWith('/settings/') || route.path === '/profile')
 const projectMenuOpen = ref(false)
@@ -30,8 +32,8 @@ function openNotification(notification: AppNotification) {
 <template>
   <AuthGate>
     <div class="home-shell" :class="{ 'projects-shell': hasSidebar, 'registry-shell': isRegistry }">
-      <aside v-if="hasSidebar" class="projects-sidebar" :aria-label="isRegistry?'Навигация реестра договоров':'Навигация проектов'"><ProjectNavigation :registry="isRegistry"/></aside>
-      <USlideover v-if="hasSidebar" v-model:open="projectMenuOpen" side="left" :title="isRegistry?'Реестр договоров':'Проекты'" description="Разделы сервиса." :ui="{ content: 'max-w-xs', body: 'p-0 sm:p-0' }"><template #body><ProjectNavigation :registry="isRegistry" @navigate="projectMenuOpen = false"/></template></USlideover>
+      <aside v-if="hasSidebar" class="projects-sidebar" :aria-label="isRegistry?'Навигация реестра договоров':'Навигация проектов'"><KabanNavigation v-if="isKaban"/><ProjectNavigation v-else :registry="isRegistry"/></aside>
+      <USlideover v-if="hasSidebar" v-model:open="projectMenuOpen" side="left" :title="isRegistry?'Реестр договоров':'Проекты'" description="Разделы сервиса." :ui="{ content: 'max-w-xs', body: 'p-0 sm:p-0' }"><template #body><KabanNavigation v-if="isKaban" @navigate="projectMenuOpen=false"/><ProjectNavigation v-else :registry="isRegistry" @navigate="projectMenuOpen = false"/></template></USlideover>
       <header class="home-topbar" :class="{'projects-topbar':hasSidebar,'team-topbar':isTeam||isAccountPage,'is-hidden':hasSidebar && topbarHidden && !projectMenuOpen}">
         <NuxtLink v-if="isHome" to="/" class="home-brand" aria-label="Главная">
           <BrandIcon :brand="brand" class="home-brand-icon" :class="{ 'home-brand-compact': brand === 'light' }" />
@@ -39,7 +41,7 @@ function openNotification(notification: AppNotification) {
           <span v-else class="home-brand-desktop home-brand-magnat" aria-hidden="true"><BrandWordmark brand="magnat" /><span class="home-brand-subtitle">professional</span></span>
         </NuxtLink>
         <div v-else class="home-navigation-context"><UButton v-if="hasSidebar" icon="i-lucide-panel-left" color="neutral" variant="ghost" class="project-menu-trigger" :aria-label="isRegistry?'Открыть меню реестра договоров':'Открыть меню проектов'" :aria-expanded="projectMenuOpen" @click="projectMenuOpen = true"/><NuxtLink :to="isRegistry?'/':isProjects ? '/projects' : '/'" class="projects-back" :aria-label="isRegistry?'На главную':undefined" :title="isRegistry?'На главную':undefined"><UIcon :name="isRegistry?'i-lucide-house':isProjects ? 'i-lucide-folder-kanban' : 'i-lucide-arrow-left'" />{{ isRegistry?'':isProjects ? 'Проекты' : 'Главная' }}</NuxtLink></div>
-        <ApplicationSwitcher v-if="isProjects || isTeam || isAccountPage || isRegistry" />
+        <ApplicationSwitcher v-if="isProjects || isTeam || isAccountPage || isRegistry || isKaban" />
         <div v-if="isHome" class="home-personal-controls"><HomeCustomization/><AccountControls class="home-account" @open-entry="openNotification"/></div>
         <AccountControls v-else class="home-account" @open-entry="openNotification" />
       </header>

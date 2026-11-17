@@ -11,13 +11,14 @@ import ProjectProcessMap from './ProjectProcessMap.vue'
 import ProjectCompanyDirectory from './ProjectCompanyDirectory.vue'
 import ProjectTemplateDirectory from './ProjectTemplateDirectory.vue'
 import ProjectOverview from './ProjectOverview.vue'
+import ProjectSummary from './ProjectSummary.vue'
 import ProjectDirectory from './ProjectDirectory.vue'
 import ProjectDashboardSettings from './ProjectDashboardSettings.vue'
 import { projectStages } from '~~/shared/utils/project-dashboard'
 import type { Project, ProjectPermission } from '~~/shared/types/projects'
 import type { TeamPerson } from '~~/shared/types/team'
 
-const props = defineProps<{ projectId?: string; section?: 'input-documents' | 'estimate' | 'contracts' | 'execution' | 'closing' | 'relationships' }>()
+const props = defineProps<{ projectId?: string; section?: 'economy' | 'counterparties' | 'legal-entities' | 'document-templates' | 'input-documents' | 'estimate' | 'contracts' | 'execution' | 'closing' | 'relationships' }>()
 const route = useRoute()
 const directoryTab = computed(() => ['counterparties','legal-entities','document-templates'].includes(String(route.query.tab)) ? String(route.query.tab) : 'projects')
 const directoryTitle = computed(() => directoryTab.value === 'document-templates' ? 'Шаблоны документов' : directoryTab.value === 'counterparties' ? 'Контрагенты' : directoryTab.value === 'legal-entities' ? 'Наши Юр. лица' : 'Проекты')
@@ -30,6 +31,7 @@ const currentProject = computed(() => projects.data.value?.find(project => proje
 const selectedId = ref(''), selected = computed(() => projects.data.value?.find(project => project.id === selectedId.value))
 const detailsOpen = computed({ get: () => !!selectedId.value, set: (open: boolean) => { if (!open) selectedId.value = '' } })
 const person = ref<TeamPerson | null>(null), permission = ref<ProjectPermission>('viewer'), editName = ref('')
+const memberKind=ref<'executor'|'observer'>('executor')
 const permissionOptions = [{ label: 'Просмотр', value: 'viewer' }, { label: 'Редактирование', value: 'editor' }, { label: 'Не показывать', value: 'hidden' }]
 const labels = { owner: 'Создатель', viewer: 'Просмотр', editor: 'Редактирование', hidden: 'Не показывать' }
 watch(selected, project => { editName.value = project?.name ?? '' })
@@ -67,7 +69,7 @@ function rename() {
 function setMember(userId: string, next: ProjectPermission) {
   const project = selected.value
   if (!project) return
-  mutate(() => sharedRequest(`/api/projects/${project.id}/members`, { method: 'PUT', body: { userId, permission: next, revision: project.revision } }), () => { person.value = null })
+  mutate(() => sharedRequest(`/api/projects/${project.id}/members`, { method: 'PUT', body: { userId, permission: next, ...(person.value?.id===userId?{kind:memberKind.value}:{}), revision: project.revision } }), () => { person.value = null })
 }
 function removeMember(userId: string) {
   const project = selected.value
@@ -75,6 +77,7 @@ function removeMember(userId: string) {
 }
 function open(project: Project) { selectedId.value = project.id; editName.value = project.name }
 function showCreate() { name.value = ''; error.value = ''; createOpen.value = true }
+watch([()=>route.query.create,()=>access.data.value?.allowed],([create,allowed])=>{if(create==='1'&&allowed&&!props.projectId)showCreate()},{immediate:true})
 </script>
 
 <template>
@@ -92,7 +95,7 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
       <p v-if="projects.isPending.value" class="projects-state">Загружаем проекты…</p>
       <template v-else-if="projectId">
         <template v-if="currentProject">
-          <header class="projects-heading project-page-heading"><div><span class="eyebrow">{{ activeStage?`ЭТАП ${activeStage.number}`:'ПРОЕКТ' }}</span><h1>{{ isProcessPage?'Взаимосвязь':activeStage?activeStage.label:currentProject.name }}<span class="title-dot">.</span></h1><p>{{ section?currentProject.name:'Обзор проекта и его участники.' }}</p></div><div class="project-heading-actions"><ProjectDashboardSettings v-if="!section" :key="currentProject.id" :project-id="currentProject.id"/><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></div></header>
+          <header class="projects-heading project-page-heading"><div><span class="eyebrow">{{ activeStage?`ЭТАП ${activeStage.number}`:'ПРОЕКТ' }}</span><h1>{{ section==='economy'?'Экономика проекта':section==='counterparties'?'Контрагенты':section==='legal-entities'?'Наши юр. лица':section==='document-templates'?'Шаблоны документов':isProcessPage?'Взаимосвязь':activeStage?activeStage.label:currentProject.name }}<span class="title-dot">.</span></h1><p>{{ section?currentProject.name:'Обзор проекта и его участники.' }}</p></div><div class="project-heading-actions"><ProjectDashboardSettings v-if="section==='economy'" :key="currentProject.id" :project-id="currentProject.id"/><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></div></header>
           <ProjectInputData v-if="section === 'input-documents'" :key="currentProject.id" :project="currentProject"/>
           <ProjectEstimate v-else-if="section === 'estimate'" :key="currentProject.id" :project="currentProject" />
           <ProjectContracts v-else-if="section === 'contracts'" :key="currentProject.id" :project="currentProject"/>
@@ -101,12 +104,15 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
           <ProjectProcessMap v-else-if="isProcessPage" :key="currentProject.id+'-process'" :project="currentProject"/>
           <section v-else-if="activeStage" class="project-documents-empty" :aria-label="`${activeStage.label} проекта`"><span class="project-documents-icon"><UIcon :name="activeStage.icon"/></span><h2>{{ activeStage.label }} проекта</h2><NuxtLink :to="`/projects/${currentProject.id}`" class="subscription-card-link">Вернуться к проекту →</NuxtLink></section>
           <template v-else>
-          <ProjectOverview :key="currentProject.id" :project="currentProject"/>
+          <ProjectOverview v-if="section==='economy'" :key="currentProject.id" :project="currentProject"/>
+          <ProjectTemplateDirectory v-else-if="section==='document-templates'"/>
+          <ProjectCompanyDirectory v-else-if="section==='counterparties'||section==='legal-entities'" :own-only="section==='legal-entities'"/>
+          <ProjectSummary v-else :key="currentProject.id" :project="currentProject" @settings="open(currentProject)"/>
           </template>
         </template>
         <div v-else-if="!projects.error.value" class="projects-empty"><UIcon name="i-lucide-folder-lock"/><h1>Проект недоступен</h1><p>Проверьте ссылку или попросите создателя проекта предоставить доступ.</p><UButton to="/projects" label="Все проекты" color="neutral" variant="outline"/></div>
       </template>
-      <ProjectDirectory v-else-if="projects.data.value?.length" :projects="projects.data.value" @settings="open"/>
+      <ProjectDirectory v-else-if="!projects.error.value" :projects="projects.data.value||[]" @settings="open"/>
       <div v-else-if="!projects.error.value" class="projects-empty"><UIcon name="i-lucide-folder-plus" /><h2>Первый проект начинается здесь</h2><p>Создайте проект, добавьте участников и настройте их права.</p><UButton label="Создать проект" icon="i-lucide-plus" @click="showCreate" /></div>
       </template>
     </template>
@@ -118,9 +124,9 @@ function showCreate() { name.value = ''; error.value = ''; createOpen.value = tr
         <template v-if="selected">
           <form v-if="selected.permission !== 'viewer'" class="project-rename" @submit.prevent="rename"><UFormField label="Название проекта" class="min-w-0 flex-1"><UInput v-model="editName" class="w-full" required :maxlength="120" :disabled="busy" /></UFormField><UButton type="submit" label="Сохранить" color="neutral" variant="outline" :loading="busy" :disabled="!editName.trim() || editName.trim() === selected.name" /></form>
           <UAlert v-if="error" color="error" :description="error" class="mb-4" />
-          <h2 class="font-semibold text-sm">Участники</h2>
+          <h2 class="font-semibold text-sm">Участники и наблюдатели</h2>
           <div class="project-members"><div v-for="member in selected.members" :key="member.userId" class="project-member"><PersonAvatar :name="member.fullName || member.email" /><div class="project-member-person"><NuxtLink :to="`/team/${member.userId}`" class="project-member-profile">{{ member.fullName || member.email }}</NuxtLink><small>{{ member.email }}</small><small v-if="!member.hasAccess">Доступ к разделу отозван администратором</small></div><template v-if="selected.permission === 'owner' && member.permission !== 'owner'"><USelect :model-value="member.permission" :items="permissionOptions" :disabled="busy" :aria-label="`Права: ${member.fullName || member.email}`" @update:model-value="value => setMember(member.userId, value as ProjectPermission)" /><UButton icon="i-lucide-x" color="neutral" variant="ghost" :aria-label="`Убрать участника ${member.fullName || member.email}`" :disabled="busy" @click="removeMember(member.userId)" /></template><span v-else class="project-member-role">{{ labels[member.permission] }}</span></div></div>
-          <form v-if="selected.permission === 'owner'" class="project-invite" @submit.prevent="person && setMember(person.id, permission)"><h3>Добавить участника</h3><p>В поиске — пользователи, которым администратор выдал доступ к «Проектам».</p><UserPicker v-model="person" projects :disabled="busy" /><div class="project-invite-actions"><USelect v-model="permission" :items="permissionOptions" :disabled="busy" aria-label="Права нового участника" /><UButton type="submit" label="Добавить" icon="i-lucide-user-plus" :loading="busy" :disabled="!person || selected.members.some(member => member.userId === person?.id)" /></div><p>«Не показывать» скрывает проект от участника и закрывает доступ. Права можно вернуть в любой момент.</p></form>
+          <form v-if="selected.permission === 'owner'" class="project-invite" @submit.prevent="person && setMember(person.id, permission)"><h3>Добавить участника</h3><p>В поиске — пользователи, которым администратор выдал доступ к «Проектам».</p><UserPicker v-model="person" projects :disabled="busy" /><div class="project-invite-actions"><USelect v-model="memberKind" :items="[{label:'Исполнитель',value:'executor'},{label:'Наблюдатель',value:'observer'}]" aria-label="Роль в проекте" :disabled="busy"/><USelect v-model="permission" :items="permissionOptions" :disabled="busy" aria-label="Права нового участника" /><UButton type="submit" label="Добавить" icon="i-lucide-user-plus" :loading="busy" :disabled="!person || selected.members.some(member => member.userId === person?.id)" /></div><p>«Не показывать» скрывает проект от участника и закрывает доступ. Права можно вернуть в любой момент.</p></form>
         </template>
         <UAlert v-else color="neutral" title="Проект больше недоступен" />
       </template>
