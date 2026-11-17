@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canEditProjectSection } from '~~/shared/utils/project-permissions'
 import ContractDeadlineField from './ContractDeadlineField.vue'
 import ContractExtraFields from './ContractExtraFields.vue'
 import type { ContractField } from '~~/shared/types/contract-fields'
@@ -14,7 +15,7 @@ const companies=useProjectCompanySelection(()=>props.project.id)
 const fileEditor=ref<InstanceType<typeof ProjectContractFiles>|null>(null),filesKey=ref(0),viewFiles=ref<ProjectContract|null>(null)
 const key=computed(()=>['account',auth.user?.id,'project-contracts',props.project.id])
 const registry=useQuery({queryKey:key,queryFn:({signal})=>sharedRequest<ProjectContractRegistry>(`/api/projects/${props.project.id}/contracts`,{signal}),retry:false,refetchInterval:30000})
-const editable=computed(()=>props.project.permission!=='viewer'),rows=computed(()=>registry.data.value?.contracts??[]),parties=computed(()=>estimate.data.value?.counterparties??[])
+const editable=computed(()=>canEditProjectSection(props.project, 'economy')),rows=computed(()=>registry.data.value?.contracts??[]),parties=computed(()=>estimate.data.value?.counterparties??[])
 const search=ref(''),open=ref(false),busy=ref(false),error=ref(''),exporting=ref(''),selected=ref<ProjectContract|null>(null),estimateRevision=ref(0),deleteOpen=ref(false)
 const fresh=():ProjectContractInput=>({code:String(Math.max(0,...rows.value.map(row=>Number(row.code)||0))+1).padStart(2,'0'),number:'',sellerId:'',buyerId:'',date:new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow'}).format(new Date()),deadline:'',source:'revenue',itemIds:[],fields:[],noDeadline:false,autoRenew:false})
 const draft=ref<ProjectContractInput>(fresh())

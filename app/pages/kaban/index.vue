@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canViewProjectSection } from '~~/shared/utils/project-permissions'
 import {useQuery,useQueryClient} from '@tanstack/vue-query'
 import {filterKabanTaskRows} from '~~/shared/utils/kaban-task-directory'
 import {todayDate} from '~~/shared/utils/subscriptions'
@@ -9,7 +10,7 @@ const {search,folder}=useKabanDirectoryNavigation()
 if(route.query.legacy==='1'||route.query.vault||route.query.task)await navigateTo({path:'/kaban-legacy',query:route.query},{replace:true})
 const client=useQueryClient()
 const mode=computed(()=>route.query.view==='mine'?'mine':route.query.view==='all'?'all':'projects')
-const visible=computed(()=>(projects.data.value??[]).filter(p=>!p.profile?.archived&&(folder.value==='all'||p.folderId===folder.value)&&p.name.toLocaleLowerCase('ru').includes(search.value.trim().toLocaleLowerCase('ru'))))
+const visible=computed(()=>(projects.data.value??[]).filter(p=>canViewProjectSection(p, 'tasks')&&!p.profile?.archived&&(folder.value==='all'||p.folderId===folder.value)&&p.name.toLocaleLowerCase('ru').includes(search.value.trim().toLocaleLowerCase('ru'))))
 const boardQueryKey=computed(()=>['account',auth.user?.id,'kaban-project-tasks',visible.value.map(p=>p.id).sort().join(',')])
 const boards=useQuery({queryKey:boardQueryKey,enabled:computed(()=>mode.value!=='projects'&&access.data.value?.allowed===true&&!projects.isPending.value),queryFn:async({signal})=>{
  const results=await Promise.allSettled(visible.value.map(async p=>({project:p,workspace:await sharedRequest<KabanWorkspace>(`/api/kaban?project=${p.id}`,{signal})})))

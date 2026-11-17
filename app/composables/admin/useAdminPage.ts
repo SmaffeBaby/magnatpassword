@@ -17,7 +17,7 @@ export function useAdminPage() {
     { label: 'Версии приложения', icon: 'i-lucide-package-check', to: '/admin/password?section=releases', active: section.value === 'releases' },
     { label: 'Безопасность', icon: 'i-lucide-shield-check', to: '/admin/password?section=security', active: section.value === 'security' }
   ] }, { label: 'Проекты', icon: 'i-lucide-folder-kanban', defaultOpen: true, children: [
-    { label: 'Доступ к разделу', icon: 'i-lucide-user-round-check', to: '/admin/projects', active: section.value === 'projects' }
+    { label: 'Права проектов', icon: 'i-lucide-user-round-check', to: '/admin/projects', active: section.value === 'projects' }
   ] }])
   async function adminFetch<T>(url: string): Promise<T> {
     return queries.read<T>('admin', url)

@@ -1,3 +1,4 @@
+import { canEditProjectSection } from '../../shared/utils/project-permissions'
 import type { H3Event } from 'h3'
 import type { AssistantContext } from '../../shared/types/assistant'
 import type { KabanWorkspace } from '../../shared/types/kaban'
@@ -63,7 +64,7 @@ export async function assistantContext(event: H3Event, selected: { projectId?: s
       inputs: inputs?.cards.map(card => ({ title: card.title, description: card.description, fields: card.fields, attachments: card.attachments.map(file => ({ name: file.name, size: file.size })) })),
       progress: process ? { today: process.today, stages: process.stages, contracts: process.contracts.map(contract => ({ id: contract.id, number: contract.number, deadline: contract.deadline, done: contract.done, total: contract.total, status: contract.status })) } : null
     }
-    if (project.permission !== 'viewer') {
+    if (projects?.some(item => item.id === project.id && canEditProjectSection(item, 'economy'))) {
       for (const contract of process?.contracts || []) result.uploadTargets.push({ id: `contract:${contract.id}`, kind: 'contract', projectId: project.id, recordId: contract.id, label: `${project.name} · Договор ${contract.number || contract.code}` })
       for (const card of inputs?.cards || []) result.uploadTargets.push({ id: `input:${card.id}`, kind: 'input', projectId: project.id, recordId: card.id, revision: inputs!.revision, label: `${project.name} · Входные данные · ${card.title}` })
     }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canEditProjectSection } from '~~/shared/utils/project-permissions'
 import { createId } from '~/utils/browser'
 import { useQuery } from '@tanstack/vue-query'
 import ExecutionVariables from './ExecutionVariables.vue'
@@ -17,7 +18,7 @@ const selected=ref(''),active=ref('contract'),tab=ref('legal'),search=ref(''),bu
 const templateNotice=ref('')
 function applyTemplate(value:DocumentTemplateApplication){if(!editable.value||!['contract','appendix','invoice'].includes(value.kind))return;const key=value.kind as ExecutionKind;if(value.target==='document'){if(key!==kind.value||!document.value)return;editDoc('title',value.template.title);editDoc('body',value.template.body)}else{if(JSON.stringify(state.value.templates[key])===JSON.stringify(value.template)){templateNotice.value='Этот шаблон уже используется в проекте.';return}state.value.templates[key]=value.template}templateNotice.value='Шаблон применён. Сохраните изменения на странице этапа.'}
 const dirty=computed(()=>loaded.value&&JSON.stringify(state.value)!==base.value)
-const editable=computed(()=>props.project.permission!=='viewer')
+const editable=computed(()=>canEditProjectSection(props.project, 'economy'))
 function load(data:ProjectExecution){state.value=JSON.parse(JSON.stringify(data.state));base.value=JSON.stringify(data.state);revision.value=data.revision;estimateRevision.value=data.estimateRevision;loaded.value=true;if(!data.contracts.some(row=>row.id===selected.value))selected.value=data.contracts[0]?.id??''}
 watch(()=>query.data.value,data=>{if(data&&!dirty.value)load(data)},{immediate:true})
 const contracts=computed(()=>query.data.value?.contracts??[]),contract=computed(()=>contracts.value.find(row=>row.id===selected.value))

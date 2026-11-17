@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { HomeAppId, HomeAlignment } from '~~/shared/types/home-layout'
 import { homeApps } from '~~/shared/utils/home-layout'
-const home = useHomeLayoutStore(), projectAccess = useProjectAccess()
+const home = useHomeLayoutStore()
 const dragged = ref<HomeAppId | null>(null)
 const alignments: { value: HomeAlignment; label: string; icon: string }[] = [
   { value: 'left', label: 'Слева', icon: 'i-lucide-align-left' },
@@ -38,7 +38,6 @@ onBeforeUnmount(() => home.cancel())
      <div class="home-editor-cards" :class="`align-${row.align}`">
       <article v-for="(id, position) in row.cards" :key="id" class="home-editor-card" :class="{'is-dragged':dragged === id}" :draggable="!home.saving" @dragstart="startDrag($event,id)" @dragend="dragged=null" @dragover.prevent.stop @drop.prevent.stop="drop(index,position)">
        <div class="home-editor-card-heading"><UIcon name="i-lucide-grip-vertical" class="home-drag-handle"/><UIcon :name="homeApps[id].icon"/><strong>{{ homeApps[id].label }}</strong><UButton icon="i-lucide-eye-off" size="xs" color="neutral" variant="ghost" :aria-label="`Скрыть ${homeApps[id].actionLabel}`" :disabled="home.saving" @click="home.hide(id)"/></div>
-       <p v-if="['projects','contracts'].includes(id) && !projectAccess.data.value?.allowed" class="home-card-access">Появится при наличии доступа</p>
        <div class="home-card-position"><UButton icon="i-lucide-chevron-left" size="xs" variant="outline" color="neutral" :aria-label="`${homeApps[id].label}: переместить влево`" :disabled="position === 0 || home.saving" @click="shift(id,index,position,-1)"/><USelect :model-value="String(index)" :items="rowOptions" size="sm" :aria-label="`Ряд плашки «${homeApps[id].label}»`" :disabled="home.saving" @update:model-value="value => changeRow(id,String(value))"/><UButton icon="i-lucide-chevron-right" size="xs" variant="outline" color="neutral" :aria-label="`${homeApps[id].label}: переместить вправо`" :disabled="position === row.cards.length - 1 || home.saving" @click="shift(id,index,position,1)"/></div>
       </article>
      </div>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ProjectMemberSections from './ProjectMemberSections.vue'
+import { canViewProjectSection, type ProjectSectionPermissions } from '~~/shared/utils/project-permissions'
 import { useQueryClient } from '@tanstack/vue-query'
 import UserPicker from '~/components/Shared/UserPicker.vue'
 import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
@@ -33,7 +35,7 @@ const detailsOpen = computed({ get: () => !!selectedId.value, set: (open: boolea
 const person = ref<TeamPerson | null>(null), permission = ref<ProjectPermission>('viewer'), editName = ref('')
 const memberKind=ref<'executor'|'observer'>('executor')
 const permissionOptions = [{ label: 'Просмотр', value: 'viewer' }, { label: 'Редактирование', value: 'editor' }, { label: 'Не показывать', value: 'hidden' }]
-const labels = { owner: 'Создатель', viewer: 'Просмотр', editor: 'Редактирование', hidden: 'Не показывать' }
+const labels = { owner: 'Владелец', viewer: 'Просмотр', editor: 'Редактирование', hidden: 'Не показывать' }
 watch(selected, project => { editName.value = project?.name ?? '' })
 watch(() => props.projectId, () => { selectedId.value = ''; createOpen.value = false; error.value = '' })
 watch(selectedId, () => { person.value = null; permission.value = 'viewer'; error.value = '' })
@@ -66,10 +68,10 @@ function rename() {
   if (!project || !editName.value.trim()) return
   mutate(() => sharedRequest(`/api/projects/${project.id}`, { method: 'PUT', body: { name: editName.value.trim(), revision: project.revision } }))
 }
-function setMember(userId: string, next: ProjectPermission) {
+function setMember(userId: string, next: ProjectPermission, sections?: ProjectSectionPermissions) {
   const project = selected.value
   if (!project) return
-  mutate(() => sharedRequest(`/api/projects/${project.id}/members`, { method: 'PUT', body: { userId, permission: next, ...(person.value?.id===userId?{kind:memberKind.value}:{}), revision: project.revision } }), () => { person.value = null })
+  mutate(() => sharedRequest(`/api/projects/${project.id}/members`, { method: 'PUT', body: { userId, permission: next, ...(sections ? { sections } : {}), ...(person.value?.id===userId?{kind:memberKind.value}:{}), revision: project.revision } }), () => { person.value = null })
 }
 function removeMember(userId: string) {
   const project = selected.value
@@ -86,7 +88,7 @@ watch([()=>route.query.create,()=>access.data.value?.allowed],([create,allowed])
     <div v-if="!projectId" class="projects-heading"><div><h1>{{ directoryTitle }}<span class="title-dot">.</span></h1><p>{{ directoryTab === 'projects' ? 'Ваши проекты и люди, с которыми вы работаете.' : directoryTab === 'document-templates' ? 'Общее хранилище шаблонов по этапам проектов.' : 'Общая база компаний для ваших проектов.' }}</p></div><UButton v-if="access.data.value?.allowed && directoryTab === 'projects'" label="Создать проект" icon="i-lucide-plus" size="lg" @click="showCreate" /></div>
     <p v-if="access.isPending.value" class="projects-state"><UIcon name="i-lucide-loader-circle" class="animate-spin" /> Проверяем доступ…</p>
     <UAlert v-else-if="access.error.value" color="error" title="Не удалось проверить доступ" :actions="[{ label: 'Повторить', onClick: () => access.refetch() }]" />
-    <UAlert v-else-if="!access.data.value?.allowed" color="neutral" title="Доступ к проектам закрыт" description="Администратор может выдать доступ через панель управления." />
+    <UAlert v-else-if="!access.data.value?.allowed" color="neutral" title="Доступ к проектам закрыт" description="Войдите в аккаунт, чтобы работать с проектами." />
     <template v-else>
 
       <ProjectTemplateDirectory v-if="!projectId && directoryTab === 'document-templates'"/>
@@ -95,7 +97,9 @@ watch([()=>route.query.create,()=>access.data.value?.allowed],([create,allowed])
       <p v-if="projects.isPending.value" class="projects-state">Загружаем проекты…</p>
       <template v-else-if="projectId">
         <template v-if="currentProject">
-          <header class="projects-heading project-page-heading"><div><span class="eyebrow">{{ activeStage?`ЭТАП ${activeStage.number}`:'ПРОЕКТ' }}</span><h1>{{ section==='economy'?'Экономика проекта':section==='counterparties'?'Контрагенты':section==='legal-entities'?'Наши юр. лица':section==='document-templates'?'Шаблоны документов':isProcessPage?'Взаимосвязь':activeStage?activeStage.label:currentProject.name }}<span class="title-dot">.</span></h1><p>{{ section?currentProject.name:'Обзор проекта и его участники.' }}</p></div><div class="project-heading-actions"><ProjectDashboardSettings v-if="section==='economy'" :key="currentProject.id" :project-id="currentProject.id"/><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></div></header>
+          <header class="projects-heading project-page-heading"><div><span class="eyebrow">{{ activeStage?`ЭТАП ${activeStage.number}`:'ПРОЕКТ' }}</span><h1>{{ section==='economy'?'Экономика проекта':section==='counterparties'?'Контрагенты':section==='legal-entities'?'Наши юр. лица':section==='document-templates'?'Шаблоны документов':isProcessPage?'Взаимосвязь':activeStage?activeStage.label:currentProject.name }}<span class="title-dot">.</span></h1><p>{{ section?currentProject.name:'Обзор проекта и его участники.' }}</p></div><div class="project-heading-actions"><ProjectDashboardSettings v-if="section==='economy' && canViewProjectSection(currentProject, 'economy')" :key="currentProject.id" :project-id="currentProject.id"/><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></div></header>
+          <UAlert v-if="section && !canViewProjectSection(currentProject, 'economy')" color="neutral" title="Нет доступа к экономике проекта" description="Владелец проекта может предоставить доступ в настройках участников." />
+          <template v-else>
           <ProjectInputData v-if="section === 'input-documents'" :key="currentProject.id" :project="currentProject"/>
           <ProjectEstimate v-else-if="section === 'estimate'" :key="currentProject.id" :project="currentProject" />
           <ProjectContracts v-else-if="section === 'contracts'" :key="currentProject.id" :project="currentProject"/>
@@ -108,6 +112,7 @@ watch([()=>route.query.create,()=>access.data.value?.allowed],([create,allowed])
           <ProjectTemplateDirectory v-else-if="section==='document-templates'"/>
           <ProjectCompanyDirectory v-else-if="section==='counterparties'||section==='legal-entities'" :own-only="section==='legal-entities'"/>
           <ProjectSummary v-else :key="currentProject.id" :project="currentProject" @settings="open(currentProject)"/>
+          </template>
           </template>
         </template>
         <div v-else-if="!projects.error.value" class="projects-empty"><UIcon name="i-lucide-folder-lock"/><h1>Проект недоступен</h1><p>Проверьте ссылку или попросите создателя проекта предоставить доступ.</p><UButton to="/projects" label="Все проекты" color="neutral" variant="outline"/></div>
@@ -124,9 +129,10 @@ watch([()=>route.query.create,()=>access.data.value?.allowed],([create,allowed])
         <template v-if="selected">
           <form v-if="selected.permission !== 'viewer'" class="project-rename" @submit.prevent="rename"><UFormField label="Название проекта" class="min-w-0 flex-1"><UInput v-model="editName" class="w-full" required :maxlength="120" :disabled="busy" /></UFormField><UButton type="submit" label="Сохранить" color="neutral" variant="outline" :loading="busy" :disabled="!editName.trim() || editName.trim() === selected.name" /></form>
           <UAlert v-if="error" color="error" :description="error" class="mb-4" />
-          <h2 class="font-semibold text-sm">Участники и наблюдатели</h2>
-          <div class="project-members"><div v-for="member in selected.members" :key="member.userId" class="project-member"><PersonAvatar :name="member.fullName || member.email" /><div class="project-member-person"><NuxtLink :to="`/team/${member.userId}`" class="project-member-profile">{{ member.fullName || member.email }}</NuxtLink><small>{{ member.email }}</small><small v-if="!member.hasAccess">Доступ к разделу отозван администратором</small></div><template v-if="selected.permission === 'owner' && member.permission !== 'owner'"><USelect :model-value="member.permission" :items="permissionOptions" :disabled="busy" :aria-label="`Права: ${member.fullName || member.email}`" @update:model-value="value => setMember(member.userId, value as ProjectPermission)" /><UButton icon="i-lucide-x" color="neutral" variant="ghost" :aria-label="`Убрать участника ${member.fullName || member.email}`" :disabled="busy" @click="removeMember(member.userId)" /></template><span v-else class="project-member-role">{{ labels[member.permission] }}</span></div></div>
-          <form v-if="selected.permission === 'owner'" class="project-invite" @submit.prevent="person && setMember(person.id, permission)"><h3>Добавить участника</h3><p>В поиске — пользователи, которым администратор выдал доступ к «Проектам».</p><UserPicker v-model="person" projects :disabled="busy" /><div class="project-invite-actions"><USelect v-model="memberKind" :items="[{label:'Исполнитель',value:'executor'},{label:'Наблюдатель',value:'observer'}]" aria-label="Роль в проекте" :disabled="busy"/><USelect v-model="permission" :items="permissionOptions" :disabled="busy" aria-label="Права нового участника" /><UButton type="submit" label="Добавить" icon="i-lucide-user-plus" :loading="busy" :disabled="!person || selected.members.some(member => member.userId === person?.id)" /></div><p>«Не показывать» скрывает проект от участника и закрывает доступ. Права можно вернуть в любой момент.</p></form>
+          <h2 class="font-semibold text-sm">Участники и наблюдатели</h2><p class="text-xs text-slate-500 mt-2">Общие права определяют доступ к проекту и редактирование его обзора. Ниже можно отдельно настроить экономику и Кабан.</p>
+          <div class="project-members"><div v-for="member in selected.members" :key="member.userId" class="project-member"><PersonAvatar :name="member.fullName || member.email" /><div class="project-member-person"><NuxtLink :to="`/team/${member.userId}`" class="project-member-profile">{{ member.fullName || member.email }}</NuxtLink><small>{{ member.email }}</small></div><template v-if="selected.permission === 'owner' && member.permission !== 'owner'"><USelect :model-value="member.permission" :items="permissionOptions" :disabled="busy" :aria-label="`Права: ${member.fullName || member.email}`" @update:model-value="value => setMember(member.userId, value as ProjectPermission)" /><UButton icon="i-lucide-x" color="neutral" variant="ghost" :aria-label="`Убрать участника ${member.fullName || member.email}`" :disabled="busy" @click="removeMember(member.userId)" /></template><span v-else class="project-member-role">{{ labels[member.permission] }}</span></div></div>
+          <form v-if="selected.permission === 'owner'" class="project-invite" @submit.prevent="person && setMember(person.id, permission)"><h3>Добавить участника</h3><p>В поиске — пользователи вашей команды.</p><UserPicker v-model="person" projects :disabled="busy" /><div class="project-invite-actions"><USelect v-model="memberKind" :items="[{label:'Исполнитель',value:'executor'},{label:'Наблюдатель',value:'observer'}]" aria-label="Роль в проекте" :disabled="busy"/><USelect v-model="permission" :items="permissionOptions" :disabled="busy" aria-label="Права нового участника" /><UButton type="submit" label="Добавить" icon="i-lucide-user-plus" :loading="busy" :disabled="!person || selected.members.some(member => member.userId === person?.id)" /></div><p>«Не показывать» скрывает проект от участника и закрывает доступ. Права можно вернуть в любой момент.</p></form>
+          <ProjectMemberSections :project="selected" :busy="busy" @change="(member, sections) => setMember(member.userId, member.permission as ProjectPermission, sections)" />
         </template>
         <UAlert v-else color="neutral" title="Проект больше недоступен" />
       </template>

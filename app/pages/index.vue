@@ -7,10 +7,9 @@ import PasswordCard from '~/components/PasswordPage/PasswordCard.vue'
 import TeamCard from '~/components/AccountPage/TeamCard.vue'
 import KabanCard from '~/components/Kaban/KabanCard.vue'
 definePageMeta({ layout: 'home' })
-const projectAccess = useProjectAccess()
 const home = useHomeLayoutStore()
 const components = { contracts: ContractRegisterCard, passwords: PasswordCard, finances: FinanceCard, relationships: RelationshipsCard, projects: ProjectsCard, team: TeamCard, kaban: KabanCard }
-const rows = computed(() => home.display.rows.map(row => ({ ...row, cards: row.cards.filter(id => !['projects','contracts'].includes(id) || projectAccess.data.value?.allowed) })).filter(row => row.cards.length))
+const rows = computed(() => home.display.rows.map(row => ({ ...row, cards: row.cards })).filter(row => row.cards.length))
 </script>
 <template>
   <div class="home-custom-layout">
@@ -21,7 +20,6 @@ const rows = computed(() => home.display.rows.map(row => ({ ...row, cards: row.c
     </template>
     <UAlert v-if="home.error && !home.editing" color="error" title="Настройки главной страницы недоступны" :description="home.error" :actions="[{label:'Повторить',onClick:()=>home.load()}]"/>
   </div>
-  <UAlert v-if="projectAccess.error.value" class="home-access-error" color="error" title="Не удалось проверить доступ к проектам" :actions="[{ label: 'Повторить', onClick: () => projectAccess.refetch() }]" />
 </template>
 
 <style scoped>

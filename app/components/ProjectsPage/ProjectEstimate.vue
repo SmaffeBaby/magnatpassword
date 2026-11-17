@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canEditProjectSection } from '~~/shared/utils/project-permissions'
 import { createId } from '~/utils/browser'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import type { Project } from '~~/shared/types/projects'
@@ -12,7 +13,7 @@ const companies = useProjectCompanySelection(() => props.project.id)
 const auth = useAuthStore(), client = useQueryClient(), supabase = useNuxtApp().$supabase
 const queryKey = computed(() => ['account', auth.user?.id, 'project-estimate', props.project.id])
 const estimate = useQuery({ queryKey, queryFn: ({ signal }) => sharedRequest<ProjectEstimate>(`/api/projects/${props.project.id}/estimate`, { signal }), retry: false, refetchInterval: 30000 })
-const editable = computed(() => props.project.permission !== 'viewer')
+const editable = computed(() => canEditProjectSection(props.project, 'economy'))
 const items = computed(() => estimate.data.value?.items ?? [])
 const tab = ref<'items' | 'table'>('items'), search = ref(''), error = ref(''), saving = ref(false), exporting = ref('')
 const parties = computed(() => estimate.data.value?.counterparties ?? [])
@@ -61,7 +62,7 @@ function cellLabel(item: EstimateItem, key: string) {
 }
 const storageKey = computed(() => `estimate-view:${auth.user?.id}:${props.project.id}`)
 onMounted(() => { try { const cached = JSON.parse(localStorage.getItem(storageKey.value) || 'null'), parsed = estimateViewSchema.safeParse(cached); if (parsed.success) view.value = parsed.data } catch {} })
-watch(() => props.project.permission, () => { if (!editable.value) { formOpen.value = false; deleteOpen.value = false } })
+watch(() => canEditProjectSection(props.project, 'economy'), () => { if (!editable.value) { formOpen.value = false; deleteOpen.value = false } })
 watch(() => auth.user?.id, () => { formOpen.value = false; deleteOpen.value = false; settingsOpen.value = false; view.value = { hiddenRows: [], hiddenColumns: [] } })
 function capture() { baseItems.value = clone(items.value); baseRevision.value = estimate.data.value?.revision ?? 0 }
 function openItem(item?: EstimateItem) {

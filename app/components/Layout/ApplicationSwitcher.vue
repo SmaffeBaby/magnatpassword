@@ -6,12 +6,12 @@ import RelationshipsCard from '~/components/Relationships/RelationshipsCard.vue'
 import ProjectsCard from '~/components/ProjectsPage/ProjectsCard.vue'
 import TeamCard from '~/components/AccountPage/TeamCard.vue'
 import KabanCard from '~/components/Kaban/KabanCard.vue'
-const projectAccess=useProjectAccess(),home=useHomeLayoutStore(),auth=useAuthStore(),route=useRoute()
+const home=useHomeLayoutStore(),auth=useAuthStore(),route=useRoute()
 const open=ref(false)
 const { application } = useAccountBrand()
 const currentServiceName = computed(() => application.value?.name || 'Все сервисы')
 const components={contracts:ContractRegisterCard,passwords:PasswordCard,finances:FinanceCard,relationships:RelationshipsCard,projects:ProjectsCard,team:TeamCard,kaban:KabanCard}
-const rows=computed(()=>home.display.rows.map(row=>({...row,cards:row.cards.filter(id=>!['projects','contracts'].includes(id)||projectAccess.data.value?.allowed)})).filter(row=>row.cards.length))
+const rows=computed(()=>home.display.rows.map(row=>({...row,cards:row.cards})).filter(row=>row.cards.length))
 watch(()=>route.path,()=>{open.value=false})
 watch(()=>auth.user?.id,()=>{open.value=false})
 watch(open,value=>{if(value&&!home.ready&&!home.loading)void home.load()})
@@ -29,7 +29,6 @@ watch(open,value=>{if(value&&!home.ready&&!home.loading)void home.load()})
       <div v-for="(row,index) in rows" :key="index" class="services-row" :class="`align-${row.align}`" :aria-label="`Ряд ${index+1}`"><component v-for="id in row.cards" :key="id" :is="components[id]" @click="open=false"/></div>
       <div v-if="!rows.length" class="services-empty"><UIcon name="i-lucide-layout-dashboard"/><p>Все сервисы скрыты в настройках главной страницы.</p><UButton to="/" label="Открыть главную" color="neutral" variant="outline" @click="open=false"/></div>
      </template>
-     <UAlert v-if="projectAccess.error.value" color="error" title="Не удалось проверить доступ к проектам" :actions="[{label:'Повторить',onClick:()=>projectAccess.refetch()}]"/>
     </section>
    </template>
   </UPopover>

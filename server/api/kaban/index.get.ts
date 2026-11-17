@@ -31,7 +31,7 @@ export default defineEventHandler(async event => {
   if(data.board.projectId){
     const result=await context.client.rpc('list_projects',{p_actor:context.user.id})
     if(result.error)projectFailure(result.error)
-    members=(result.data??[]).find((p:any)=>p.id===data.board.projectId)?.members.filter((m:any)=>m.permission!=='hidden'&&m.hasAccess).map((m:any)=>m.userId)||[]
+    members=(result.data??[]).find((p:any)=>p.id===data.board.projectId)?.members.filter((m:any)=>m.permission!=='hidden'&&m.sections?.tasks!=='hidden'&&m.hasAccess).map((m:any)=>m.userId)||[]
   } else if (data.board.vaultId) {
     const result = await context.client.from('shared_vault_members').select('user_id').eq('vault_id', data.board.vaultId)
     if (result.error) kabanFailure(result.error)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canViewProjectSection } from '~~/shared/utils/project-permissions'
 import ProjectBoardNavigation from '../Kaban/ProjectBoardNavigation.vue'
 import BrandLogo from '~/components/Brand/BrandLogo.vue'
 import { projectStages } from '~~/shared/utils/project-dashboard'
@@ -27,7 +28,7 @@ const projectLinks = computed(() => project.value ? [
    {to:`/projects/${project.value.id}/document-templates`,label:'Шаблоны документов',icon:'i-lucide-files',number:''},
    {to:`/projects/${project.value.id}/relationships`,label:'Взаимосвязь',icon:'i-lucide-workflow',number:''}
   ] : [])
-] : [])
+] .filter(link => canViewProjectSection(project.value!, link.to.endsWith('/tasks') ? 'tasks' : 'economy') || link.to === `/projects/${project.value!.id}`) : [])
 </script>
 
 <template>
@@ -42,7 +43,7 @@ const projectLinks = computed(() => project.value ? [
         <h2 :title="project.name">{{ project.name }}</h2>
         <NuxtLink v-for="link in projectLinks" :key="link.to" :to="link.to" :aria-current="route.path.replace(/\/$/, '') === link.to ? 'page' : undefined" @click="emit('navigate')"><UIcon :name="link.icon"/><span>{{ link.label }}</span><small v-if="link.number">{{ link.number }}</small></NuxtLink>
       </nav>
-      <ProjectBoardNavigation v-if="project&&route.path.endsWith('/tasks')" @navigate="emit('navigate')"/>
+      <ProjectBoardNavigation v-if="project && canViewProjectSection(project, 'tasks') && route.path.endsWith('/tasks')" @navigate="emit('navigate')"/>
     </template>
     <div class="projects-navigation-bottom"><NuxtLink to="/" @click="emit('navigate')"><UIcon name="i-lucide-arrow-left"/>К приложениям</NuxtLink></div>
   </div>

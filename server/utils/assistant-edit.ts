@@ -1,3 +1,4 @@
+import { canEditProjectSection } from '../../shared/utils/project-permissions'
 import type { H3Event } from 'h3'
 import type { VaultData, Credential } from '../../shared/types/vault'
 import type { SharedCard, SharedVault } from '../../shared/types/sharing'
@@ -22,7 +23,7 @@ export async function assistantEditRecords(event: H3Event) {
 export async function assistantProjectTargets(event: H3Event, projectId?: string) {
   const projects = await assistantFetch<Project[]>(event, '/api/projects')
   const targets: AssistantEditTarget[] = projects.filter(p => p.permission !== 'viewer').map(p => ({ id: p.id, label: p.name, revision: p.revision, fields: [{ id: 'name', label: 'Название проекта', value: p.name }] }))
-  if (projectId && targets.some(t => t.id === projectId)) {
+  if (projectId && projects.some(p => p.id === projectId && canEditProjectSection(p, 'economy'))) {
     const estimate = await assistantFetch<ProjectEstimate>(event, `/api/projects/${projectId}/estimate`)
     targets.push({ id: `${projectId}/details`, label: 'Смета · реквизиты', revision: estimate.revision, fields: ['title', 'code', 'description', 'finishDate', 'batchQuantity', 'clientUnitPrice', 'revenueAmount', 'markupPercent', 'revenueVatRate'].map(id => ({ id, label: ({ title: 'Название', code: 'Код', description: 'Описание', finishDate: 'Дата завершения', batchQuantity: 'Тираж', clientUnitPrice: 'Цена клиенту', revenueAmount: 'Выручка', markupPercent: 'Наценка, %', revenueVatRate: 'НДС, %' } as Record<string, string>)[id]!, value: String(estimate.details[id as keyof typeof estimate.details]) })) })
     const inputs = await assistantFetch<ProjectInputs>(event, `/api/projects/${projectId}/input-data`)

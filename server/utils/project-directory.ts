@@ -1,3 +1,4 @@
+import { canViewProjectSection } from '../../shared/utils/project-permissions'
 import type { H3Event } from 'h3'
 import type { Project, ProjectFinancialSummary } from '../../shared/types/projects'
 import { normalizeEstimate, estimateFinancials } from '../../shared/utils/estimate'
@@ -9,7 +10,7 @@ export async function projectDirectorySummaries(event: H3Event) {
   const context = await requireProjectsUser(event)
   const projects = await context.client.rpc('list_projects', { p_actor: context.user.id })
   if (projects.error) throw createError({ statusCode: 503, message: 'Не удалось проверить доступ к проектам' })
-  const ids = ((projects.data ?? []) as Project[]).map(project => project.id)
+  const ids = ((projects.data ?? []) as Project[]).filter(project => canViewProjectSection(project, 'economy')).map(project => project.id)
   const result = new Map<string, ProjectFinancialSummary>(ids.map(projectId => [projectId, { projectId, status: 'empty', updatedAt: null }]))
   const pending: string[] = []
   for (let offset = 0; offset < ids.length; offset += 100) {

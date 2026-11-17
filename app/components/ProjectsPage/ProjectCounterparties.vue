@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { canEditProjectSection } from '~~/shared/utils/project-permissions'
 import type { Project } from '~~/shared/types/projects'
 import type { ProjectCounterparty } from '~~/shared/types/estimate'
 import { useQueryClient } from '@tanstack/vue-query'
@@ -9,7 +10,7 @@ const { query: catalog, refresh: refreshCatalog } = useProjectCompanies(() => pr
 const queryClient = useQueryClient()
 const allParties = computed(() => query.data.value?.counterparties ?? [])
 const parties = computed(() => allParties.value.filter(party => !!party.isOwnLegalEntity === !!props.ownOnly))
-const editable = computed(() => props.project.permission !== 'viewer'), open = ref(false), selectorOpen = ref(false), busy = ref(false), error = ref(''), selectionKind = computed(() => !!props.ownOnly), search = ref(''), revision = ref(0)
+const editable = computed(() => canEditProjectSection(props.project, 'economy')), open = ref(false), selectorOpen = ref(false), busy = ref(false), error = ref(''), selectionKind = computed(() => !!props.ownOnly), search = ref(''), revision = ref(0)
 const selected = ref<ProjectCounterparty | null>(null)
 const exporting = ref(''), exportError = ref(''), auth = useAuthStore(), supabase = useNuxtApp().$supabase
 const candidates = computed(() => catalog.data.value?.filter(row => row.isOwnLegalEntity === selectionKind.value && `${row.company} ${row.inn}`.toLocaleLowerCase('ru').includes(search.value.trim().toLocaleLowerCase('ru'))) ?? [])
