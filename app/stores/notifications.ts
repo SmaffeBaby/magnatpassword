@@ -9,11 +9,11 @@ export const useNotificationsStore = defineStore('notifications', () => {
   const settings = ref<NotificationSettings>(structuredClone(DEFAULT_NOTIFICATION_SETTINGS)), items = ref<AppNotification[]>([])
   const busy = ref(false), clearing = ref(false), error = ref('')
   let generation = 0, reading = 0, mutations = 0
-  const unread = computed(() => items.value.filter(item => !item.readAt).length)
+  const unread = computed(() => items.value.filter(item => !item.readAt && item.kind !== 'project-chat').length)
   const message = (failure: any) => failure?.data?.message || failure?.message || 'Уведомления недоступны'
   const cache = () => queries.set<Inbox>('notifications', '/api/notifications', { settings: settings.value, notifications: items.value })
   async function refresh(force = false) {
-    if (busy.value || clearing.value || mutations || !useVaultStore().unlocked) return
+    if (busy.value || clearing.value || mutations || !useAuthStore().user) return
     const attempt = generation, sequence = ++reading
     busy.value = true
     try {
@@ -23,7 +23,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     finally { if (attempt === generation && sequence === reading) busy.value = false }
   }
   async function saveSettings(next: NotificationSettings) {
-    if (busy.value || clearing.value || mutations || !useVaultStore().unlocked) return false
+    if (busy.value || clearing.value || mutations || !useAuthStore().user) return false
     const attempt = generation
     busy.value = true; mutations++; error.value = ''
     try {
@@ -36,7 +36,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     finally { if (attempt === generation) { busy.value = false; mutations-- } }
   }
   async function markRead(ids: string[]) {
-    if (!ids.length || clearing.value || mutations || !useVaultStore().unlocked) return
+    if (!ids.length || clearing.value || mutations || !useAuthStore().user) return
     const attempt = generation
     ++reading; mutations++; busy.value = false
     try {
@@ -52,7 +52,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     finally { if (attempt === generation) mutations-- }
   }
   async function clear(ids?: string[]) {
-    if (clearing.value || mutations || !useVaultStore().unlocked || ids?.length === 0) return false
+    if (clearing.value || mutations || !useAuthStore().user || ids?.length === 0) return false
     const attempt = generation
     clearing.value = true; ++reading; busy.value = false; error.value = ''
     try {

@@ -8,6 +8,11 @@ export function useNotificationCenter(openEntry:(notification:AppNotification)=>
  function removeLead(index:number){draft.leadDays.splice(index,1)}
  async function choose(notification:AppNotification){
   await store.markRead([notification.id])
+  if(notification.kind==='project-chat'&&notification.chatId){
+   open.value=false
+   useChatHubStore().open({projectId:notification.projectId??null,chatId:notification.chatId,messageSeq:notification.messageSeq})
+   return
+  }
   if(notification.kind==='kaban'){
    if(notification.available&&notification.taskId){
     open.value=false

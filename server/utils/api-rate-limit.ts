@@ -16,6 +16,6 @@ export function apiInvalidSessionLimit(event:H3Event){apply(event,`invalid:${get
 export function apiAccountLimit(event:H3Event,userId:string){
  const resource=getRequestURL(event).pathname.split('/')[2]||'api'
  const read=['GET','HEAD'].includes(event.method)
- const limit=read?(resource==='personal-vault'?60:resource==='kaban'?600:180):120
+ const limit=read?(resource==='personal-vault'?60:['kaban','projects'].includes(resource)?600:180):120
  apply(event,`account:${userId}:${read?'read':'write'}:${resource}`,limit)
 }

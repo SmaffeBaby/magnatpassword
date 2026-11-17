@@ -3,7 +3,7 @@ import { documentEditor, documentMaxSize } from '~~/shared/utils/project-documen
 import type { ProjectDocument } from '~~/shared/types/project-documents'
 import { saveFile, downloadFilename } from '~/utils/file-download'
 import type { OfficeEditorAdapter } from '~/composables/office/useOffice'
-const props = defineProps<{ projectId?: string; file: ProjectDocument; canUpload: boolean; adapter?: OfficeEditorAdapter }>()
+const props = defineProps<{ projectId?: string; file: ProjectDocument; canUpload: boolean; adapter?: OfficeEditorAdapter; allowChooseDestination?: boolean }>()
 const emit = defineEmits<{ saved: []; close: [] }>()
 const router = useRouter()
 const auth = useAuthStore(), actor = auth.user?.id
@@ -124,7 +124,7 @@ onBeforeUnmount(() => { removeRouteGuard(); detachActivity(); clearTimeout(timeo
 </script>
 <template>
   <UModal :open="true" fullscreen :dismissible="false" :close="false" :title="`${editor?.label}: ${target.name}`" :ui="{overlay:'z-[100]',content:'z-[101] rounded-none',header:'sr-only',body:'p-0 sm:p-0 flex min-h-0 flex-1'}"><template #body><section class="document-editor" data-state="open" :aria-label="`${editor?.label}: ${target.name}`">
-    <header><div><strong>{{ target.name }}</strong><span>{{ editor?.label }} · {{ editable ? 'Редактирование' : 'Просмотр · сохранение копии только на устройство' }}</span></div><select v-if="adapter" aria-label="При сохранении в редакторе" class="editor-destination" @change="destination(($event.target as HTMLSelectElement).value)"><option value="source">Сохранить изменения</option><option value="choose">Сохранить в другой раздел…</option><option value="download">Скачать на устройство</option></select><span v-if="saving" role="status">Сохраняем…</span><span v-else-if="dirty||pending" class="editor-unsaved">Есть изменения</span><UButton label="Закрыть" icon="i-lucide-x" color="neutral" variant="outline" :disabled="saving" @click="close"/></header>
+    <header><div><strong>{{ target.name }}</strong><span>{{ editor?.label }} · {{ editable ? 'Редактирование' : 'Просмотр · сохранение копии только на устройство' }}</span></div><select v-if="adapter" aria-label="При сохранении в редакторе" class="editor-destination" @change="destination(($event.target as HTMLSelectElement).value)"><option value="source">{{editable?'Сохранить изменения':'Скачать копию'}}</option><option v-if="allowChooseDestination!==false" value="choose">Сохранить в другой раздел…</option><option value="download">Скачать на устройство</option></select><span v-if="saving" role="status">Сохраняем…</span><span v-else-if="dirty||pending" class="editor-unsaved">Есть изменения</span><UButton label="Закрыть" icon="i-lucide-x" color="neutral" variant="outline" :disabled="saving" @click="close"/></header>
     <UAlert v-if="error" color="error" :description="error" class="editor-message"/>
     <UAlert v-if="status" color="success" :description="status" class="editor-message"/>
     <div v-if="pending&&!saving" class="editor-recovery"><UButton v-if="editable" label="Повторить сохранение" @click="saveOutput()"/><UButton v-if="canUpload" label="Сохранить отдельной копией" color="neutral" variant="outline" @click="saveOutput(true)"/><UButton label="Скачать мою копию" color="neutral" variant="outline" @click="downloadPending"/></div>

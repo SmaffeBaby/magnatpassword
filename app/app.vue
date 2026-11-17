@@ -3,4 +3,4 @@ import { useAppSession } from '~/composables/auth/useAppSession'
 
 useAppSession()
 </script>
-<template><UApp><NuxtLayout><NuxtPage /></NuxtLayout><ReleasesNativeAppUpdates/><ClientOnly><EditorsOfficeHost/><AssistantLocalAssistant/></ClientOnly></UApp></template>
+<template><UApp><NuxtLayout><NuxtPage /></NuxtLayout><ReleasesNativeAppUpdates/><ClientOnly><EditorsOfficeHost/><ChatsChatDrawer/><AssistantLocalAssistant/></ClientOnly></UApp></template>
