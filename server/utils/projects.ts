@@ -10,7 +10,7 @@ export function projectId(event: H3Event) {
   if (!parsed.success) throw createError({ statusCode: 400, message: 'Некорректный проект' })
   return parsed.data
 }
-export function projectFailure(error: { message: string }) {
+export function projectFailure(error: { message: string }): never {
   const errors: Record<string, [number, string]> = {
     ACCESS_DENIED: [403, 'Недостаточно прав для этого действия'],
     PROJECT_NOT_FOUND: [404, 'Проект не найден или недоступен'],

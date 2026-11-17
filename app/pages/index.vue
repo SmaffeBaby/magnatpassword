@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApplicationsCard from '~/components/Editors/ApplicationsCard.vue'
 import ContractRegisterCard from '~/components/ProjectsPage/ContractRegisterCard.vue'
 import ProjectsCard from '~/components/ProjectsPage/ProjectsCard.vue'
 import RelationshipsCard from '~/components/Relationships/RelationshipsCard.vue'
@@ -8,7 +9,7 @@ import TeamCard from '~/components/AccountPage/TeamCard.vue'
 import KabanCard from '~/components/Kaban/KabanCard.vue'
 definePageMeta({ layout: 'home' })
 const home = useHomeLayoutStore()
-const components = { contracts: ContractRegisterCard, passwords: PasswordCard, finances: FinanceCard, relationships: RelationshipsCard, projects: ProjectsCard, team: TeamCard, kaban: KabanCard }
+const components = { applications: ApplicationsCard, contracts: ContractRegisterCard, passwords: PasswordCard, finances: FinanceCard, relationships: RelationshipsCard, projects: ProjectsCard, team: TeamCard, kaban: KabanCard }
 const rows = computed(() => home.display.rows.map(row => ({ ...row, cards: row.cards })).filter(row => row.cards.length))
 </script>
 <template>

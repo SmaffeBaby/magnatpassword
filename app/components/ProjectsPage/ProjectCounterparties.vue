@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const office = useOffice()
+async function outputFile(blob: Blob, name: string, open: boolean) { if (open) office.openBlob(blob, name); else await saveFile(blob, name) }
 import { canEditProjectSection } from '~~/shared/utils/project-permissions'
 import type { Project } from '~~/shared/types/projects'
 import type { ProjectCounterparty } from '~~/shared/types/estimate'
@@ -26,7 +28,7 @@ async function link(id: string, remove = false) {
  finally { busy.value = false }
 }
 watch(editable, allowed => { if (!allowed) { open.value = false; selectorOpen.value = false } })
-async function download(format: 'xlsx' | 'pdf') {
+async function download(format: 'xlsx' | 'pdf', openEditor = false) {
   if (exporting.value) return
   exporting.value = format; exportError.value = ''; const userId = auth.user?.id
   try {
@@ -34,7 +36,7 @@ async function download(format: 'xlsx' | 'pdf') {
     if (!data.session || data.session.user.id !== userId) throw Error('Войдите в аккаунт')
     const blob = await backendFetch<Blob, 'blob'>(`/api/projects/${props.project.id}/estimate-export`, { method: 'POST', retry: 0, responseType: 'blob', headers: { Authorization: `Bearer ${data.session.access_token}` }, body: { target: 'counterparties', companyKind: props.ownOnly ? 'legal-entities' : 'counterparties', format, view: { hiddenRows: [], hiddenColumns: [] } } })
     if (auth.user?.id !== userId) return
-    await saveFile(blob, `${props.ownOnly ? 'Наши юр. лица' : 'Контрагенты'} — ${props.project.name.replace(/[\\/:*?"<>|]/g, '-')}.${format}`)
+    await outputFile(blob, `${props.ownOnly ? 'Наши юр. лица' : 'Контрагенты'} — ${props.project.name.replace(/[\\/:*?"<>|]/g, '-')}.${format}`, openEditor)
   } catch (failure: any) {
     if (failure?.data instanceof Blob) { try { exportError.value = JSON.parse(await failure.data.text()).message } catch { exportError.value = 'Не удалось скачать файл' } }
     else exportError.value = failure?.data?.message || failure.message
@@ -42,7 +44,7 @@ async function download(format: 'xlsx' | 'pdf') {
 }
 </script>
 <template>
-  <section class="project-page-members counterparties-section" :aria-label="ownOnly ? 'Наши юридические лица проекта' : 'Контрагенты проекта'"><div class="project-page-section-heading"><h2>{{ownOnly ? 'Наши Юр. лица' : 'Контрагенты'}} <span class="party-count">{{ parties.length }}</span></h2><div v-if="!query.isPending.value && !query.error.value" class="party-export-actions"><UButton label="Excel" :aria-label="ownOnly ? 'Экспорт наших юрлиц в Excel' : 'Экспорт контрагентов в Excel'" icon="i-lucide-file-spreadsheet" color="neutral" variant="outline" :loading="exporting === 'xlsx'" :disabled="!!exporting" @click="download('xlsx')"/><UButton label="PDF" :aria-label="ownOnly ? 'Экспорт наших юрлиц в PDF' : 'Экспорт контрагентов в PDF'" icon="i-lucide-file-text" color="neutral" variant="outline" :loading="exporting === 'pdf'" :disabled="!!exporting" @click="download('pdf')"/><UButton v-if="editable && !ownOnly" label="Выбрать из общей базы" icon="i-lucide-plus" color="neutral" variant="outline" :disabled="parties.length >= 200" @click="choose"/></div></div><UAlert v-if="exportError" color="error" :description="exportError" class="mb-4"/>
+  <section class="project-page-members counterparties-section" :aria-label="ownOnly ? 'Наши юридические лица проекта' : 'Контрагенты проекта'"><div class="project-page-section-heading"><h2>{{ownOnly ? 'Наши Юр. лица' : 'Контрагенты'}} <span class="party-count">{{ parties.length }}</span></h2><div v-if="!query.isPending.value && !query.error.value" class="party-export-actions"><UButton label="Excel" :aria-label="ownOnly ? 'Экспорт наших юрлиц в Excel' : 'Экспорт контрагентов в Excel'" icon="i-lucide-file-spreadsheet" color="neutral" variant="outline" :loading="exporting === 'xlsx'" :disabled="!!exporting" @click="download('xlsx')"/><UButton label="Открыть XLSX" icon="i-lucide-file-pen-line" color="neutral" variant="ghost" :disabled="!!exporting" @click="download('xlsx',true)"/><UButton label="PDF" :aria-label="ownOnly ? 'Экспорт наших юрлиц в PDF' : 'Экспорт контрагентов в PDF'" icon="i-lucide-file-text" color="neutral" variant="outline" :loading="exporting === 'pdf'" :disabled="!!exporting" @click="download('pdf')"/><UButton label="Открыть PDF" icon="i-lucide-file-pen-line" color="neutral" variant="ghost" :disabled="!!exporting" @click="download('pdf',true)"/><UButton v-if="editable && !ownOnly" label="Выбрать из общей базы" icon="i-lucide-plus" color="neutral" variant="outline" :disabled="parties.length >= 200" @click="choose"/></div></div><UAlert v-if="exportError" color="error" :description="exportError" class="mb-4"/>
     <p v-if="query.isPending.value" class="party-muted">Загружаем контрагентов…</p><UAlert v-else-if="query.error.value" color="error" title="Не удалось загрузить контрагентов" :actions="[{ label: 'Повторить', onClick: () => query.refetch() }]"/>
     <template v-else><p v-if="!parties.length" class="party-muted">{{ownOnly ? 'Наши юридические лица из общей базы подключаются автоматически.' : 'Выберите контрагентов из общей базы.'}} Компании будут доступны в смете проекта.</p><div v-else class="party-grid"><button v-for="party in parties" :key="party.id" type="button" class="party-card" @click="show(party)"><span class="party-icon"><UIcon :name="ownOnly?'i-lucide-landmark':'i-lucide-building-2'"/></span><span v-if="party.isOwnLegalEntity" class="party-own">Наше юр. лицо</span><strong>{{ party.company }}</strong><small v-if="party.inn">ИНН {{ party.inn }}</small><small v-if="party.ogrn">ОГРН / ОГРНИП {{ party.ogrn }}</small><span class="party-card-link">Реквизиты →</span></button></div>
     </template>

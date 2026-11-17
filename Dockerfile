@@ -1,8 +1,15 @@
+FROM node:24-alpine AS document-editors
+WORKDIR /editors
+RUN apk add --no-cache unzip
+COPY scripts/prepare-document-editors.mjs scripts/document-editors.json ./scripts/
+RUN --mount=type=cache,target=/editors/artifacts/document-editors node scripts/prepare-document-editors.mjs
+
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+COPY --from=document-editors /editors/public/editors ./public/editors
 RUN NODE_OPTIONS=--max-old-space-size=1536 npm run build
 
 FROM node:24-alpine AS runner

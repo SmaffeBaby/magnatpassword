@@ -18,3 +18,5 @@ tests
 .nuxt-native
 .output-native
 src-tauri
+
+public/editors/

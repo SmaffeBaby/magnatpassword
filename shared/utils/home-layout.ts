@@ -1,6 +1,7 @@
 import { HOME_APP_IDS, type HomeAppId, type HomeLayout } from '../types/home-layout'
 
 export const homeApps = {
+  applications: { label: 'Приложения', actionLabel: 'Приложения', icon: 'i-lucide-layout-grid' },
   passwords: { label: 'Пароли', actionLabel: 'Пароли', icon: 'i-lucide-key-round' },
   finances: { label: 'Финансы', actionLabel: 'Финансы', icon: 'i-lucide-chart-no-axes-combined' },
   relationships: { label: 'Взаимосвязи', actionLabel: 'Взаимосвязи', icon: 'i-lucide-network' },

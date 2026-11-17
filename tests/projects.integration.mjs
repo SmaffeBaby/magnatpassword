@@ -120,7 +120,7 @@ try {
   // A viewer of the overview may edit economy; an overview editor may have no economy access.
   await sections(viewer, 'viewer', { economy: 'editor', tasks: 'hidden' })
   await sections(editor, 'editor', { economy: 'hidden', tasks: 'viewer' })
-  assert.deepEqual((await project(viewer)).sectionPermissions, { economy: 'editor', tasks: 'hidden' })
+  assert.deepEqual((await project(viewer)).sectionPermissions, { documents: 'viewer', economy: 'editor', tasks: 'hidden' })
   assert.equal((await project(viewer)).taskCount, null)
   for (const resource of ['estimate', 'input-data', 'contracts', 'execution', 'closing', 'progress', 'process-map', 'dashboard']) {
     await request(editor, `/api/projects/${id}/${resource}`, 'GET', undefined, 404)
@@ -169,7 +169,7 @@ try {
   await request(viewer, `/api/kaban/boards/${board.board.id}/history`, 'GET', undefined, 403)
   await request(viewer, `/api/kaban?project=${id}`, 'GET', undefined, 403)
   await sections(viewer, 'viewer', {})
-  assert.deepEqual((await project(viewer)).sectionPermissions, { economy: 'viewer', tasks: 'viewer' })
+  assert.deepEqual((await project(viewer)).sectionPermissions, { documents: 'viewer', economy: 'viewer', tasks: 'viewer' })
   await sections(viewer, 'viewer', { economy: 'owner' }, 400)
   await sections(viewer, 'viewer', { unexpected: 'editor' }, 400)
   await sections(viewer, 'viewer', { economy: null }, 400)

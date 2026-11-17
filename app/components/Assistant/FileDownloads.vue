@@ -29,7 +29,7 @@ async function download(file: AssistantDownload) {
     <article v-for="(file, index) in files" :key="index" class="flex items-center gap-3 rounded-xl border border-default p-3">
       <UIcon name="i-lucide-file" class="size-5 shrink-0 text-muted" />
       <div class="min-w-0 flex-1"><p class="break-words text-sm font-medium">{{ file.name }}</p><p class="break-words text-xs text-muted">{{ file.source }} · {{ size(file.size) }}</p></div>
-      <UButton label="Скачать" :aria-label="`Скачать ${file.name}`" icon="i-lucide-download" color="neutral" variant="outline" size="sm" :loading="busy === file" :disabled="!!busy" @click="download(file)" />
+      <EditorsOpenFileButton :name="file.name" :url="assistantDownloadPath(file)" :disabled="!!busy"/><UButton label="Скачать" :aria-label="`Скачать ${file.name}`" icon="i-lucide-download" color="neutral" variant="outline" size="sm" :loading="busy === file" :disabled="!!busy" @click="download(file)" />
     </article>
     <UAlert v-if="error" color="error" :description="error" />
   </section>

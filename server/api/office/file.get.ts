@@ -1,0 +1,11 @@
+export default defineEventHandler(async event => {
+  const query = getQuery(event), source = parseOfficeSource(query.source)
+  setHeader(event, 'Cache-Control', 'private, no-store')
+  if (query.content !== '1') return officeFileInfo(event, source)
+  const current = await readOfficeFile(event, source)
+  if (query.token !== current.token) throw createError({ statusCode: 409, message: 'Файл изменился. Откройте его заново.' })
+  const { data, error } = await current.context.client.storage.from(current.bucket).download(current.path)
+  if (error || !data) throw createError({ statusCode: 404, message: 'Файл недоступен' })
+  setHeaders(event, { 'Content-Type': 'application/octet-stream', 'X-Content-Type-Options': 'nosniff' })
+  return Buffer.from(await data.arrayBuffer())
+})

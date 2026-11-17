@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const office = useOffice()
+async function outputFile(blob: Blob, name: string, open: boolean) { if (open) office.openBlob(blob, name); else await saveFile(blob, name) }
 import { canEditProjectSection } from '~~/shared/utils/project-permissions'
 import { createId } from '~/utils/browser'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
@@ -111,7 +113,7 @@ function applyView() {
   try { localStorage.setItem(storageKey.value, JSON.stringify(view.value)) } catch {}
   settingsOpen.value = false
 }
-async function download(format: 'xlsx' | 'pdf') {
+async function download(format: 'xlsx' | 'pdf', openEditor = false) {
   if (exporting.value) return
   exporting.value = format; error.value = ''
   const userId = auth.user?.id
@@ -120,7 +122,7 @@ async function download(format: 'xlsx' | 'pdf') {
     if (!data.session || data.session.user.id !== userId) throw Error('Войдите в аккаунт')
     const blob = await backendFetch<Blob, 'blob'>(`/api/projects/${props.project.id}/estimate-export`, { method: 'POST', retry: 0, responseType: 'blob', headers: { Authorization: `Bearer ${data.session.access_token}` }, body: { format, view: view.value } })
     if (auth.user?.id !== userId) return
-    await saveFile(blob, `Смета — ${props.project.name.replace(/[\\/:*?"<>|]/g, '-')}.${format}`)
+    await outputFile(blob, `Смета — ${props.project.name.replace(/[\\/:*?"<>|]/g, '-')}.${format}`, openEditor)
   } catch (failure: any) {
     if (failure?.data instanceof Blob) { try { error.value = (JSON.parse(await failure.data.text())).message } catch { error.value = 'Не удалось скачать смету' } }
     else error.value = message(failure)
@@ -141,7 +143,7 @@ async function download(format: 'xlsx' | 'pdf') {
       <UAlert v-if="error && !deleteOpen" color="error" :description="error"/>
 
       <div id="estimate-panel" role="tabpanel" :aria-labelledby="tab === 'items' ? 'estimate-items-tab' : 'estimate-table-tab'">
-        <div v-if="items.length || tab === 'table'" class="estimate-filterbar"><UInput v-model="search" icon="i-lucide-search" placeholder="Найти товар или услугу" aria-label="Поиск в смете" class="estimate-search"/><template v-if="tab === 'table'"><UButton color="neutral" variant="outline" icon="i-lucide-sliders-horizontal" label="Строки и столбцы" @click="openSettings"/><UButton color="neutral" variant="outline" icon="i-lucide-file-spreadsheet" label="Excel" :loading="exporting === 'xlsx'" :disabled="!!exporting" @click="download('xlsx')"/><UButton color="neutral" variant="outline" icon="i-lucide-file-text" label="PDF" :loading="exporting === 'pdf'" :disabled="!!exporting" @click="download('pdf')"/></template></div>
+        <div v-if="items.length || tab === 'table'" class="estimate-filterbar"><UInput v-model="search" icon="i-lucide-search" placeholder="Найти товар или услугу" aria-label="Поиск в смете" class="estimate-search"/><template v-if="tab === 'table'"><UButton color="neutral" variant="outline" icon="i-lucide-sliders-horizontal" label="Строки и столбцы" @click="openSettings"/><UButton color="neutral" variant="outline" icon="i-lucide-file-spreadsheet" label="Excel" :loading="exporting === 'xlsx'" :disabled="!!exporting" @click="download('xlsx')"/><UButton label="Открыть XLSX" icon="i-lucide-file-pen-line" color="neutral" variant="ghost" :disabled="!!exporting" @click="download('xlsx',true)"/><UButton color="neutral" variant="outline" icon="i-lucide-file-text" label="PDF" :loading="exporting === 'pdf'" :disabled="!!exporting" @click="download('pdf')"/><UButton label="Открыть PDF" icon="i-lucide-file-pen-line" color="neutral" variant="ghost" :disabled="!!exporting" @click="download('pdf',true)"/></template></div>
         <div v-if="!items.length && tab === 'items'" class="estimate-empty"><span><UIcon name="i-lucide-calculator"/></span><h2>Из чего складывается проект?</h2><p>Добавьте товары и услуги — таблица и суммы сметы сформируются автоматически.</p><UButton v-if="editable" icon="i-lucide-plus" label="Добавить первую позицию" @click="openItem()"/></div>
         <template v-else-if="tab === 'items'">
           <div class="estimate-items"><article v-for="item in filtered" :key="item.id" class="estimate-item"><div class="estimate-item-image"><img v-if="item.image" :src="item.image" :alt="item.name"/><UIcon v-else :name="item.kind === 'product' ? 'i-lucide-package' : 'i-lucide-wrench'"/></div><div class="estimate-item-content"><small>{{ item.kind === 'product' ? 'Товар' : 'Услуга' }}</small><h2>{{ item.name }}</h2><a v-if="item.link" :href="item.link" target="_blank" rel="noopener noreferrer" class="estimate-link">Открыть ссылку <UIcon name="i-lucide-external-link"/></a><p>{{ item.internalCost ? 'Внутренние затраты' : counterpartyLabel(item.counterpartyId, parties) }}<span v-if="parties.find(party => party.id === item.counterpartyId)?.isOwnLegalEntity" class="estimate-own-company">Наше юр. лицо</span><span v-if="item.unit"> · {{ item.unit }}</span></p><p>{{ item.quantity.toLocaleString('ru-RU') }} × {{ money(item.price, item.currency) }}<span v-if="item.deadline"> · До {{ dateLabel(item.deadline) }}</span></p><p>НДС {{ item.vatRate }}%: {{ money(amounts[items.findIndex(row => row.id === item.id)]?.vat ?? 0, 'RUB') }} · Без НДС: {{ money(amounts[items.findIndex(row => row.id === item.id)]?.net ?? 0, 'RUB') }}</p><dl v-if="item.fields.length" class="estimate-extra"><div v-for="field in item.fields" :key="field.id"><dt>{{ field.label }}</dt><dd><a v-if="field.type === 'link' && field.value" :href="field.value" target="_blank" rel="noopener noreferrer">{{ field.value }}</a><template v-else-if="field.type === 'money' && field.value">{{ money(Number(field.value), field.currency) }}</template><template v-else-if="field.type === 'date'">{{ dateLabel(field.value) }}</template><template v-else>{{ field.value || '—' }}</template></dd></div></dl></div><div class="estimate-item-end"><strong>{{ money(lineTotal(item), item.currency) }}</strong><div v-if="editable" class="estimate-item-actions"><UButton color="neutral" variant="ghost" icon="i-lucide-pencil" :aria-label="`Изменить: ${item.name}`" @click="openItem(item)"/><UButton color="neutral" variant="ghost" icon="i-lucide-trash-2" :aria-label="`Удалить: ${item.name}`" @click="askDelete(item)"/></div></div></article></div>

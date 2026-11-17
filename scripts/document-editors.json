@@ -1,0 +1,37 @@
+[
+  {
+    "app": "wordcraft",
+    "version": "0.18.1",
+    "archive": "wordcraft-web-0.18.1.zip",
+    "url": "https://github.com/storytold/wordcraft/releases/download/v0.18.1/wordcraft-web-0.18.1.zip",
+    "sha256": "3daa7c2d1f209a7eeb2527fcefa3fe31e875848fb1970d68f54edae55fe0bc9f"
+  },
+  {
+    "app": "pdfcraft",
+    "version": "0.21.1",
+    "archive": "pdfcraft-web-0.21.1.zip",
+    "url": "https://github.com/storytold/pdfcraft/releases/download/v0.21.1/pdfcraft-web-0.21.1.zip",
+    "sha256": "fe9708d46af191aebb56f70eb32cf8b112b0b9452d17ae6ba3a8c4a8665fe748"
+  },
+  {
+    "app": "gridcraft",
+    "version": "0.19.1",
+    "archive": "gridcraft-web-0.19.1.zip",
+    "url": "https://github.com/storytold/gridcraft/releases/download/v0.19.1/gridcraft-web-0.19.1.zip",
+    "sha256": "48c5d1b101befebb3c5ba3b7a14914f01c3207934813ed07dc4251b7ae116a78"
+  },
+  {
+    "app": "deckcraft",
+    "version": "0.18.1",
+    "archive": "deckcraft-web-0.18.1.zip",
+    "url": "https://github.com/storytold/deckcraft/releases/download/v0.18.1/deckcraft-web-0.18.1.zip",
+    "sha256": "3196e537fcfab538aaa2e88584bc74e29bb584459b916ab584ac22fbafe32db5"
+  },
+  {
+    "app": "photocraft",
+    "version": "0.23.1",
+    "archive": "photocraft-web-0.23.1.zip",
+    "url": "https://github.com/storytold/photocraft/releases/download/v0.23.1/photocraft-web-0.23.1.zip",
+    "sha256": "3a498eb517bca6cec89f9c6b1fc6448269a05428c8a3a4637c16817da157f03c"
+  }
+]

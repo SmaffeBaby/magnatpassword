@@ -54,3 +54,5 @@ src-tauri/gen/android/keystore.properties
 /deploy/local/
 /docker-compose.https.yml
 /docker-compose.override.yml
+
+/public/editors/

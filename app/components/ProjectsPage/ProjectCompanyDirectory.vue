@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const office = useOffice()
+async function outputFile(blob: Blob, name: string, open: boolean) { if (open) office.openBlob(blob, name); else await saveFile(blob, name) }
 import type { DirectoryCompany } from '~~/shared/types/project-companies'
 import ProjectCompanyFields from './ProjectCompanyFields.vue'
 import { companyInputSchema, newCompanyDraft } from '~~/shared/utils/project-companies'
@@ -48,16 +50,16 @@ async function submit(remove=false){
  }catch(failure:any){error.value=failure?.data?.message||failure.message;if(failure?.statusCode===409)await query.refetch()}
  finally{busy.value=false}
 }
-async function download(format:'xlsx'|'pdf'){
+async function download(format:'xlsx'|'pdf', openEditor = false) {
  if(exporting.value)return;exporting.value=format;error.value='';const userId=auth.user?.id
- try{const{data}=await supabase.auth.getSession();if(!data.session||data.session.user.id!==userId)throw Error('Войдите в аккаунт');const blob=await backendFetch<Blob, 'blob'>('/api/projects/companies/export',{method:'POST',retry:0,responseType:'blob',headers:{Authorization:`Bearer ${data.session.access_token}`},body:{format,isOwnLegalEntity:props.ownOnly}});if(auth.user?.id!==userId)return;await saveFile(blob, `${props.ownOnly?'Наши юр. лица':'Контрагенты'}.${format}`)}
+ try{const{data}=await supabase.auth.getSession();if(!data.session||data.session.user.id!==userId)throw Error('Войдите в аккаунт');const blob=await backendFetch<Blob, 'blob'>('/api/projects/companies/export',{method:'POST',retry:0,responseType:'blob',headers:{Authorization:`Bearer ${data.session.access_token}`},body:{format,isOwnLegalEntity:props.ownOnly}});if(auth.user?.id!==userId)return;await outputFile(blob, `${props.ownOnly?'Наши юр. лица':'Контрагенты'}.${format}`, openEditor)}
  catch(failure:any){if(failure?.data instanceof Blob){try{error.value=JSON.parse(await failure.data.text()).message}catch{error.value='Не удалось скачать файл'}}else error.value=failure?.data?.message||failure.message}
  finally{exporting.value=''}
 }
 </script>
 <template>
  <section class="company-directory" :aria-label="ownOnly?'База наших юридических лиц':'Общая база контрагентов'">
-  <div class="company-toolbar"><UInput v-model="search" icon="i-lucide-search" placeholder="Компания, ИНН, ОГРН или проект" aria-label="Поиск компании" class="company-search"/><UButton label="Excel" icon="i-lucide-file-spreadsheet" color="neutral" variant="outline" :disabled="!!exporting||query.isPending.value||!!query.error.value" :loading="exporting==='xlsx'" @click="download('xlsx')"/><UButton label="PDF" icon="i-lucide-file-text" color="neutral" variant="outline" :disabled="!!exporting||query.isPending.value||!!query.error.value" :loading="exporting==='pdf'" @click="download('pdf')"/><UButton :label="ownOnly?'Добавить юр. лицо':'Добавить контрагента'" icon="i-lucide-plus" @click="show()"/></div>
+  <div class="company-toolbar"><UInput v-model="search" icon="i-lucide-search" placeholder="Компания, ИНН, ОГРН или проект" aria-label="Поиск компании" class="company-search"/><UButton label="Excel" icon="i-lucide-file-spreadsheet" color="neutral" variant="outline" :disabled="!!exporting||query.isPending.value||!!query.error.value" :loading="exporting==='xlsx'" @click="download('xlsx')"/><UButton label="Открыть XLSX" icon="i-lucide-file-pen-line" color="neutral" variant="ghost" :disabled="!!exporting" @click="download('xlsx',true)"/><UButton label="PDF" icon="i-lucide-file-text" color="neutral" variant="outline" :disabled="!!exporting||query.isPending.value||!!query.error.value" :loading="exporting==='pdf'" @click="download('pdf')"/><UButton label="Открыть PDF" icon="i-lucide-file-pen-line" color="neutral" variant="ghost" :disabled="!!exporting" @click="download('pdf',true)"/><UButton :label="ownOnly?'Добавить юр. лицо':'Добавить контрагента'" icon="i-lucide-plus" @click="show()"/></div>
   <div class="company-filterbar"><USelectMenu v-model="projectFilter" :items="projectOptions" value-key="value" multiple placeholder="Любые проекты" aria-label="Фильтр компаний по проектам" class="company-project-filter"/><USelect v-model="ownership" :items="[{value:'all',label:'Все авторы'},{value:'mine',label:'Добавлены мной'},{value:'others',label:'Добавлены другими'}]" aria-label="Автор компании"/><USelect v-model="usage" :items="[{value:'all',label:'Любые связи'},{value:'used',label:'Есть проекты'},{value:'unused',label:'Без проектов'}]" aria-label="Использование компании в проектах"/><USelect v-model="sort" :items="sortOptions" aria-label="Сортировка компаний"/></div>
   <div class="company-results" role="status"><span>Найдено {{rows.length}} из {{scopeRows.length}}</span><UButton v-if="hasFilters" label="Сбросить фильтры" icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="resetFilters"/></div>
   <UAlert v-if="error&&!open" color="error" :description="error" class="mb-5"/>

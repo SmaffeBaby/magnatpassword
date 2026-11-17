@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApplicationsCard from '~/components/Editors/ApplicationsCard.vue'
 import ContractRegisterCard from '~/components/ProjectsPage/ContractRegisterCard.vue'
 import PasswordCard from '~/components/PasswordPage/PasswordCard.vue'
 import FinanceCard from '~/components/Finances/FinanceCard.vue'
@@ -10,7 +11,7 @@ const home=useHomeLayoutStore(),auth=useAuthStore(),route=useRoute()
 const open=ref(false)
 const { application } = useAccountBrand()
 const currentServiceName = computed(() => application.value?.name || 'Все сервисы')
-const components={contracts:ContractRegisterCard,passwords:PasswordCard,finances:FinanceCard,relationships:RelationshipsCard,projects:ProjectsCard,team:TeamCard,kaban:KabanCard}
+const components={ applications: ApplicationsCard,contracts:ContractRegisterCard,passwords:PasswordCard,finances:FinanceCard,relationships:RelationshipsCard,projects:ProjectsCard,team:TeamCard,kaban:KabanCard}
 const rows=computed(()=>home.display.rows.map(row=>({...row,cards:row.cards})).filter(row=>row.cards.length))
 watch(()=>route.path,()=>{open.value=false})
 watch(()=>auth.user?.id,()=>{open.value=false})
@@ -26,7 +27,7 @@ watch(open,value=>{if(value&&!home.ready&&!home.loading)void home.load()})
      <p v-if="home.loading" class="services-status" role="status">Загружаем сервисы…</p>
      <UAlert v-else-if="home.error&&!home.ready" color="error" title="Не удалось загрузить сервисы" :description="home.error" :actions="[{label:'Повторить',onClick:()=>home.load()}]"/>
      <template v-else-if="home.ready">
-      <div v-for="(row,index) in rows" :key="index" class="services-row" :class="`align-${row.align}`" :aria-label="`Ряд ${index+1}`"><component v-for="id in row.cards" :key="id" :is="components[id]" @click="open=false"/></div>
+      <div v-for="(row,index) in rows" :key="index" class="services-row" :class="`align-${row.align}`" :aria-label="`Ряд ${index+1}`"><component v-for="id in row.cards" :key="id" :is="components[id]" @click="id!=='applications'&&(open=false)"/></div>
       <div v-if="!rows.length" class="services-empty"><UIcon name="i-lucide-layout-dashboard"/><p>Все сервисы скрыты в настройках главной страницы.</p><UButton to="/" label="Открыть главную" color="neutral" variant="outline" @click="open=false"/></div>
      </template>
     </section>

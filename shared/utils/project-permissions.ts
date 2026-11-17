@@ -2,11 +2,13 @@ import { z } from 'zod'
 import type { Project, ProjectPermission } from '../types/projects'
 
 export const projectSections = [
+  { key: 'documents', label: 'Документы проекта' },
   { key: 'economy', label: 'Экономика проекта' },
   { key: 'tasks', label: 'Задачи · Кабан' }
 ] as const
 export type ProjectSection = typeof projectSections[number]['key']
 export const projectSectionPermissionsSchema = z.object({
+  documents: z.enum(['hidden', 'viewer', 'editor']).optional(),
   economy: z.enum(['hidden', 'viewer', 'editor']).optional(),
   tasks: z.enum(['hidden', 'viewer', 'editor']).optional()
 }).strict()

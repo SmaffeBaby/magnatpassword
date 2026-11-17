@@ -30,7 +30,9 @@
     "android:dev": "node scripts/android.mjs dev",
     "windows:build": "node scripts/windows.mjs",
     "android:release": "node scripts/android.mjs release",
-    "shell:prepare": "node scripts/prepare-shell.mjs"
+    "shell:prepare": "node scripts/prepare-shell.mjs",
+    "editors:prepare": "node scripts/prepare-document-editors.mjs",
+    "test:project-documents": "node --env-file=.env tests/project-documents.integration.mjs"
   },
   "dependencies": {
     "@nuxt/content": "3.16.2",
@@ -52,6 +54,8 @@
     "vue": "3.5.44",
     "vue-router": "5.4.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "yauzl": "3.4.0",
+    "yazl": "3.3.1",
     "zod": "4.6.7"
   },
   "engines": {
@@ -65,6 +69,8 @@
     "@types/node": "^24.0.0",
     "@types/nodemailer": "8.0.2",
     "@types/qrcode": "^1.5.6",
+    "@types/yauzl": "3.4.0",
+    "@types/yazl": "3.3.1",
     "esbuild": "0.28.2",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
