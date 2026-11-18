@@ -10,7 +10,7 @@ export interface ProjectChatFile extends ProjectDocumentMetadata { id: string; d
 export interface ProjectChatPoll { question: string; options: { id: string; label: string }[] }
 export interface ProjectChatTodo { title: string; items: { id: string; label: string }[] }
 export interface ChatTaskReference { taskId: string; boardId: string; title: string; projectId?: string | null; vaultId?: string | null; available?: boolean; completed?: boolean }
-export interface ChatDirectoryItem extends ProjectChat { projectId: string | null; projectName?: string; people: { userId: string; fullName: string; avatarUrl: string }[] }
+export interface ChatDirectoryItem extends ProjectChat { lastMessagePreview?: string; projectId: string | null; projectName?: string; people: { userId: string; fullName: string; avatarUrl: string }[] }
 export interface ProjectChatMessage {
   id: string; seq: number; authorId: string | null; authorName?: string; authorAvatarUrl?: string; createdAt: string
   revision: number; editedAt: string | null; deletedAt: string | null; pinned: boolean
