@@ -3,8 +3,16 @@ export interface ProjectDocumentMetadata { name: string; type: string; size: num
 export interface ProjectDocument extends ProjectDocumentMetadata {
   folderId: string | null
   id: string; revision: number; createdAt: string; updatedAt: string; createdBy: string | null
+  lastChangedBy?: string | null
   permission: 'owner' | 'viewer' | 'editor'; canManage: boolean
   defaultPermission?: ProjectPermission | 'inherit' | null
   members?: { userId: string; permission: ProjectPermission }[] | null
 }
 export interface ProjectDocumentFolder { id: string; parentId: string | null; name: string; revision: number }
+
+export interface ProjectDocumentChange {
+  revision: number
+  action: 'create' | 'replace' | 'metadata' | 'move' | 'access' | 'legacy'
+  actorName: string | null
+  changedAt: string
+}

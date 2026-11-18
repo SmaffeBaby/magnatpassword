@@ -12,10 +12,10 @@
   const click = HTMLAnchorElement.prototype.click
   HTMLAnchorElement.prototype.click = function () {
     const name = this.download, blob = blobs.get(this.href)
-    if (!opened || !blob || !/\.(psd|psb|ora|png|jpe?g|webp|avif|tiff?|bmp|gif|hei[cf]|pdf)$/i.test(name)) return click.call(this)
-    const id = `magnat-photo-${++sequence}`, saveAs = /\.(psd|psb|ora)$/i.test(name)
+    if (!opened || !blob || !name) return click.call(this)
+    const id = `magnat-photo-${++sequence}`
     pending.set(id, true)
-    void blob.arrayBuffer().then(bytes => post('save', { name, bytes, id, saveAs })).catch(() => post('failed', { id, error: 'Не удалось получить сохраняемое изображение' }))
+    void blob.arrayBuffer().then(bytes => post('save', { name, bytes, id, mime: blob.type })).catch(() => post('failed', { id, error: 'Не удалось получить сохраняемое изображение' }))
   }
   window.addEventListener('message', event => {
     if (event.source !== window.parent || event.origin !== origin || !event.data) return
@@ -31,9 +31,9 @@
         opened = true
       } catch (failure) { post('failed', { error: failure.message || 'Не удалось открыть изображение' }) }
     } else if (data.type === 'photocraft:saved' && pending.has(data.id)) {
-      pending.delete(data.id); post('dirty', { dirty: pending.size > 0 })
+      pending.delete(data.id)
     } else if (data.type === 'photocraft:failed' && pending.has(data.id)) {
-      pending.delete(data.id); post('dirty', { dirty: true })
+      pending.delete(data.id)
     }
   })
   // PhotoCraft exposes no browser dirty-state API in this release. Conservatively

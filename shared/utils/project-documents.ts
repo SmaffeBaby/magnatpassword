@@ -12,8 +12,8 @@ export const documentEditors = [
   { key: 'wordcraft', label: 'WordCraft', extensions: ['docx','doc','docm','dotx','odt','rtf','txt','md'] },
   { key: 'pdfcraft', label: 'PdfCraft', extensions: ['pdf'] },
   { key: 'gridcraft', label: 'GridCraft', extensions: ['xlsx','xls','xlsm','ods','csv','tsv'] },
-  { key: 'deckcraft', label: 'DeckCraft', extensions: ['pptx','ppt','odp'] },
-  { key: 'photocraft', label: 'PhotoCraft', extensions: ['png','jpg','jpeg','webp','gif','bmp','tif','tiff','psd','ora'] }
+  { key: 'deckcraft', label: 'DeckCraft', extensions: ['pptx','ppt','odp','deckcraft'] },
+  { key: 'photocraft', label: 'PhotoCraft', extensions: ['png','jpg','jpeg','webp','gif','bmp','tif','tiff','psd','psb','ora'] }
 ] as const
 export type DocumentEditorKey = typeof documentEditors[number]['key']
 export function documentExtension(name: string) { return name.split('.').pop()?.toLowerCase() || '' }

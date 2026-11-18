@@ -6,7 +6,7 @@ import { documentMaxSize, documentMetadataSchema } from '../../shared/utils/proj
 import { openSharedVault, sealSharedVault } from './shared-crypto'
 export const projectDocumentBucket = 'project-documents'
 export type DocumentContext = Awaited<ReturnType<typeof requireProjectsUser>>
-interface StoredDocument { folderId: string | null; id: string; encryptedData: unknown; path: string; revision: number; createdAt: string; updatedAt: string; createdBy: string | null; permission: ProjectDocument['permission']; canManage: boolean; defaultPermission: ProjectDocument['defaultPermission']; members: ProjectDocument['members'] }
+interface StoredDocument { folderId: string | null; id: string; encryptedData: unknown; path: string; revision: number; createdAt: string; updatedAt: string; createdBy: string | null; lastChangedBy?: string | null; permission: ProjectDocument['permission']; canManage: boolean; defaultPermission: ProjectDocument['defaultPermission']; members: ProjectDocument['members'] }
 export function documentFailure(error: { message: string }): never {
   const folderErrors: Record<string, [number,string]> = { FOLDER_NOT_FOUND: [404,'Папка не найдена'], FOLDER_EXISTS: [409,'Папка с таким названием уже существует'], FOLDER_NOT_EMPTY: [409,'Сначала переместите или удалите содержимое папки'], FOLDER_LIMIT: [400,'В проекте можно создать до 500 папок'], FOLDER_DEPTH: [400,'Допускается до 20 уровней папок'] }
   for (const [code,[statusCode,message]] of Object.entries(folderErrors)) if (error.message.includes(code)) throw createError({ statusCode, message })
@@ -22,7 +22,7 @@ export function projectDocumentId(event: H3Event) {
 }
 export function decodeProjectDocument(event: H3Event, project: string, row: StoredDocument): ProjectDocument {
   const data = openSharedVault<ProjectDocumentMetadata>(row.encryptedData as Parameters<typeof openSharedVault>[0], sharedSecret(event), `project-document:${project}:${row.id}`, 1)
-  return { ...data, folderId: row.folderId ?? null, id: row.id, revision: row.revision, createdAt: row.createdAt, updatedAt: row.updatedAt, createdBy: row.createdBy, permission: row.permission, canManage: row.canManage, defaultPermission: row.defaultPermission, members: row.members }
+  return { ...data, folderId: row.folderId ?? null, id: row.id, revision: row.revision, createdAt: row.createdAt, updatedAt: row.updatedAt, createdBy: row.createdBy, lastChangedBy: row.lastChangedBy, permission: row.permission, canManage: row.canManage, defaultPermission: row.defaultPermission, members: row.members }
 }
 export async function readProjectDocuments(event: H3Event, file?: string) {
   const context = await requireProjectsUser(event), project = projectId(event)
