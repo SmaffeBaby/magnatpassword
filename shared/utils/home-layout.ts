@@ -6,6 +6,7 @@ export const homeApps = {
   finances: { label: 'Финансы', actionLabel: 'Финансы', icon: 'i-lucide-chart-no-axes-combined' },
   relationships: { label: 'Взаимосвязи', actionLabel: 'Взаимосвязи', icon: 'i-lucide-network' },
   contracts: { label: 'Реестр договоров', actionLabel: 'Реестр договоров', icon: 'i-lucide-notebook-tabs' },
+  spaces: { label: 'Пространства', actionLabel: 'Пространства', icon: 'i-lucide-orbit' },
   projects: { label: 'Проекты', actionLabel: 'Проекты', icon: 'i-lucide-folder-kanban' },
   team: { label: 'Команда', actionLabel: 'Команду', icon: 'i-lucide-users-round' },
   kaban: { label: 'Кабан', actionLabel: 'Кабан', icon: 'i-lucide-columns-3' }

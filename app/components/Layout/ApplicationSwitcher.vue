@@ -4,6 +4,7 @@ import ContractRegisterCard from '~/components/ProjectsPage/ContractRegisterCard
 import PasswordCard from '~/components/PasswordPage/PasswordCard.vue'
 import FinanceCard from '~/components/Finances/FinanceCard.vue'
 import RelationshipsCard from '~/components/Relationships/RelationshipsCard.vue'
+import SpacesCard from '~/components/ProjectsPage/SpacesCard.vue'
 import ProjectsCard from '~/components/ProjectsPage/ProjectsCard.vue'
 import TeamCard from '~/components/AccountPage/TeamCard.vue'
 import KabanCard from '~/components/Kaban/KabanCard.vue'
@@ -11,7 +12,7 @@ const home=useHomeLayoutStore(),auth=useAuthStore(),route=useRoute()
 const open=ref(false)
 const { application } = useAccountBrand()
 const currentServiceName = computed(() => application.value?.name || 'Все сервисы')
-const components={ applications: ApplicationsCard,contracts:ContractRegisterCard,passwords:PasswordCard,finances:FinanceCard,relationships:RelationshipsCard,projects:ProjectsCard,team:TeamCard,kaban:KabanCard}
+const components={ applications: ApplicationsCard,contracts:ContractRegisterCard,passwords:PasswordCard,finances:FinanceCard,relationships:RelationshipsCard,projects:ProjectsCard,spaces:SpacesCard,team:TeamCard,kaban:KabanCard}
 const rows=computed(()=>home.display.rows.map(row=>({...row,cards:row.cards})).filter(row=>row.cards.length))
 watch(()=>route.path,()=>{open.value=false})
 watch(()=>auth.user?.id,()=>{open.value=false})
@@ -55,4 +56,6 @@ watch(open,value=>{if(value&&!home.ready&&!home.loading)void home.load()})
 .services-empty{text-align:center;padding:16px;color:#8291a6}.services-empty>.iconify{width:32px;height:32px}.services-empty p{font-size:13px;line-height:1.7;margin:12px 0 16px}.services-status{font-size:13px;color:#8291a6;padding:20px 0;text-align:center}
 @media(max-width:600px){.workspace-apps .services-trigger{padding:8px 14px;font-size:13px;gap:8px}.services-panel{padding:18px;gap:14px;max-height:calc(100dvh - 170px)}.services-row{gap:10px}.services-row :deep(.password-glass){width:calc((100% - 10px)/2);padding:16px 10px;font-size:12px;gap:8px}.services-row :deep(.password-glass img),.services-row :deep(.finance-app-icon),.services-row :deep(.projects-app-icon){width:22px;height:22px}}
 @media(prefers-reduced-motion:reduce){.services-trigger,.services-trigger>.services-chevron,.services-row :deep(.password-glass){transition:none}}
+
+.services-row{align-items:stretch}.services-row :deep(.password-glass){box-sizing:border-box;flex:0 0 calc((100% - 24px)/3);height:64px;min-height:64px;max-height:64px;padding:10px 14px;font-size:14px;line-height:1.25;overflow:hidden}.services-row :deep(.password-glass>img),.services-row :deep(.password-glass>.iconify),.services-row :deep(.password-glass>.finance-app-icon),.services-row :deep(.password-glass>.projects-app-icon){box-sizing:border-box;width:28px;height:28px;min-width:28px;max-width:28px;flex:0 0 28px;padding:0;margin:0;font-size:28px}.services-row :deep(.projects-app-icon>.iconify){width:28px;height:28px;font-size:28px}.services-row :deep(.password-glass>span:last-child:not(.iconify)){min-width:0;flex:1;font-size:inherit!important;line-height:1.25;white-space:normal!important;overflow-wrap:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}@media(max-width:600px){.services-row :deep(.password-glass){flex-basis:calc((100% - 10px)/2);width:calc((100% - 10px)/2);height:64px;min-height:64px;max-height:64px;font-size:12px;padding:10px;gap:8px}.services-row :deep(.password-glass>img),.services-row :deep(.password-glass>.iconify),.services-row :deep(.password-glass>.finance-app-icon),.services-row :deep(.password-glass>.projects-app-icon){width:24px;height:24px;min-width:24px;max-width:24px;flex-basis:24px;font-size:24px}.services-row :deep(.projects-app-icon>.iconify){width:24px;height:24px;font-size:24px}}
 </style>

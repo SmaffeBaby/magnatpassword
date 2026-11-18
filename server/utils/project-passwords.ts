@@ -8,12 +8,12 @@ export const projectPasswordSourceSchema = z.object({
 }).strict()
 
 // Only offer source records the caller can currently read; project copies have their own access.
-export async function projectPasswordCandidates(event: H3Event, context: Awaited<ReturnType<typeof requireSharedUser>>): Promise<ProjectPasswordCandidate[]> {
+export async function projectPasswordCandidates(event: H3Event, context: Awaited<ReturnType<typeof requireSharedUser>>, includeSubscriptions = false): Promise<ProjectPasswordCandidate[]> {
   const result: ProjectPasswordCandidate[] = []
   const personal = await personalRow(context)
   if (personal?.encryption_mode === 'server') {
     for (const entry of openPersonal(event, personal).entries) {
-      if (!entry.kind) result.push({ source: { kind: 'personal', sourceId: context.user.id, entryId: entry.id }, sourceName: 'Личное хранилище', entry })
+      if (!entry.kind || includeSubscriptions && entry.kind==='subscription') result.push({ source: { kind: 'personal', sourceId: context.user.id, entryId: entry.id }, sourceName: 'Личное хранилище', entry })
     }
   }
   const { data: memberships, error } = await context.client.from('shared_vault_members').select('vault_id,category_ids').eq('user_id', context.user.id)
@@ -24,12 +24,12 @@ export async function projectPasswordCandidates(event: H3Event, context: Awaited
     for (const group of groups) {
       const member = memberships.find(member => member.vault_id === group.id)!
       for (const entry of categoryScopedData(decodeShared(event, group), member.category_ids).entries) {
-        if (!entry.kind) result.push({ source: { kind: 'vault', sourceId: group.id, entryId: entry.id }, sourceName: group.name, entry })
+        if (!entry.kind || includeSubscriptions && entry.kind==='subscription') result.push({ source: { kind: 'vault', sourceId: group.id, entryId: entry.id }, sourceName: group.name, entry })
       }
     }
   }
   for (const card of await visibleSharedCards(event, context)) {
-    if (!card.archived && !card.entry.kind) result.push({ source: { kind: 'card', sourceId: card.id, entryId: card.entry.id }, sourceName: card.vaultIds.length ? 'Общая карточка' : 'Личная карточка', entry: card.entry })
+    if (!card.archived && (!card.entry.kind || includeSubscriptions && card.entry.kind==='subscription')) result.push({ source: { kind: 'card', sourceId: card.id, entryId: card.entry.id }, sourceName: card.vaultIds.length ? 'Общая карточка' : 'Личная карточка', entry: card.entry })
   }
   return result
 }

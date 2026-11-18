@@ -13,7 +13,7 @@ COPY --from=document-editors /editors/public/editors ./public/editors
 RUN NODE_OPTIONS=--max-old-space-size=1536 npm run build
 
 FROM node:24-alpine AS runner
-RUN apk add --no-cache python3 py3-reportlab font-dejavu
+RUN apk add --no-cache python3 py3-reportlab font-dejavu libreoffice-writer libreoffice-impress poppler-utils
 WORKDIR /app
 ENV NODE_ENV=production NITRO_HOST=0.0.0.0 NITRO_PORT=3000
 COPY --from=build --chown=node:node /app/.output ./.output

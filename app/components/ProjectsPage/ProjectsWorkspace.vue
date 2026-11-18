@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ProjectSpaces from './ProjectSpaces.vue'
 import ProjectChats from './ProjectChats.vue'
 import ProjectPasswords from './ProjectPasswords.vue'
 import ProjectDocuments from './ProjectDocuments.vue'
@@ -23,7 +24,7 @@ import { projectStages } from '~~/shared/utils/project-dashboard'
 import type { Project, ProjectPermission } from '~~/shared/types/projects'
 import type { TeamPerson } from '~~/shared/types/team'
 
-const props = defineProps<{ projectId?: string; section?: 'chats' | 'passwords' | 'documents' | 'economy' | 'counterparties' | 'legal-entities' | 'document-templates' | 'input-documents' | 'estimate' | 'contracts' | 'execution' | 'closing' | 'relationships' }>()
+const props = defineProps<{ projectId?: string; section?: 'spaces' | 'chats' | 'passwords' | 'documents' | 'economy' | 'counterparties' | 'legal-entities' | 'document-templates' | 'input-documents' | 'estimate' | 'contracts' | 'execution' | 'closing' | 'relationships' }>()
 const route = useRoute()
 const directoryTab = computed(() => ['counterparties','legal-entities','document-templates'].includes(String(route.query.tab)) ? String(route.query.tab) : 'projects')
 const directoryTitle = computed(() => directoryTab.value === 'document-templates' ? 'Шаблоны документов' : directoryTab.value === 'counterparties' ? 'Контрагенты' : directoryTab.value === 'legal-entities' ? 'Наши Юр. лица' : 'Проекты')
@@ -100,10 +101,11 @@ watch([()=>route.query.create,()=>access.data.value?.allowed],([create,allowed])
       <p v-if="projects.isPending.value" class="projects-state">Загружаем проекты…</p>
       <template v-else-if="projectId">
         <template v-if="currentProject">
-          <header class="projects-heading project-page-heading"><div><span class="eyebrow">{{ activeStage?`ЭТАП ${activeStage.number}`:'ПРОЕКТ' }}</span><h1>{{ section==='chats'?'Чаты проекта':section==='passwords'?'Пароли проекта':section==='documents'?'Документы проекта':section==='economy'?'Экономика проекта':section==='counterparties'?'Контрагенты':section==='legal-entities'?'Наши юр. лица':section==='document-templates'?'Шаблоны документов':isProcessPage?'Взаимосвязь':activeStage?activeStage.label:currentProject.name }}<span class="title-dot">.</span></h1><p>{{ section?currentProject.name:'Обзор проекта и его участники.' }}</p></div><div class="project-heading-actions"><ProjectDashboardSettings v-if="section==='economy' && canViewProjectSection(currentProject, 'economy')" :key="currentProject.id" :project-id="currentProject.id"/><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></div></header>
-          <UAlert v-if="section && section!=='passwords' && section!=='chats' && !canViewProjectSection(currentProject, section==='documents'?'documents':'economy')" color="neutral" title="Нет доступа к разделу проекта" description="Владелец проекта может предоставить доступ в настройках участников." />
+          <header class="projects-heading project-page-heading"><div><span class="eyebrow">{{ activeStage?`ЭТАП ${activeStage.number}`:'ПРОЕКТ' }}</span><h1>{{ section==='spaces'?'Пространства':section==='chats'?'Чаты проекта':section==='passwords'?'Пароли проекта':section==='documents'?'Документы проекта':section==='economy'?'Экономика проекта':section==='counterparties'?'Контрагенты':section==='legal-entities'?'Наши юр. лица':section==='document-templates'?'Шаблоны документов':isProcessPage?'Взаимосвязь':activeStage?activeStage.label:currentProject.name }}<span class="title-dot">.</span></h1><p>{{ section?currentProject.name:'Обзор проекта и его участники.' }}</p></div><div class="project-heading-actions"><ProjectDashboardSettings v-if="section==='economy' && canViewProjectSection(currentProject, 'economy')" :key="currentProject.id" :project-id="currentProject.id"/><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></div></header>
+          <UAlert v-if="section && section!=='spaces' && section!=='passwords' && section!=='chats' && !canViewProjectSection(currentProject, section==='documents'?'documents':'economy')" color="neutral" title="Нет доступа к разделу проекта" description="Владелец проекта может предоставить доступ в настройках участников." />
           <template v-else>
-          <ProjectChats v-if="section==='chats'" :key="currentProject.id" :project="currentProject"/>
+          <ProjectSpaces v-if="section==='spaces'" :key="currentProject.id" :project="currentProject"/>
+          <ProjectChats v-else-if="section==='chats'" :key="currentProject.id" :project="currentProject"/>
           <ProjectPasswords v-else-if="section==='passwords'" :key="currentProject.id" :project="currentProject"/>
           <ProjectDocuments v-else-if="section==='documents'" :key="currentProject.id" :project="currentProject"/>
           <ProjectInputData v-else-if="section === 'input-documents'" :key="currentProject.id" :project="currentProject"/>

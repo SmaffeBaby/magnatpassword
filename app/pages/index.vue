@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ApplicationsCard from '~/components/Editors/ApplicationsCard.vue'
 import ContractRegisterCard from '~/components/ProjectsPage/ContractRegisterCard.vue'
+import SpacesCard from '~/components/ProjectsPage/SpacesCard.vue'
 import ProjectsCard from '~/components/ProjectsPage/ProjectsCard.vue'
 import RelationshipsCard from '~/components/Relationships/RelationshipsCard.vue'
 import FinanceCard from '~/components/Finances/FinanceCard.vue'
@@ -9,7 +10,7 @@ import TeamCard from '~/components/AccountPage/TeamCard.vue'
 import KabanCard from '~/components/Kaban/KabanCard.vue'
 definePageMeta({ layout: 'home' })
 const home = useHomeLayoutStore()
-const components = { applications: ApplicationsCard, contracts: ContractRegisterCard, passwords: PasswordCard, finances: FinanceCard, relationships: RelationshipsCard, projects: ProjectsCard, team: TeamCard, kaban: KabanCard }
+const components = { applications: ApplicationsCard, contracts: ContractRegisterCard, passwords: PasswordCard, finances: FinanceCard, relationships: RelationshipsCard, projects: ProjectsCard, spaces: SpacesCard, team: TeamCard, kaban: KabanCard }
 const rows = computed(() => home.display.rows.map(row => ({ ...row, cards: row.cards })).filter(row => row.cards.length))
 </script>
 <template>
@@ -25,4 +26,6 @@ const rows = computed(() => home.display.rows.map(row => ({ ...row, cards: row.c
 
 <style scoped>
 .home-custom-layout{width:100%;max-width:1660px;display:flex;flex-direction:column;gap:24px;min-width:0}.home-application-row{display:flex;flex-wrap:wrap;align-items:center;gap:24px;width:100%;min-width:0}.align-left{justify-content:flex-start}.align-center{justify-content:center}.align-right{justify-content:flex-end}.home-application-row :deep(.password-launch-card){flex:0 1 300px;min-width:0;max-width:100%;width:300px;padding:26px 22px;gap:16px;font-size:clamp(23px,2vw,32px);white-space:nowrap}.home-application-row :deep(.finance-app-icon),.home-application-row :deep(.password-launch-card img),.home-application-row :deep(.projects-launch-icon){width:44px;height:44px;flex-shrink:0}.home-layout-loading{text-align:center;color:#64748b;font-size:14px}.home-layout-empty{text-align:center;color:#64748b;padding:40px 16px}.home-layout-empty>.iconify{width:36px;height:36px;color:#94a3b8}.home-layout-empty h1{margin:14px 0 8px;font-size:22px;color:#334155;font-weight:600}.home-layout-empty p{font-size:14px;line-height:1.7;margin-bottom:20px}@media(max-width:767px){.home-custom-layout{gap:20px}.home-application-row{gap:20px}.home-application-row :deep(.password-launch-card){flex:0 1 360px;width:100%;font-size:28px;padding:24px}.home-layout-empty p{max-width:280px;margin-inline:auto}}
+
+.home-application-row{align-items:stretch}.home-application-row :deep(.password-launch-card){box-sizing:border-box;flex:0 0 300px;width:300px;height:112px;min-height:112px;max-height:112px;padding:20px 22px;font-size:24px;line-height:1.2;white-space:normal;overflow:hidden;justify-content:flex-start}.home-application-row :deep(.password-launch-card>img),.home-application-row :deep(.password-launch-card>.iconify),.home-application-row :deep(.password-launch-card>.finance-app-icon),.home-application-row :deep(.password-launch-card>.projects-app-icon){box-sizing:border-box;width:44px;height:44px;min-width:44px;max-width:44px;flex:0 0 44px;font-size:44px;padding:0}.home-application-row :deep(.projects-launch-icon>.iconify){width:36px;height:36px;font-size:36px}.home-application-row :deep(.password-launch-card>span:last-child:not(.iconify)){min-width:0;font-size:inherit!important;line-height:1.2;white-space:normal!important;overflow-wrap:normal}@media(max-width:767px){.home-application-row :deep(.password-launch-card){flex:0 1 360px;width:100%;height:104px;min-height:104px;max-height:104px;font-size:24px;padding:18px 20px}}
 </style>
