@@ -4,7 +4,8 @@ import {useQuery,useQueryClient} from '@tanstack/vue-query'
 import {filterKabanTaskRows} from '~~/shared/utils/kaban-task-directory'
 import {projectTaskView,projectTaskViews} from '~~/shared/utils/project-task-planning'
 import {dateLabel,todayDate} from '~~/shared/utils/subscriptions'
-import type {KabanWorkspace} from '~~/shared/types/kaban'
+import type {KabanTaskDeadlinePreview,KabanWorkspace} from '~~/shared/types/kaban'
+import KabanProjectCard from '~/components/Kaban/KabanProjectCard.vue'
 import KabanProjectPlanning from '~/components/Kaban/KabanProjectPlanning.vue'
 import KabanTaskDeadline from '~/components/Kaban/KabanTaskDeadline.vue'
 definePageMeta({layout:'home'})
@@ -24,6 +25,24 @@ const boards=useQuery({queryKey:boardQueryKey,enabled:computed(()=>!!auth.user&&
  const results=await Promise.allSettled(boardProjects.value.map(async p=>({project:p,workspace:await sharedRequest<KabanWorkspace>(`/api/kaban?project=${p.id}`,{signal})})))
  return {boards:results.flatMap(r=>r.status==='fulfilled'?[r.value]:[]),failed:results.filter(r=>r.status==='rejected').length}
 },retry:false,refetchInterval:30000})
+const deadlineProjectIds = computed(() => taskProjects.value.filter(project => project.taskCount !== 0).map(project => project.id).sort())
+const deadlineQueryKey = computed(() => ['account', auth.user?.id, 'kaban-project-deadlines', deadlineProjectIds.value] as const)
+const deadlines = useQuery({
+  queryKey: deadlineQueryKey,
+  enabled: computed(() => !!auth.user && mode.value === 'projects' && access.data.value?.allowed === true && deadlineProjectIds.value.length > 0),
+  queryFn: async ({ queryKey: [, , , ids], signal }) => {
+    const results = await Promise.allSettled(ids.map(async id => [
+      id,
+      await sharedRequest<KabanTaskDeadlinePreview[]>(`/api/kaban?project=${id}&summary=deadlines`, { signal })
+    ] as const))
+    return {
+      byProject: Object.fromEntries(results.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])),
+      failed: results.some(result => result.status === 'rejected')
+    }
+  },
+  retry: false,
+  refetchInterval: 30_000
+})
 const planningBoards=computed(()=>{
  const current=new Map(taskProjects.value.map(project=>[project.id,project]))
  return (boards.data.value?.boards??[]).flatMap(entry=>{
@@ -39,7 +58,13 @@ async function refreshBoards(){
  if(auth.user?.id!==accountId||mode.value==='projects'||access.data.value?.allowed!==true)return
  await boards.refetch()
 }
-useKabanRealtime(refreshBoards,()=>mode.value==='projects'||access.data.value?.allowed!==true)
+useKabanRealtime(async () => {
+  if (mode.value !== 'projects') return refreshBoards()
+  const key = deadlineQueryKey.value
+  await client.cancelQueries({ queryKey: key, exact: true })
+  if (auth.user?.id !== key[1] || mode.value !== 'projects' || access.data.value?.allowed !== true) return
+  await Promise.all([projects.refetch(), deadlineProjectIds.value.length ? deadlines.refetch() : undefined])
+}, () => access.data.value?.allowed !== true)
 
 const allTasks=computed(()=>(boards.data.value?.boards??[]).flatMap(({project,workspace})=>workspace.tasks.filter(t=>!t.archived&&(mode.value!=='mine'||t.creatorId===auth.user?.id||t.participantIds.includes(auth.user?.id||''))).map(task=>({task,project,stage:workspace.board.stages.find(s=>s.id===task.stageId)}))).sort((a,b)=>b.task.updatedAt.localeCompare(a.task.updatedAt)))
 const taskFilters=reactive({search:'',project:'all',stage:'all',deadline:'all'})
@@ -61,7 +86,14 @@ watch(()=>taskFilters.project,()=>{taskFilters.stage='all'})
     :label="view.label" :icon="view.icon" color="neutral" :variant="(view.value==='board'? mode==='projects': mode===view.value)?'soft':'outline'"
     :aria-current="(view.value==='board'? mode==='projects': mode===view.value)?'page':undefined" @click="folder='all'"/>
 </nav>
-<UButton v-if="!planningMode && folder!=='all'" label="Все папки" icon="i-lucide-arrow-left" color="neutral" variant="ghost" class="mb-5" @click="folder='all'"/><div v-if="mode==='projects'" class="kaban-projects"><NuxtLink v-for="p in visible" :key="p.id" :to="`/projects/${p.id}/tasks`"><UIcon name="i-lucide-columns-3"/><strong>{{p.name}}</strong><small>{{p.taskCount??0}} задач</small><UIcon name="i-lucide-arrow-up-right"/></NuxtLink><p v-if="!visible.length&&!projects.isPending.value">Проекты не найдены.</p></div>
+<UButton v-if="!planningMode && folder!=='all'" label="Все папки" icon="i-lucide-arrow-left" color="neutral" variant="ghost" class="mb-5" @click="folder='all'"/>
+<template v-if="mode==='projects'">
+  <UAlert v-if="deadlines.data.value?.failed" color="neutral" title="Не удалось загрузить часть ближайших задач" :actions="[{label:'Повторить',onClick:()=>deadlines.refetch()}]" class="mb-4" />
+  <div v-if="visible.length" class="kaban-projects">
+    <KabanProjectCard v-for="project in visible" :key="project.id" :project="project" :deadlines="deadlines.data.value?.byProject[project.id]" :today="today" />
+  </div>
+  <p v-else-if="!projects.isPending.value && !projects.error.value" class="kaban-projects-empty">Проекты не найдены.</p>
+</template>
 <template v-else-if="planningMode">
   <div class="mb-4 flex flex-wrap items-end gap-2">
     <UFormField label="Проекты" class="min-w-0 w-full max-w-sm">
@@ -94,7 +126,9 @@ watch(()=>taskFilters.project,()=>{taskFilters.stage='all'})
 </template></template></section></template>
 <style scoped>
 .task-filters{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px;padding:18px;border:1px solid #e2e8f0;border-radius:16px;background:#fff}.task-filters>:first-child{flex:1;min-width:220px}.task-filters>:not(:first-child){min-width:160px}.task-result-count{font-size:12px;color:#94a3b8;margin:0 0 18px}@media(max-width:600px){.task-filters>*{width:100%;min-width:0!important}}
-.kaban-projects{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px}.kaban-projects a{display:flex;align-items:center;gap:14px;border:1px solid #e2e8f0;border-radius:20px;padding:24px;background:#fff}.kaban-projects strong{flex:1;overflow-wrap:anywhere}.kaban-projects small,.kaban-task-list small{color:#94a3b8}
+.kaban-projects{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:16px}
+.kaban-projects-empty{padding:24px;border:1px dashed var(--ui-border);border-radius:16px;color:var(--ui-text-muted);text-align:center}
+.kaban-task-list small{color:#94a3b8}
 .kaban-task-list{display:grid;gap:12px}
 .kaban-task-list>a{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,12rem) auto;align-items:center;gap:16px;border:1px solid #e2e8f0;border-radius:16px;padding:20px;background:#fff}
 .task-list-summary{min-width:0;overflow-wrap:anywhere}

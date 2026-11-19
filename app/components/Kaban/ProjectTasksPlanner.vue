@@ -1,16 +1,19 @@
 <script setup lang="ts">
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import type { KabanCategory, KabanStage, KabanTask } from '~~/shared/types/kaban'
 import type { TeamPerson } from '~~/shared/types/team'
 import { kabanOverdue } from '~~/shared/utils/kaban'
 import { kabanTaskStage } from '~~/shared/utils/kaban-stages'
-import { clipTaskDateRange, compareGanttTasks, resizeTaskDateRange, shiftTaskPlanningPeriod, taskDateRange, taskPlanningDays, type GanttTaskSort, type PlanningProjectBoard, type TaskDateEdge, type TaskDateRange, type TaskPeriod } from '~~/shared/utils/project-task-planning'
+import { clipTaskDateRange, compareGanttTasks, resizeTaskDateRange, shiftTaskPlanningPeriod, taskDateRange, taskPlanningDays, type GanttMarker, type GanttMarkerProject, type GanttTaskSort, type PlanningProjectBoard, type TaskDateEdge, type TaskDateRange, type TaskPeriod } from '~~/shared/utils/project-task-planning'
 import { addPeriod, dateLabel, dayDifference, todayDate, validDate } from '~~/shared/utils/subscriptions'
+import GanttMarkers from './GanttMarkers.vue'
 
 const props = defineProps<{
   mode: 'calendar' | 'gantt'
   projectStartOn?: string
   projectEndOn?: string
   projectBoards?: PlanningProjectBoard[]
+  markerProjects?: GanttMarkerProject[]
   tasks: KabanTask[]
   stages: (KabanStage & { boardId?: string })[]
   categories: KabanCategory[]
@@ -21,7 +24,8 @@ const props = defineProps<{
   reschedule: (task: KabanTask, startOn: string, dueOn: string) => Promise<void>
   busy: boolean
 }>()
-const emit = defineEmits<{ open: [task: KabanTask]; create: [dueOn: string] }>()
+const emit = defineEmits<{ open: [task: KabanTask, edit?: boolean]; create: [dueOn: string] }>()
+const canEditTask = (task: KabanTask) => task.canEdit && !task.archived
 
 const today = todayDate()
 const anchor = ref(today)
@@ -40,6 +44,45 @@ const options = computed(() => periodOptions.filter(item => props.mode === 'cale
 const days = computed(() => taskPlanningDays(anchor.value, period.value))
 const first = computed(() => days.value[0] ?? anchor.value)
 const last = computed(() => days.value.at(-1) ?? anchor.value)
+const auth = useAuthStore()
+const client = useQueryClient()
+const markerKey = computed(() => ['account', auth.user?.id, 'kaban-gantt-markers'] as const)
+const markerQuery = useQuery({
+  queryKey: markerKey,
+  enabled: computed(() => !!auth.user && props.mode === 'gantt' && !!props.markerProjects?.length),
+  queryFn: ({ signal }) => sharedRequest<GanttMarker[]>('/api/kaban/markers', { signal }),
+  refetchInterval: 30_000,
+  retry: false
+})
+const markers = computed(() => {
+  const projects = new Set(props.markerProjects?.map(project => project.id))
+  return (markerQuery.data.value ?? []).filter(marker => projects.has(marker.projectId))
+    .sort((a, b) => a.day.localeCompare(b.day) || a.id.localeCompare(b.id))
+})
+const markersByDay = computed(() => {
+  const byDay = new Map<string, GanttMarker[]>()
+  for (const marker of markers.value) {
+    const group = byDay.get(marker.day) ?? []
+    group.push(marker)
+    byDay.set(marker.day, group)
+  }
+  return byDay
+})
+const markerLines = computed(() => days.value.flatMap((day, column) => {
+  const group = markersByDay.value.get(day) ?? []
+  return group.map((marker, index) => ({
+    ...marker, left: `${(column + (index + 1) / (group.length + 1)) / days.value.length * 100}%`
+  }))
+}))
+async function markerChanged(marker: GanttMarker, deleted: boolean) {
+  const key = markerKey.value
+  await client.cancelQueries({ queryKey: key, exact: true })
+  if (key[1] !== auth.user?.id) return
+  client.setQueryData<GanttMarker[]>(key, (current = []) => [
+    ...current.filter(item => item.id !== marker.id), ...(deleted ? [] : [marker])
+  ])
+  void client.invalidateQueries({ queryKey: key, exact: true })
+}
 const singleProject = computed(() => props.projectBoards ? (props.projectBoards.length === 1 ? props.projectBoards[0] : undefined) : { startOn: props.projectStartOn, endOn: props.projectEndOn })
 const projectDates = computed(() => [
   { kind: 'start', label: 'Начало проекта', date: singleProject.value?.startOn },
@@ -64,7 +107,7 @@ function timelinePosition(range: TaskDateRange) {
   return { column, length, gridColumn: `${column + 1} / span ${length}` }
 }
 function ganttDayLabel(day: string) {
-  return [dateLabel(day), ...projectDates.value.filter(item => item.date === day).map(item => item.label)].join(' · ')
+  return [dateLabel(day), ...projectDates.value.filter(item => item.date === day).map(item => item.label), ...(markersByDay.value.get(day) ?? []).map(marker => marker.title)].join(' · ')
 }
 const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const monthFormat = new Intl.DateTimeFormat('ru-RU', { year: 'numeric', month: 'long', timeZone: 'UTC' })
@@ -91,6 +134,7 @@ const assigneeOptions = computed(() => [
   ...props.people.map(person => ({ label: person.fullName || person.email, value: person.id })).sort((a, b) => a.label.localeCompare(b.label, 'ru'))
 ])
 const stageOptions = computed(() => [...new Set(props.stages.map(stage => stage.name))].map(name => ({ label: name, value: name })))
+const stageLegend = computed(() => [...new Map(props.stages.map(stage => [JSON.stringify([stage.name, stage.color]), stage])).values()])
 watch([categoryOptions, assigneeOptions, stageOptions], ([availableCategories, availablePeople, availableStages]) => {
   if (!props.projectBoards) return
   categories.value = categories.value.filter(id => availableCategories.some(option => option.value === id))
@@ -168,6 +212,32 @@ function jumpTo(date: unknown) {
   if (typeof date === 'string' && validDate(date)) anchor.value = date
 }
 const ganttScroll = ref<HTMLElement | null>(null)
+const markerOverlay = ref<HTMLElement | null>(null)
+const markerTooltip = ref<{ title: string; date: string; x: number; y: number; above: boolean } | null>(null)
+function hideMarkerTooltip() {
+  markerTooltip.value = null
+}
+function hoverMarker(event: PointerEvent) {
+  const overlay = markerOverlay.value
+  if (!overlay || event.buttons || resize.value || event.pointerType === 'touch') return hideMarkerTooltip()
+  const track = overlay.getBoundingClientRect()
+  const sticky = ganttScroll.value?.querySelector('.gantt-name')?.getBoundingClientRect()
+  if (event.clientY < track.top || event.clientY >= track.bottom || event.clientX < (sticky?.right ?? track.left)) return hideMarkerTooltip()
+  const relativeX = event.clientX - track.left
+  const hit = markerLines.value.reduce<{ marker: typeof markerLines.value[number]; distance: number } | null>((closest, marker) => {
+    const distance = Math.abs(relativeX - Number.parseFloat(marker.left) * track.width / 100)
+    return distance <= 5 && (!closest || distance < closest.distance) ? { marker, distance } : closest
+  }, null)
+  if (!hit) return hideMarkerTooltip()
+  const above = event.clientY > window.innerHeight - 90
+  markerTooltip.value = {
+    title: hit.marker.title,
+    date: hit.marker.day,
+    x: Math.max(8, Math.min(event.clientX + 12, window.innerWidth - 248)),
+    y: event.clientY + (above ? -12 : 12),
+    above
+  }
+}
 async function showProjectDate(date: string) {
   jumpTo(date)
   await nextTick()
@@ -230,7 +300,8 @@ async function finishResize(event: PointerEvent) {
   catch (failure) { resizeError.value = failure instanceof Error ? failure.message : 'Не удалось изменить даты задачи.' }
   finally { resize.value = null }
 }
-watch([first, last, ganttSort, () => props.mode], () => cancelResize())
+watch([first, last, ganttSort, () => props.mode], () => { cancelResize(); hideMarkerTooltip() })
+watch(markers, hideMarkerTooltip)
 watch(filteredStages, matches => { if (resize.value && !matches.has(resizingTask.value)) cancelResize() })
 function edit(task: KabanTask) {
   if (props.busy || !props.canReschedule(task)) return
@@ -290,6 +361,19 @@ async function saveDates() {
       </div>
     </dl>
 
+    <template v-if="mode === 'gantt' && markerProjects?.length">
+      <UAlert v-if="markerQuery.error.value" color="error" title="Не удалось загрузить маркеры" :actions="[{ label: 'Повторить', onClick: () => markerQuery.refetch() }]" />
+      <GanttMarkers :projects="markerProjects" :markers="markers" :anchor="anchor" @jump="showProjectDate" @changed="markerChanged" />
+    </template>
+    <div v-if="mode === 'gantt' && stageLegend.length" class="gantt-legend">
+      <h3>Цвета стадий</h3>
+      <ul>
+        <li v-for="stage in stageLegend" :key="JSON.stringify([stage.name, stage.color])">
+          <span :style="{ '--stage': stage.color }" aria-hidden="true" />{{ stage.name }}
+        </li>
+      </ul>
+    </div>
+
     <div v-if="mode === 'calendar'" class="planner-scroll" tabindex="0" aria-label="Дни календаря">
       <div class="planner-calendar">
         <div v-for="day in weekDays" :key="day" class="calendar-weekday">{{ day }}</div>
@@ -307,7 +391,7 @@ async function saveDates() {
       </div>
     </div>
 
-    <div v-else ref="ganttScroll" class="planner-scroll" tabindex="0" aria-label="Шкала диаграммы Ганта">
+    <div v-else ref="ganttScroll" class="planner-scroll" tabindex="0" aria-label="Шкала диаграммы Ганта" @pointermove="hoverMarker" @pointerleave="hideMarkerTooltip" @pointerdown="hideMarkerTooltip" @scroll="hideMarkerTooltip">
       <div class="gantt" :style="{ '--days': days.length }">
         <div class="gantt-row gantt-header">
           <div class="gantt-name">Задача</div>
@@ -328,11 +412,14 @@ async function saveDates() {
         <div v-for="{ task, start, end, gridColumn } in rangeGroups.scheduled" :key="taskKey(task)" class="gantt-row">
           <div class="gantt-name">
             <button type="button" :title="taskLabel(task)" @click="emit('open', task)"><span>{{ task.title }}</span><small v-if="projectName(task)" class="task-project-name">{{ projectName(task) }}</small></button>
-            <UButton v-if="canReschedule(task)" icon="i-lucide-pencil" size="xs" color="neutral" variant="ghost" :aria-label="`Изменить даты: ${task.title}`" :disabled="busy" @click="edit(task)" />
+            <div v-if="canEditTask(task)" class="gantt-task-actions">
+              <UButton v-if="canReschedule(task)" icon="i-lucide-calendar-days" size="xs" color="neutral" variant="ghost" :aria-label="`Изменить даты: ${task.title}`" title="Изменить даты" :disabled="busy" @click="edit(task)" />
+              <UButton icon="i-lucide-pencil" size="xs" color="neutral" variant="ghost" :aria-label="`Редактировать задачу: ${task.title}`" title="Редактировать задачу" :disabled="busy" @click="emit('open', task, true)" />
+            </div>
           </div>
           <div class="gantt-track" @pointermove="moveResize" @pointerup="finishResize" @pointercancel="cancelResize" @lostpointercapture="cancelResize">
             <div class="gantt-bar" :class="{done: filteredStages.get(taskKey(task))?.done, resizing: resizingTask === taskKey(task)}" :style="{ gridColumn: resizingTask === taskKey(task) ? resizePreview?.gridColumn ?? gridColumn : gridColumn, '--stage': filteredStages.get(taskKey(task))?.color }">
-              <button type="button" class="gantt-bar-label" :title="`${taskLabel(task)} · ${dateLabel(start)} — ${dateLabel(end)}`" :aria-label="`${canReschedule(task) ? 'Изменить даты' : 'Открыть задачу'}: ${taskLabel(task)}, ${dateLabel(start)} — ${dateLabel(end)}`" @click="canReschedule(task) ? edit(task) : emit('open', task)">
+              <button type="button" class="gantt-bar-label" :title="`${taskLabel(task)} · ${dateLabel(start)} — ${dateLabel(end)}`" :aria-label="`Открыть задачу: ${taskLabel(task)}, ${dateLabel(start)} — ${dateLabel(end)}`" @click="emit('open', task)">
                 {{ resizingTask === taskKey(task) ? resizeLabel : task.title }}
               </button>
               <template v-if="canReschedule(task)">
@@ -343,21 +430,41 @@ async function saveDates() {
           </div>
         </div>
         <p v-if="!rangeGroups.scheduled.length && (!hasFilters || filteredStages.size)" class="planner-empty">На выбранный период нет задач с датами.</p>
+        <div v-if="markerLines.length" ref="markerOverlay" class="gantt-marker-overlay" aria-hidden="true">
+          <span v-for="marker in markerLines" :key="marker.id" class="gantt-marker-line" :style="{ left: marker.left, borderColor: marker.color }" />
+        </div>
       </div>
     </div>
+    <Teleport to="body">
+      <div v-if="markerTooltip" class="gantt-marker-tooltip" aria-hidden="true" :class="{ 'above-pointer': markerTooltip.above }" :style="{ left: `${markerTooltip.x}px`, top: `${markerTooltip.y}px` }">
+        <strong>{{ markerTooltip.title }}</strong>
+        <time :datetime="markerTooltip.date">{{ dateLabel(markerTooltip.date) }}</time>
+      </div>
+    </Teleport>
 
     <section v-if="rangeGroups.unscheduled.length" class="planner-list">
       <h3>Задачи без дат <small>{{ rangeGroups.unscheduled.length }}</small></h3>
       <ul>
         <li v-for="task in rangeGroups.unscheduled" :key="taskKey(task)">
           <button type="button" @click="emit('open', task)"><span>{{ task.title }}</span><small v-if="projectName(task)" class="task-project-name">{{ projectName(task) }}</small></button>
-          <UButton v-if="mode === 'gantt' && canReschedule(task)" label="Назначить даты" size="xs" color="neutral" variant="outline" :disabled="busy" @click="edit(task)" />
+          <div v-if="mode === 'gantt' && canEditTask(task)" class="gantt-task-actions">
+            <UButton v-if="canReschedule(task)" label="Назначить даты" size="xs" color="neutral" variant="outline" :disabled="busy" @click="edit(task)" />
+            <UButton icon="i-lucide-pencil" size="xs" color="neutral" variant="ghost" :aria-label="`Редактировать задачу: ${task.title}`" title="Редактировать задачу" :disabled="busy" @click="emit('open', task, true)" />
+          </div>
         </li>
       </ul>
     </section>
     <details v-if="rangeGroups.outside.length" class="planner-list">
       <summary>Задачи за пределами периода <small>{{ rangeGroups.outside.length }}</small></summary>
-      <ul><li v-for="{task, start} in rangeGroups.outside" :key="taskKey(task)"><button type="button" @click="emit('open', task)"><span>{{ task.title }}</span><small v-if="projectName(task)" class="task-project-name">{{ projectName(task) }}</small></button><UButton :label="dateLabel(start)" icon="i-lucide-calendar-days" size="xs" color="neutral" variant="ghost" @click="anchor = start" /></li></ul>
+      <ul>
+        <li v-for="{ task, start } in rangeGroups.outside" :key="taskKey(task)">
+          <button type="button" @click="emit('open', task)"><span>{{ task.title }}</span><small v-if="projectName(task)" class="task-project-name">{{ projectName(task) }}</small></button>
+          <div class="gantt-task-actions">
+            <UButton :label="dateLabel(start)" icon="i-lucide-calendar-days" size="xs" color="neutral" variant="ghost" @click="anchor = start" />
+            <UButton v-if="mode === 'gantt' && canEditTask(task)" icon="i-lucide-pencil" size="xs" color="neutral" variant="ghost" :aria-label="`Редактировать задачу: ${task.title}`" title="Редактировать задачу" :disabled="busy" @click="emit('open', task, true)" />
+          </div>
+        </li>
+      </ul>
     </details>
 
     <UModal :open="!!selectedDay" :title="dateLabel(selectedDay)" description="Задачи на выбранный день" @update:open="value => { if (!value) selectedDay = '' }">
@@ -395,13 +502,24 @@ async function saveDates() {
 .calendar-task-text,.calendar-task-text>*,.gantt-name>button:first-child,.gantt-name>span,.gantt-bar-label,.gantt-project-bar>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .calendar-task-text>*,.task-project-name{display:block}.calendar-task-text small,.task-project-name{font-size:10px;color:#64748b}.calendar-task.done .calendar-task-text>span{text-decoration:line-through}.task-dot{width:6px;height:6px;border-radius:50%;background:#64748b;flex-shrink:0}
 .gantt-name>button:first-child>span,.gantt-name .task-project-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.gantt{--day-min:29px;--name-width:11rem;min-width:calc(var(--name-width) + var(--days)*var(--day-min))}
+.gantt{--day-min:29px;--name-width:11rem;--header-height:39px;position:relative;min-width:calc(var(--name-width) + var(--days)*var(--day-min))}
+.gantt-marker-overlay{position:absolute;inset:var(--header-height) 0 0 var(--name-width);z-index:1;pointer-events:none}
+.gantt-marker-line{position:absolute;top:0;bottom:0;border-left:2px dashed;transform:translateX(-50%)}
+.gantt-marker-tooltip{position:fixed;z-index:40;pointer-events:none;max-width:min(15rem,calc(100vw - 16px));padding:7px 10px;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-bg);box-shadow:0 4px 14px #0f172a20;color:var(--ui-text-highlighted);overflow-wrap:anywhere;font-size:12px}
+.gantt-marker-tooltip.above-pointer{transform:translateY(-100%)}
+.gantt-marker-tooltip time{display:block;color:var(--ui-text-muted)}
+.gantt-legend,.gantt-legend ul,.gantt-legend li{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px}
+.gantt-legend{font-size:12px;color:var(--ui-text-muted)}
+.gantt-legend h3{font-weight:650;color:var(--ui-text)}
+.gantt-legend li{gap:5px}
+.gantt-legend li span{width:12px;height:9px;border-radius:3px;background:color-mix(in srgb,var(--stage) 18%,white);border:1px solid color-mix(in srgb,var(--stage) 55%,white)}
+.gantt-task-actions{display:flex;align-items:center;flex-shrink:0}
 .gantt-row{display:grid;grid-template-columns:var(--name-width) minmax(0,1fr);min-height:39px;border-bottom:1px solid #edf1f5}
 .gantt-row:last-child{border-bottom:0}
-.gantt-name{position:sticky;left:0;z-index:1;background:#fff;display:flex;align-items:center;justify-content:space-between;min-width:0;gap:4px;padding:4px 8px;border-right:1px solid #e2e8f0;text-align:left;font-size:12px}
+.gantt-name{position:sticky;left:0;z-index:2;background:#fff;display:flex;align-items:center;justify-content:space-between;min-width:0;gap:4px;padding:4px 8px;border-right:1px solid #e2e8f0;text-align:left;font-size:12px}
 .gantt-name>button:first-child{text-align:left}.gantt-name>button:first-child:hover,.planner-list li>button:first-child:hover{text-decoration:underline}
 .gantt-track{display:grid;grid-template-columns:repeat(var(--days),minmax(0,1fr));align-items:center;background:repeating-linear-gradient(to right,transparent 0 calc(100% / var(--days) - 1px),#edf1f5 calc(100% / var(--days) - 1px) calc(100% / var(--days)))}
-.gantt-header,.gantt-header .gantt-name{background:#f8fafc;font-weight:600}.gantt-header .gantt-track>span{align-self:stretch;display:grid;place-content:center;text-align:center;overflow:hidden;font-size:10px;color:#64748b;line-height:1.2}.gantt-header .today{color:var(--ui-primary)!important;background:color-mix(in srgb,var(--ui-primary) 9%,white)}
+.gantt-header,.gantt-header .gantt-name{background:#f8fafc;font-weight:600}.gantt-header{min-height:var(--header-height)}.gantt-header .gantt-track>span{align-self:stretch;display:grid;place-content:center;text-align:center;overflow:hidden;font-size:10px;color:#64748b;line-height:1.2}.gantt-header .today{color:var(--ui-primary)!important;background:color-mix(in srgb,var(--ui-primary) 9%,white)}
 .gantt-project-dates{display:flex;flex-wrap:wrap;gap:10px 28px;padding:12px 16px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;font-size:13px}
 .gantt-project-dates>div{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px}.gantt-project-dates dt{font-weight:600}.gantt-project-dates dt::before{content:'';display:inline-block;width:8px;height:8px;margin-right:7px;border-radius:50%}
 .gantt-project-dates .start::before{background:#0f766e}.gantt-project-dates .end::before{background:#6d28d9}.gantt-project-dates dd>span{color:#64748b}.gantt-project-dates button{text-decoration:underline;text-underline-offset:3px}

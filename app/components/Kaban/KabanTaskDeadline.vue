@@ -3,7 +3,7 @@ import type { KabanTask } from '~~/shared/types/kaban'
 import { kabanDeadlineProgress } from '~~/shared/utils/kaban'
 
 const props = defineProps<{
-  task: Pick<KabanTask, 'startOn' | 'dueOn' | 'createdAt' | 'archived'>
+  task: Pick<KabanTask, 'startOn' | 'dueOn' | 'createdAt'> & Partial<Pick<KabanTask, 'archived'>>
   today: string
   done?: boolean
   compact?: boolean

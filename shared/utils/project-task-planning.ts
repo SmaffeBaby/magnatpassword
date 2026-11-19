@@ -21,6 +21,19 @@ export interface PlanningProjectBoard {
   startOn?: string
   endOn?: string
 }
+export interface GanttMarker {
+  id: string
+  projectId: string
+  day: string
+  title: string
+  color: string
+  revision: number
+}
+export interface GanttMarkerProject {
+  id: string
+  name: string
+  canEdit: boolean
+}
 
 function monday(date: string) {
   const weekday = new Date(date + 'T12:00:00Z').getUTCDay()

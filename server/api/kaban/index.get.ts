@@ -3,6 +3,8 @@ import { scopeKabanStages } from '../../utils/kaban-stage-scope'
 import { z } from 'zod'
 import { teamPeople, teamUnits } from '../../utils/team'
 import { kabanFailure, readKabanTaskData } from '../../utils/kaban'
+import type { KabanStage, KabanTaskDeadlinePreview } from '~~/shared/types/kaban'
+import { todayDate } from '~~/shared/utils/subscriptions'
 
 export default defineEventHandler(async event => {
   const context = await requireSharedUser(event)
@@ -13,6 +15,18 @@ export default defineEventHandler(async event => {
   const { data, error } = project ? await context.client.rpc('kaban_project_load',{p_actor:context.user.id,p_project:String(project)}) : await context.client.rpc('kaban_load', { p_actor: context.user.id, p_vault: vault.data === 'personal' ? null : vault.data })
   if (error) kabanFailure(error)
   scopeKabanStages(data)
+  if (project && getQuery(event).summary === 'deadlines') {
+    const today = todayDate()
+    const stages: KabanStage[] = data.board.stages
+    const doneStages = new Set(stages.filter(stage => stage.done).map(stage => stage.id))
+    const deadlines: KabanTaskDeadlinePreview[] = []
+    for (const row of data.tasks) {
+      if (row.archived || doneStages.has(row.stage_id)) continue
+      const { title, dueOn, startOn } = readKabanTaskData(event, row)
+      if (dueOn && dueOn >= today) deadlines.push({ id: row.id, title, dueOn, startOn, createdAt: row.created_at })
+    }
+    return deadlines.sort((a, b) => a.dueOn.localeCompare(b.dueOn) || a.id.localeCompare(b.id)).slice(0, 3)
+  }
   // One-time import of names for categories already referenced by older tasks.
   // Empty password categories are never imported into Kaban.
   if(data.categories?.some((category:any)=>category.legacyId)){

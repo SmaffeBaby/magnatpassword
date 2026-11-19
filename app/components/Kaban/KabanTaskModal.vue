@@ -9,7 +9,17 @@ import { kabanCanEditPlanning } from '~~/shared/utils/kaban'
 import { todayDate } from '~~/shared/utils/subscriptions'
 const props=defineProps<{controller:UnwrapNestedRefs<ReturnType<typeof useKaban>>}>()
 const c=props.controller,formId=useId()
-const category=computed({get:()=>c.draft?.scopeCategoryId||c.draft?.categoryIds[0]||'',set:(id:string)=>{if(c.draft){c.draft.categoryIds=id?[id]:[];c.draft.scopeCategoryId=id;c.draft.stageId=c.draft.categoryStageIds?.[id]||kabanCategoryStages(c.data,id).find(s=>!s.done)?.id||kabanCategoryStages(c.data,id)[0]?.id||''}}})
+const category=computed({
+ get:()=>c.draft?.scopeCategoryId||c.draft?.categoryIds[0]||'',
+ set:(id:string)=>{
+  if(!c.draft)return
+  const stages=kabanCategoryStages(c.data,id)
+  const initialStage=!c.draft.id&&stages.find(stage=>stage.id===c.draft?.stageId)
+  c.draft.categoryIds=id?[id]:[]
+  c.draft.scopeCategoryId=id
+  c.draft.stageId=c.draft.categoryStageIds?.[id]||(initialStage&&initialStage.id)||stages.find(stage=>!stage.done)?.id||stages[0]?.id||''
+ }
+})
 const writable=computed(()=>!!c.draft?.canEdit)
 const planningWritable=computed(()=>writable.value&&!!c.draft&&kabanCanEditPlanning(c.auth.user?.id,c.draft))
 const previousDeadline=ref('')

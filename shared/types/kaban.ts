@@ -8,6 +8,7 @@ export type KabanBlock =
  | { id:string; type:'todo'; title:string; items:KabanTodo[] }
  | { id:string; type:'files'; title:string }
 export interface KabanTaskData { title: string; description: string; startOn?: string; dueOn: string; todos: KabanTodo[]; blocks?:KabanBlock[] }
+export type KabanTaskDeadlinePreview = Pick<KabanTask, 'id' | 'title' | 'dueOn' | 'startOn' | 'createdAt'>
 export interface KabanTask extends KabanTaskData { scopeCategoryId?: string; categoryStageIds?: Record<string, string>; id: string; boardId: string; stageId: string; creatorId: string; participantIds: string[]; closerIds: string[]; locations: {boardId:string;projectId?:string|null;vaultId:string|null}[]; canEdit:boolean; categoryIds: string[]; revision: number; createdAt: string; updatedAt: string; closedAt: string | null; fileCount: number; archived: boolean }
 export interface KabanCategory { effectiveStages?: KabanStage[]; stages?: KabanStage[] | null; id: string; name: string; parentId: string | null; color: string; archived: boolean; revision: number; archiveRoot?: string | null; legacyId?: string | null; boardId?: string }
 export interface KabanEvent { id: string; changeId?: string; createdAt: string; actor: TeamPerson | null; label: string; details: string[] }

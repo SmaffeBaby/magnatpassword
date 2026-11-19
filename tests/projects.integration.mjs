@@ -199,6 +199,26 @@ try {
   await request(viewer, taskPath, 'PUT', { ...legacyUpdate, revision: (await savedTask()).revision, data: { ...legacyUpdate.data, startOn: '' } })
   assert.equal((await savedTask()).startOn, '')
 
+  const stagesPath = `/api/kaban/boards/${board.board.id}/stages`
+  const categoriesOnBoard = async () => (await request(viewer, `/api/kaban?project=${id}`)).categories
+  const currentCategory = () => categoriesOnBoard().then(items => items.find(item => item.id === category.id))
+  const inherited = await currentCategory()
+  const customStages = { categoryId: category.id, revision: inherited.revision, stages: [...inherited.effectiveStages, {
+    id: randomUUID(), name: 'Категория · согласование', color: '#7c3aed', done: false
+  }] }
+  await request(editor, stagesPath, 'PUT', customStages, 403)
+  await request(viewer, stagesPath, 'PUT', stagesBody, 403)
+  await request(viewer, stagesPath, 'PUT', customStages)
+  await request(viewer, stagesPath, 'PUT', customStages, 409)
+  const independent = await currentCategory()
+  assert.equal(independent.stages.at(-1).name, 'Категория · согласование')
+  assert.equal((await savedTask()).categoryStageIds[category.id], independent.stages[0].id)
+  await request(viewer, stagesPath, 'PUT', {
+    categoryId: category.id, revision: independent.revision, stages: independent.stages, inherit: true
+  })
+  assert.equal((await currentCategory()).stages, null)
+  assert.equal((await savedTask()).categoryStageIds[category.id], inherited.effectiveStages[0].id)
+
   await sections(viewer, 'hidden', { economy: 'editor', tasks: 'editor' })
   assert.equal(await project(viewer), undefined)
   await request(viewer, estimatePath, 'GET', undefined, 404)
