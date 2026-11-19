@@ -1,8 +1,13 @@
 import { z } from 'zod'
-import { projectSectionPermissionsSchema } from '~~/shared/utils/project-permissions'
+import { projectPermissionSchema, projectRoleIdSchema, projectSectionPermissionsSchema } from '~~/shared/utils/project-permissions'
+const member = z.object({ userId: z.uuid(), revision: z.number().int().positive() }).strict()
+const memberUpdate = z.union([
+  member.extend({ roleId: projectRoleIdSchema }),
+  member.extend({ permission: projectPermissionSchema, sections: projectSectionPermissionsSchema.optional(), kind: z.enum(['executor', 'observer']).optional() })
+])
 export default defineEventHandler(async event => {
   const context = await requireProjectsUser(event), id = projectId(event)
-  const body = await sharedBody(event, z.object({ userId: z.uuid(), permission: z.enum(['viewer','editor','hidden']), sections: projectSectionPermissionsSchema.optional(), kind:z.enum(['executor','observer']).optional(), revision: z.number().int().positive() }).strict())
+  const body = await sharedBody(event, memberUpdate)
   const { revision, ...payload } = body
-  return mutateProject(context, 'member', id, revision, payload)
+  return mutateProject(context, 'roleId' in payload ? 'assign_role' : 'member', id, revision, payload)
 })

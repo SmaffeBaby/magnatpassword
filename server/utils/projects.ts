@@ -18,6 +18,9 @@ export function projectFailure(error: { message: string }): never {
     OWNER_REQUIRED: [400, 'Права создателя проекта нельзя изменить'],
     USER_NOT_ELIGIBLE: [400, 'Пользователь недоступен для добавления в проект'],
     INVALID_PERMISSION: [400, 'Некорректные права участника'],
+    PROJECT_ROLE_NOT_FOUND: [404, 'Роль проекта не найдена'],
+    PROJECT_ROLE_NAME_EXISTS: [409, 'В проекте уже есть роль с таким названием'],
+    PROJECT_ROLE_ASSIGNED: [409, 'Права участника определяются назначенной ролью'],
     USER_NOT_FOUND: [404, 'Пользователь не найден']
   }
   const mapped = Object.entries(errors).find(([code]) => error.message.includes(code))?.[1]

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Project, ProjectPermission } from '../types/projects'
+import type { Project, ProjectMember, ProjectPermission } from '../types/projects'
 
 export const projectSections = [
   { key: 'documents', label: 'Документы проекта' },
@@ -13,6 +13,27 @@ export const projectSectionPermissionsSchema = z.object({
   tasks: z.enum(['hidden', 'viewer', 'editor']).optional()
 }).strict()
 export type ProjectSectionPermissions = z.infer<typeof projectSectionPermissionsSchema>
+export const projectPermissionSchema = z.enum(['viewer', 'editor', 'hidden'])
+export const builtInProjectRoleIdSchema = z.enum(['executor', 'observer', 'administrator'])
+export const projectRoleIdSchema = z.union([builtInProjectRoleIdSchema, z.uuid()])
+export const projectRoleInputSchema = z.object({
+  id: z.uuid().optional(),
+  name: z.string().trim().min(1).max(80),
+  permission: projectPermissionSchema,
+  sections: projectSectionPermissionsSchema
+}).strict()
+
+export const projectPermissionOptions: { label: string; value: ProjectPermission }[] = [
+  { label: 'Просмотр', value: 'viewer' },
+  { label: 'Редактирование', value: 'editor' },
+  { label: 'Не показывать', value: 'hidden' }
+]
+
+export function projectMemberRoleName(project: Project, member: ProjectMember) {
+  if (member.permission === 'owner') return 'Владелец'
+  return project.roles?.find(role => role.id === member.projectRoleId)?.name
+    ?? (member.kind === 'observer' ? 'Наблюдатель' : 'Исполнитель')
+}
 
 export function projectSectionPermission(project: Pick<Project, 'permission' | 'sectionPermissions'>, section: ProjectSection): ProjectPermission | 'owner' {
   if (project.permission === 'owner') return 'owner'

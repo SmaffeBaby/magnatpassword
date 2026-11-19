@@ -4,7 +4,8 @@ import ProjectChats from './ProjectChats.vue'
 import ProjectPasswords from './ProjectPasswords.vue'
 import ProjectDocuments from './ProjectDocuments.vue'
 import ProjectMemberSections from './ProjectMemberSections.vue'
-import { canViewProjectSection, type ProjectSectionPermissions } from '~~/shared/utils/project-permissions'
+import ProjectRoles from './ProjectRoles.vue'
+import { canViewProjectSection, projectMemberRoleName, projectPermissionOptions, type ProjectSectionPermissions } from '~~/shared/utils/project-permissions'
 import { useQueryClient } from '@tanstack/vue-query'
 import UserPicker from '~/components/Shared/UserPicker.vue'
 import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
@@ -21,7 +22,7 @@ import ProjectSummary from './ProjectSummary.vue'
 import ProjectDirectory from './ProjectDirectory.vue'
 import ProjectDashboardSettings from './ProjectDashboardSettings.vue'
 import { projectStages } from '~~/shared/utils/project-dashboard'
-import type { Project, ProjectPermission } from '~~/shared/types/projects'
+import type { Project, ProjectMember, ProjectPermission, ProjectRole } from '~~/shared/types/projects'
 import type { TeamPerson } from '~~/shared/types/team'
 
 const props = defineProps<{ projectId?: string; section?: 'spaces' | 'chats' | 'passwords' | 'documents' | 'economy' | 'counterparties' | 'legal-entities' | 'document-templates' | 'input-documents' | 'estimate' | 'contracts' | 'execution' | 'closing' | 'relationships' }>()
@@ -36,13 +37,21 @@ const createOpen = ref(false), name = ref(''), busy = ref(false), error = ref(''
 const currentProject = computed(() => projects.data.value?.find(project => project.id === props.projectId))
 const selectedId = ref(''), selected = computed(() => projects.data.value?.find(project => project.id === selectedId.value))
 const detailsOpen = computed({ get: () => !!selectedId.value, set: (open: boolean) => { if (!open) selectedId.value = '' } })
-const person = ref<TeamPerson | null>(null), permission = ref<ProjectPermission>('viewer'), editName = ref('')
-const memberKind=ref<'executor'|'observer'>('executor')
-const permissionOptions = [{ label: 'Просмотр', value: 'viewer' }, { label: 'Редактирование', value: 'editor' }, { label: 'Не показывать', value: 'hidden' }]
-const labels = { owner: 'Владелец', viewer: 'Просмотр', editor: 'Редактирование', hidden: 'Не показывать' }
+const person = ref<TeamPerson | null>(null), inviteRole = ref('observer'), editName = ref('')
+const roleOptions = computed(() => (selected.value?.roles ?? [])
+  .filter(role => role.id !== 'administrator' || selected.value?.permission === 'owner')
+  .map(role => ({ label: role.name, value: role.id })))
+function canManageMember(member: ProjectMember) {
+  return selected.value?.canManageMembers && member.permission !== 'owner'
+    && (selected.value.permission === 'owner' || (member.projectRoleId !== 'administrator' && member.userId !== auth.user?.id))
+}
+function memberRoleOptions(project: Project, member: ProjectMember) {
+  if (member.projectRoleId) return roleOptions.value
+  return [{ label: `${projectMemberRoleName(project, member)} · индивидуально`, value: 'individual', disabled: true }, ...roleOptions.value]
+}
 watch(selected, project => { editName.value = project?.name ?? '' })
 watch(() => props.projectId, () => { selectedId.value = ''; createOpen.value = false; error.value = '' })
-watch(selectedId, () => { person.value = null; permission.value = 'viewer'; error.value = '' })
+watch(selectedId, () => { person.value = null; inviteRole.value = 'observer'; error.value = '' })
 watch(() => access.data.value?.allowed, allowed => { if (!allowed) { selectedId.value = ''; createOpen.value = false } })
 watch(() => projects.error.value, failure => { if ((failure as any)?.statusCode === 403) access.refetch() })
 async function refresh() { await Promise.all([access.refetch(), projects.refetch()]) }
@@ -75,7 +84,19 @@ function rename() {
 function setMember(userId: string, next: ProjectPermission, sections?: ProjectSectionPermissions) {
   const project = selected.value
   if (!project) return
-  mutate(() => sharedRequest(`/api/projects/${project.id}/members`, { method: 'PUT', body: { userId, permission: next, ...(sections ? { sections } : {}), ...(person.value?.id===userId?{kind:memberKind.value}:{}), revision: project.revision } }), () => { person.value = null })
+  mutate(() => sharedRequest(`/api/projects/${project.id}/members`, { method: 'PUT', body: { userId, permission: next, sections, revision: project.revision } }))
+}
+function assignRole(userId: string, roleId: string) {
+  const project = selected.value
+  if (!project || !roleOptions.value.some(role => role.value === roleId)) return
+  mutate(() => sharedRequest(`/api/projects/${project.id}/members`, { method: 'PUT', body: { userId, roleId, revision: project.revision } }), () => {
+    if (person.value?.id === userId) person.value = null
+  })
+}
+function saveRole(role: Omit<ProjectRole, 'id'> & { id?: string }, done: () => void) {
+  const project = selected.value
+  if (!project) return
+  mutate(() => sharedRequest(`/api/projects/${project.id}/roles`, { method: 'PUT', body: { ...role, revision: project.revision } }), done)
 }
 function removeMember(userId: string) {
   const project = selected.value
@@ -137,9 +158,32 @@ watch([()=>route.query.create,()=>access.data.value?.allowed],([create,allowed])
         <template v-if="selected">
           <form v-if="selected.permission !== 'viewer'" class="project-rename" @submit.prevent="rename"><UFormField label="Название проекта" class="min-w-0 flex-1"><UInput v-model="editName" class="w-full" required :maxlength="120" :disabled="busy" /></UFormField><UButton type="submit" label="Сохранить" color="neutral" variant="outline" :loading="busy" :disabled="!editName.trim() || editName.trim() === selected.name" /></form>
           <UAlert v-if="error" color="error" :description="error" class="mb-4" />
-          <h2 class="font-semibold text-sm">Участники и наблюдатели</h2><p class="text-xs text-slate-500 mt-2">Общие права определяют доступ к проекту и редактирование его обзора. Ниже можно отдельно настроить экономику и Кабан.</p>
-          <div class="project-members"><div v-for="member in selected.members" :key="member.userId" class="project-member"><PersonAvatar :name="member.fullName || member.email" /><div class="project-member-person"><NuxtLink :to="`/team/${member.userId}`" class="project-member-profile">{{ member.fullName || member.email }}</NuxtLink><small>{{ member.email }}</small></div><template v-if="selected.permission === 'owner' && member.permission !== 'owner'"><USelect :model-value="member.permission" :items="permissionOptions" :disabled="busy" :aria-label="`Права: ${member.fullName || member.email}`" @update:model-value="value => setMember(member.userId, value as ProjectPermission)" /><UButton icon="i-lucide-x" color="neutral" variant="ghost" :aria-label="`Убрать участника ${member.fullName || member.email}`" :disabled="busy" @click="removeMember(member.userId)" /></template><span v-else class="project-member-role">{{ labels[member.permission] }}</span></div></div>
-          <form v-if="selected.permission === 'owner'" class="project-invite" @submit.prevent="person && setMember(person.id, permission)"><h3>Добавить участника</h3><p>В поиске — пользователи вашей команды.</p><UserPicker v-model="person" projects :disabled="busy" /><div class="project-invite-actions"><USelect v-model="memberKind" :items="[{label:'Исполнитель',value:'executor'},{label:'Наблюдатель',value:'observer'}]" aria-label="Роль в проекте" :disabled="busy"/><USelect v-model="permission" :items="permissionOptions" :disabled="busy" aria-label="Права нового участника" /><UButton type="submit" label="Добавить" icon="i-lucide-user-plus" :loading="busy" :disabled="!person || selected.members.some(member => member.userId === person?.id)" /></div><p>«Не показывать» скрывает проект от участника и закрывает доступ. Права можно вернуть в любой момент.</p></form>
+          <h2 class="font-semibold text-sm">Участники проекта</h2>
+          <div class="project-members">
+            <div v-for="member in selected.members" :key="member.userId" class="project-member">
+              <PersonAvatar :name="member.fullName || member.email" />
+              <div class="project-member-person"><NuxtLink :to="`/team/${member.userId}`" class="project-member-profile">{{ member.fullName || member.email }}</NuxtLink><small>{{ member.email }}<template v-if="member.permission === 'hidden'"> · Доступ закрыт</template></small></div>
+              <template v-if="canManageMember(member)">
+                <div class="flex flex-wrap gap-2">
+                  <USelect :model-value="member.projectRoleId ?? 'individual'" :items="memberRoleOptions(selected, member)" :disabled="busy" :aria-label="`Роль ${member.fullName || member.email}`" @update:model-value="value => assignRole(member.userId, String(value))" />
+                  <USelect v-if="!member.projectRoleId && selected.permission === 'owner' && member.permission !== 'owner'" :model-value="member.permission" :items="projectPermissionOptions" :disabled="busy" :aria-label="`Права ${member.fullName || member.email}`" @update:model-value="value => setMember(member.userId, value as ProjectPermission)" />
+                </div>
+                <UButton icon="i-lucide-x" color="neutral" variant="ghost" :aria-label="`Убрать участника ${member.fullName || member.email}`" :disabled="busy" @click="removeMember(member.userId)" />
+              </template>
+              <span v-else class="project-member-role">{{ projectMemberRoleName(selected, member) }}</span>
+            </div>
+          </div>
+          <template v-if="selected.canManageMembers">
+            <form :key="selected.id" class="project-invite" @submit.prevent="person && assignRole(person.id, inviteRole)">
+              <h3>Добавить участника</h3>
+              <UserPicker v-model="person" :project-id="selected.id" :disabled="busy" />
+              <div class="project-invite-actions">
+                <USelect v-model="inviteRole" :items="roleOptions" aria-label="Роль нового участника" :disabled="busy" />
+                <UButton type="submit" label="Добавить" icon="i-lucide-user-plus" :loading="busy" :disabled="!person || selected.members.some(member => member.userId === person?.id)" />
+              </div>
+            </form>
+            <ProjectRoles :key="selected.id" :roles="selected.roles ?? []" :busy="busy" @save="saveRole" />
+          </template>
           <ProjectMemberSections :project="selected" :busy="busy" @change="(member, sections) => setMember(member.userId, member.permission as ProjectPermission, sections)" />
         </template>
         <UAlert v-else color="neutral" title="Проект больше недоступен" />

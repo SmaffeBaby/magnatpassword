@@ -91,6 +91,29 @@ try {
   projectIds.push(secondId)
   assert.equal((await request(owner, `/api/projects/${secondId}/dashboard`)).revision, 0)
   await request(viewer, `/api/projects/${secondId}/dashboard`, 'GET', undefined, 404)
+  const secondPath = `/api/projects/${secondId}`
+  const secondProject = async user => (await request(user, '/api/projects')).find(item => item.id === secondId)
+  const secondRevision = async () => (await secondProject(owner)).revision
+  const candidatePath = `${secondPath}/member-candidates`
+  const initialCandidates = await request(owner, candidatePath)
+  assert.ok(initialCandidates.people.length > 0)
+  assert.ok(!initialCandidates.people.some(person => person.id === owner.id))
+  await request(outsider, candidatePath, 'GET', undefined, 403)
+  assert.deepEqual((await secondProject(owner)).roles.map(role => role.id), ['executor', 'observer', 'administrator'])
+  await request(owner, `${secondPath}/members`, 'PUT', { userId: editor.id, roleId: 'administrator', revision: await secondRevision() })
+  assert.equal((await secondProject(editor)).canManageMembers, true)
+  await request(editor, `${secondPath}/members`, 'PUT', { userId: viewer.id, roleId: 'administrator', revision: await secondRevision() }, 403)
+  const roleInput = { name: 'Рецензент', permission: 'viewer', sections: { documents: 'hidden', tasks: 'editor' } }
+  await request(editor, `${secondPath}/roles`, 'PUT', { ...roleInput, revision: await secondRevision() })
+  const role = (await secondProject(owner)).roles.find(item => item.name === roleInput.name)
+  assert.ok(role)
+  await request(editor, `${secondPath}/members`, 'PUT', { userId: viewer.id, roleId: role.id, revision: await secondRevision() })
+  assert.deepEqual((await secondProject(viewer)).sectionPermissions, { documents: 'hidden', economy: 'viewer', tasks: 'editor' })
+  assert.ok(!(await request(editor, `${candidatePath}?q=${marker}`)).people.some(person => person.id === viewer.id))
+  await request(viewer, `${secondPath}/roles`, 'PUT', { ...roleInput, id: role.id, revision: await secondRevision() }, 403)
+  await request(editor, `${secondPath}/roles`, 'PUT', { id: role.id, name: role.name, permission: 'viewer', sections: { tasks: 'hidden' }, revision: await secondRevision() })
+  assert.equal((await secondProject(viewer)).sectionPermissions.tasks, 'hidden')
+  await request(viewer, `/api/kaban?project=${secondId}`, 'GET', undefined, 403)
   await request(viewer, `/api/projects/${id}`, 'PUT', { name: 'Denied', revision: current.revision }, 403)
   await request(viewer, `/api/projects/${id}/members`, 'PUT', { userId: viewer.id, permission: 'editor', revision: current.revision }, 403)
   await request(editor, `/api/projects/${id}/members`, 'PUT', { userId: viewer.id, permission: 'hidden', revision: current.revision }, 403)
@@ -185,7 +208,7 @@ try {
   assert.equal(await project(editor), undefined)
   await request(editor, `/api/projects/${id}`, 'PUT', { name: 'Removed edit', revision: current.revision + 1 }, 404)
   // Neither signed-in clients nor guessed actor IDs can bypass the API using PostgREST.
-  for (const table of ['projects', 'project_access', 'project_members', 'project_dashboard_preferences']) {
+  for (const table of ['projects', 'project_access', 'project_members', 'project_roles', 'project_dashboard_preferences']) {
     assert.ok((await viewer.client.from(table).select('*')).error, `Direct ${table} read must fail`); checks++
   }
   assert.ok((await viewer.client.rpc('list_projects', { p_actor: owner.id })).error); checks++

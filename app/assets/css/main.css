@@ -171,7 +171,6 @@
 .password-header-context .breadcrumb{overflow:hidden;white-space:nowrap;font-size:10px;gap:8px}
 .password-header-context .breadcrumb strong{overflow:hidden;text-overflow:ellipsis}
 .password-glass{position:relative;isolation:isolate;display:flex;align-items:center;justify-content:center;gap:11px;padding:12px 23px;border:1px solid rgba(255,255,255,.94);border-radius:19px;background:linear-gradient(135deg,rgba(255,255,255,.88),rgba(255,255,255,.38));box-shadow:0 8px 30px #3341550d,inset 0 1px 0 white,inset 0 -1px 0 #94a3b81a;backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%);color:#334155;font-size:18px;font-weight:650;letter-spacing:-.6px;animation:password-surface-in .65s cubic-bezier(.2,.8,.2,1) both;transition:box-shadow .2s,border-color .2s}
-.password-glass::before{content:"";position:absolute;inset:-12px;z-index:-1;border-radius:28px;background:radial-gradient(ellipse,color-mix(in srgb,var(--ui-primary) 12%,transparent),transparent 72%);filter:blur(12px);pointer-events:none}
 .password-glass:hover{box-shadow:0 10px 32px #33415516,inset 0 1px 0 white;border-color:var(--color-magnat-100)}
 .password-glass:focus-visible,.password-profile:focus-visible{outline:2px solid var(--ui-primary);outline-offset:4px}
 .password-glass img{object-fit:contain;flex-shrink:0}

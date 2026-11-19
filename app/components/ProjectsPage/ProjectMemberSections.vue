@@ -2,8 +2,9 @@
 import type { Project, ProjectMember, ProjectPermission } from '~~/shared/types/projects'
 import { projectSections, type ProjectSection, type ProjectSectionPermissions } from '~~/shared/utils/project-permissions'
 
-defineProps<{ project: Project; busy: boolean }>()
+const props = defineProps<{ project: Project; busy: boolean }>()
 const emit = defineEmits<{ change: [member: ProjectMember, sections: ProjectSectionPermissions] }>()
+const members = computed(() => props.project.members.filter(member => member.permission !== 'owner' && !member.projectRoleId))
 const labels = { viewer: 'Просмотр', editor: 'Редактирование', hidden: 'Не показывать', owner: 'Владелец' }
 function options(member: ProjectMember) {
   return [
@@ -22,10 +23,10 @@ function change(member: ProjectMember, key: ProjectSection, permission: string) 
 </script>
 
 <template>
-  <section v-if="project.permission === 'owner'" class="member-sections" aria-label="Права на разделы проекта">
-    <h3>Доступ к разделам</h3>
-    <p>Для каждого участника можно отдельно скрыть раздел, разрешить просмотр или редактирование. Экономика включает смету, договоры, исполнение, закрытие и связанные документы. Владелец всегда имеет полный доступ.</p>
-    <div v-for="member in project.members.filter(member => member.permission !== 'owner')" :key="member.userId" class="member-section-row">
+  <section v-if="project.permission === 'owner' && members.length" class="member-sections" aria-label="Индивидуальный доступ к разделам">
+    <h3>Индивидуальный доступ к разделам</h3>
+    <p>Эти права действуют до назначения роли участнику.</p>
+    <div v-for="member in members" :key="member.userId" class="member-section-row">
       <strong>{{ member.fullName || member.email }}</strong>
       <p v-if="member.permission === 'hidden'">Проект скрыт от участника. Чтобы открыть отдельные разделы, сначала разрешите доступ к проекту.</p>
       <div v-else class="member-section-fields">
@@ -34,7 +35,6 @@ function change(member: ProjectMember, key: ProjectSection, permission: string) 
         </UFormField>
       </div>
     </div>
-    <p v-if="project.members.length === 1">Добавьте участника, чтобы настроить права на разделы.</p>
   </section>
 </template>
 
