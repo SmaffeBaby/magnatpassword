@@ -370,9 +370,12 @@ export function useKaban(projectId:()=>string|undefined=()=>undefined, {embedded
   const key=`${auth.user?.id}:${target}:${id}`
   if(!id||!vault.unlocked||workspaceId.value!==target||!workspaces.value.length||openedLink===key)return
   openedLink=key
-  const task=workspaces.value.flatMap(item=>item.tasks).find(item=>item.id===id)
-  if(!task){error.value='Задача удалена или у вас больше нет доступа к ней.';return}
-  search.value='';onlyMine.value=false;onlyOverdue.value=false;selectedCategory.value='all';view.value=task.archived?'closed':'board'
+  const workspace=workspaces.value.find(item=>item.tasks.some(task=>task.id===id))
+  const task=workspace?.tasks.find(item=>item.id===id)
+  if(!workspace||!task){error.value='Задача удалена или у вас больше нет доступа к ней.';return}
+  const categoryId=task.categoryIds.find(id=>workspace.categories.some(category=>category.id===id&&!category.archived))
+  setView(task.archived?'closed':'board')
+  if(categoryId)selectedCategory.value=workspaceId.value==='all'?`${workspace.board.id}:${categoryId}`:categoryId
   await openTask(task)
  }
  if(!embedded)watch([()=>route.query.task,()=>route.query.vault,()=>auth.user?.id,()=>vault.unlocked],()=>{

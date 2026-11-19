@@ -67,6 +67,7 @@ async function createForDay(dueOn:string){
  if(c.draft&&!c.draft.id)c.draft.dueOn=dueOn
 }
 const boardElement=ref<HTMLElement|null>(null)
+const boardPan=useKabanBoardPan(boardElement)
 async function openStage(stageId:string){
  const target=await c.openStage(stageId)
  if(!target)return
@@ -144,7 +145,9 @@ function notification(notification:{entryId:string|null;vaultId:string|null}){na
      <p v-if="c.view!=='closed'&&c.workspaceId==='all'&&!c.tasks.length" class="kaban-loading">Нет задач по выбранным условиям.</p>
      <ProjectTasksPlanner v-if="activeView !== 'board'" :mode="activeView" :project-start-on="c.project?.profile?.startOn" :project-end-on="c.project?.profile?.endOn"
        :marker-projects="c.project ? [{ id: c.project.id, name: c.project.name, canEdit: c.displayData.canEdit }] : []" :tasks="c.planningTasks" :stages="c.planningStages" :categories="c.categories" :people="c.displayData.people" :category-contains="c.categoryContains" :can-create="c.displayData.canEdit" :can-reschedule="c.canOwn" :reschedule="c.rescheduleTask" :busy="c.busy" @open="(task, edit) => c.openTask(task, undefined, edit && task.canEdit)" @create="createForDay" />
-     <div v-else-if="c.view!=='closed'" ref="boardElement" class="kaban-board" aria-label="Канбан-доска">
+     <div v-else-if="c.view!=='closed'" ref="boardElement" class="kaban-board" role="region" aria-label="Канбан-доска" tabindex="0"
+       @pointerdown="boardPan.start" @pointermove="boardPan.move" @pointerup="boardPan.stop"
+       @pointercancel="boardPan.stop" @lostpointercapture="boardPan.stop">
       <section v-for="{ stage, tasks } in boardColumns" :key="stage.id" :data-kaban-stage="stage.id" class="kaban-column" :class="{'is-drop-target':!!dragged}" @dragover.prevent @drop.prevent="drop(stage.id)">
        <header><span class="kaban-stage-dot" :style="{background:stage.color}"/><h2><button v-if="c.workspaceId==='all'" type="button" class="kaban-stage-link" :disabled="c.loading||c.busy" :aria-label="`Открыть доску: ${stage.name}`" @click="openStage(stage.id)">{{stage.name}}</button><template v-else>{{stage.name}}</template></h2><span class="kaban-column-count">{{tasks.length}}</span><UButton v-if="projectId&&c.workspaceId!=='all'&&c.displayData.canEdit&&c.view==='board'" size="xs" icon="i-lucide-plus" color="neutral" variant="ghost" :aria-label="`Добавить задачу: ${stage.name}`" :disabled="c.busy" @click="c.createTaskInStage(stage.id)"/></header>
        <div class="kaban-column-body"><KabanTaskCard v-for="task in tasks" :key="task.id" :task="task" :done="stage.done" :controller="c" @drag="dragged=$event" @pointer-drag="pointerDrag"/><p v-if="!tasks.length" class="kaban-column-empty">{{c.displayData.canEdit?'Перетащите задачу сюда или создайте новую':'Пока нет задач'}}</p></div>
@@ -163,6 +166,10 @@ function notification(notification:{entryId:string|null;vaultId:string|null}){na
 </template>
 
 <style scoped>
+.kaban-board { cursor: grab; }
+.kaban-board.is-panning { cursor: grabbing; scroll-snap-type: none; scroll-behavior: auto; user-select: none; }
+.kaban-board .kaban-task-card { cursor: default; }
+.kaban-board:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
 .kaban-sidebar-heading{font:inherit;letter-spacing:inherit;text-align:left;cursor:pointer}
 .category-label .kaban-sidebar-heading{font:inherit;letter-spacing:inherit}
 .kaban-sidebar-heading:hover,.kaban-stage-link:hover{color:var(--ui-primary);text-decoration:underline;text-underline-offset:3px}
