@@ -1,6 +1,6 @@
 import type { KabanTask, KabanTaskData, KabanBlock } from '../types/kaban'
 import { kabanTaskStage } from './kaban-stages'
-import { todayDate } from './subscriptions'
+import { dayDifference, todayDate, validDate } from './subscriptions'
 export const kabanFileLimit = 20 * 1024 * 1024
 export const kabanCanEditPlanning = (actorId: string | undefined, task: Pick<KabanTask, 'creatorId'>) => !!actorId && actorId === task.creatorId
 export function kabanPlanningChanged(previous: Pick<KabanTask, 'startOn' | 'dueOn' | 'participantIds'>, next: Pick<KabanTask, 'startOn' | 'dueOn' | 'participantIds'>) {
@@ -8,6 +8,19 @@ export function kabanPlanningChanged(previous: Pick<KabanTask, 'startOn' | 'dueO
   return (previous.startOn || '') !== (next.startOn || '') || previous.dueOn !== next.dueOn || before.size !== after.size || [...before].some(id => !after.has(id))
 }
 export const kabanOverdue = (task: Pick<KabanTask, 'dueOn'>, done = false, today = todayDate()) => !done && !!task.dueOn && task.dueOn < today
+
+const deadlineWarningDays = 7
+export function kabanDeadlineProgress(task: Pick<KabanTask, 'startOn' | 'dueOn' | 'createdAt'>, today: string) {
+  if (!validDate(task.dueOn)) return null
+  const created = new Date(task.createdAt)
+  const start = task.startOn && validDate(task.startOn) ? task.startOn
+    : Number.isFinite(created.getTime()) ? todayDate(created) : ''
+  const duration = start ? Math.max(1, dayDifference(start, task.dueOn)) : deadlineWarningDays
+  const daysLeft = dayDifference(today, task.dueOn)
+  const percent = daysLeft <= 0 ? 100 : Math.max(0, Math.min(99, Math.round((1 - daysLeft / duration) * 100)))
+  const hue = daysLeft <= 3 ? Math.max(0, daysLeft) * 13 : 39 + (Math.min(deadlineWarningDays, daysLeft) - 3) * (115 / 4)
+  return { daysLeft, percent, hue }
+}
 
 // Legacy tasks receive stable block IDs without changing their stored contents.
 export function kabanBlocks(data: KabanTaskData, taskId: string): KabanBlock[] {

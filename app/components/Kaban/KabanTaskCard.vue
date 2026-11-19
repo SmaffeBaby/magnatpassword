@@ -2,17 +2,39 @@
 import type {UnwrapNestedRefs} from 'vue'
 import type {useKaban} from '~/composables/kaban/useKaban'
 import type {KabanTask} from '~~/shared/types/kaban'
+import {kabanDeadlineProgress} from '~~/shared/utils/kaban'
 import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 const props=defineProps<{controller:UnwrapNestedRefs<ReturnType<typeof useKaban>>;task:KabanTask;done?:boolean}>()
 const c=props.controller
 const stage=computed(()=>({done:!!props.done}))
+const deadline=computed(()=>stage.value.done||props.task.archived?null:kabanDeadlineProgress(props.task,c.deadlineToday))
+const dayCount=new Intl.NumberFormat('ru-RU',{style:'unit',unit:'day',unitDisplay:'long'})
+const deadlineLabel=computed(()=>{
+ const days=deadline.value?.daysLeft??0
+ if(days<0)return `Просрочено на ${dayCount.format(-days)}`
+ return days===0?'Срок сегодня':`Осталось ${dayCount.format(days)}`
+})
 const emit=defineEmits<{drag:[id:string];pointerDrag:[event:PointerEvent,id:string]}>()
 </script>
-<template><article class="kaban-task-card" :class="{'is-overdue':c.kabanOverdue(task,stage.done),'is-done':stage.done}" :draggable="task.canEdit&&!c.busy&&!task.archived&&c.view==='board'" @dragstart="event=>{emit('drag',task.id);if(event.dataTransfer){event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',task.id)}}" @dragend="emit('drag','')">
+<template><article class="kaban-task-card" :class="{'is-overdue':c.kabanOverdue(task,stage.done||task.archived,c.deadlineToday),'is-done':stage.done}" :draggable="task.canEdit&&!c.busy&&!task.archived&&c.view==='board'" @dragstart="event=>{emit('drag',task.id);if(event.dataTransfer){event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',task.id)}}" @dragend="emit('drag','')">
         <button v-if="task.canEdit&&!task.archived&&c.view==='board'" type="button" class="kaban-drag-handle" :aria-label="`Перетащить задачу: ${task.title}`" title="Перетащить задачу" :disabled="c.busy" @pointerdown.prevent.stop="event=>emit('pointerDrag',event,task.id)" @click.stop><UIcon name="i-lucide-grip-vertical"/></button>
         <UButton v-if="task.canEdit" class="kaban-card-settings" icon="i-lucide-settings-2" color="neutral" variant="ghost" size="xs" :aria-label="`Настройки задачи: ${task.title}`" :disabled="c.busy" @click="c.openTask(task,undefined,true)"/><button class="kaban-task-open" @click="c.openTask(task)"><span class="kaban-task-category">{{c.displayData?.categories.filter(category=>task.categoryIds.includes(category.id)).map(category=>category.name).join(' · ')}}</span><small v-if="c.workspaceId==='all'||task.locations.length>1" class="kaban-task-sources">{{c.taskSourceNames(task)}}</small><strong>{{task.title}}</strong><p v-if="task.description">{{task.description}}</p></button>
-        <div class="kaban-task-meta"><span v-if="task.startOn" title="Дата начала"><UIcon name="i-lucide-calendar-plus"/>Начало {{c.dateLabel(task.startOn)}}</span><span v-if="task.dueOn" :class="{'is-overdue':c.kabanOverdue(task,stage.done)}"><UIcon name="i-lucide-calendar-days"/>{{c.dateLabel(task.dueOn)}}</span><span v-else><UIcon name="i-lucide-calendar-off"/>Без срока</span><span v-if="task.todos.length"><UIcon name="i-lucide-list-checks"/>{{task.todos.filter(item=>item.done).length}} / {{task.todos.length}}</span><span v-if="task.fileCount"><UIcon name="i-lucide-paperclip"/>{{task.fileCount}}</span></div>
+        <div class="kaban-task-meta"><span v-if="task.startOn" title="Дата начала"><UIcon name="i-lucide-calendar-plus"/>Начало {{c.dateLabel(task.startOn)}}</span><span v-if="task.dueOn" :class="{'is-overdue':c.kabanOverdue(task,stage.done||task.archived,c.deadlineToday)}"><UIcon name="i-lucide-calendar-days"/>{{c.dateLabel(task.dueOn)}}</span><span v-else><UIcon name="i-lucide-calendar-off"/>Без срока</span><span v-if="task.todos.length"><UIcon name="i-lucide-list-checks"/>{{task.todos.filter(item=>item.done).length}} / {{task.todos.length}}</span><span v-if="task.fileCount"><UIcon name="i-lucide-paperclip"/>{{task.fileCount}}</span></div>
         <progress v-if="task.todos.length" :value="task.todos.filter(item=>item.done).length" :max="task.todos.length" aria-label="Прогресс списка дел"/>
+        <div v-if="deadline" class="task-deadline" :style="{'--deadline-color':`hsl(${deadline.hue} 66% 39%)`}">
+          <div class="task-deadline-label" aria-hidden="true"><span>До дедлайна</span><strong>{{deadlineLabel}}</strong></div>
+          <div class="task-deadline-track" role="progressbar" aria-label="Время до дедлайна" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="deadline.percent" :aria-valuetext="deadlineLabel">
+            <span :style="{width:`${deadline.percent}%`}" />
+          </div>
+        </div>
 <div v-if="c.view==='closed'" class="kaban-task-dates"><span>Создана: {{c.taskStamp(task.createdAt)}}</span><span>{{task.closedAt?'Закрыта: '+c.taskStamp(task.closedAt):'Дата закрытия не сохранена'}}</span></div>
         <footer><span :title="`Создатель: ${c.person(task.creatorId)?.fullName||'Участник'}`"><PersonAvatar :name="c.person(task.creatorId)?.fullName||'Участник'" :src="c.person(task.creatorId)?.avatarUrl"/><small>{{c.person(task.creatorId)?.fullName||'Участник'}}</small></span><span class="kaban-task-avatars"><PersonAvatar v-for="id in task.participantIds.slice(0,3)" :key="id" :name="c.person(id)?.fullName||'Участник'" :src="c.person(id)?.avatarUrl" :title="c.person(id)?.fullName"/><small v-if="task.participantIds.length>3">+{{task.participantIds.length-3}}</small></span></footer>
        </article></template>
+
+<style scoped>
+.task-deadline{display:grid;gap:5px;margin-top:12px}
+.task-deadline-label{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:2px 8px;font-size:11px;color:#64748b}
+.task-deadline-label strong{color:color-mix(in srgb,var(--deadline-color) 85%,#172332);font-weight:650}
+.task-deadline-track{height:5px;border-radius:99px;background:color-mix(in srgb,var(--deadline-color) 13%,#eef2f6);overflow:hidden}
+.task-deadline-track>span{display:block;height:100%;border-radius:inherit;background:var(--deadline-color)}
+</style>
