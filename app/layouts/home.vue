@@ -12,6 +12,7 @@ import type { AppNotification } from '~~/shared/types/subscriptions'
 const route = useRoute()
 const { brand } = useAccountBrand()
 const isProjects = computed(() => route.path === '/projects' || route.path.startsWith('/projects/'))
+const fillWorkspace = computed(() => route.meta.fillWorkspace === true)
 const isRegistry = computed(() => route.path === '/contract-register')
 const isKaban=computed(()=>route.path==='/kaban')
 const hasSidebar=computed(()=>isProjects.value||isRegistry.value||isKaban.value)
@@ -31,10 +32,10 @@ function openNotification(notification: AppNotification) {
 
 <template>
   <AuthGate>
-    <div class="home-shell" :class="{ 'projects-shell': hasSidebar, 'registry-shell': isRegistry }">
+    <div class="home-shell" :class="{ 'projects-shell': hasSidebar, 'registry-shell': isRegistry, 'workspace-fill': fillWorkspace }">
       <aside v-if="hasSidebar" class="projects-sidebar" :aria-label="isRegistry?'Навигация реестра договоров':'Навигация проектов'"><KabanNavigation v-if="isKaban"/><ProjectNavigation v-else :registry="isRegistry"/></aside>
       <USlideover v-if="hasSidebar" v-model:open="projectMenuOpen" side="left" :title="isRegistry?'Реестр договоров':'Проекты'" description="Разделы сервиса." :ui="{ content: 'max-w-xs', body: 'p-0 sm:p-0' }"><template #body><KabanNavigation v-if="isKaban" @navigate="projectMenuOpen=false"/><ProjectNavigation v-else :registry="isRegistry" @navigate="projectMenuOpen = false"/></template></USlideover>
-      <header class="home-topbar" :class="{'projects-topbar':hasSidebar,'team-topbar':isTeam||isAccountPage,'is-hidden':hasSidebar && topbarHidden && !projectMenuOpen}">
+      <header class="home-topbar" :class="{'projects-topbar':hasSidebar,'team-topbar':isTeam||isAccountPage,'is-hidden':hasSidebar && !fillWorkspace && topbarHidden && !projectMenuOpen}">
         <NuxtLink v-if="isHome" to="/" class="home-brand" aria-label="Главная">
           <BrandIcon :brand="brand" class="home-brand-icon" :class="{ 'home-brand-compact': brand === 'light' }" />
           <span v-if="brand === 'light'" class="home-brand-desktop home-brand-light" aria-hidden="true"><BrandWordmark brand="light" /></span>
@@ -59,4 +60,11 @@ function openNotification(notification: AppNotification) {
 .home-topbar.team-topbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:20px}.team-topbar>.home-account{justify-self:end}
 @media(max-width:767px){.home-topbar.team-topbar{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:44px auto;gap:8px;padding:6px 16px 10px}.team-topbar>.home-navigation-context{grid-column:1;grid-row:1}.team-topbar>.home-account{grid-column:2;grid-row:1}.team-topbar :deep(.workspace-apps){grid-column:1/-1;grid-row:2}}
 .registry-shell>.home-section{width:100%;max-width:none;min-width:0;padding-inline:24px}.registry-shell .home-navigation-context{min-width:0}@media(max-width:767px){.registry-shell>.home-section{padding-inline:16px}}
+
+.home-shell.workspace-fill{height:100dvh;min-height:0;overflow:hidden}
+.workspace-fill>.home-topbar{flex-shrink:0}
+.projects-shell.workspace-fill>.home-section{
+  display:flex;flex-direction:column;min-height:0;min-width:0;max-width:none;
+  margin:0;padding:0;overflow:auto
+}
 </style>

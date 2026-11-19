@@ -30,6 +30,7 @@ const route = useRoute()
 const directoryTab = computed(() => ['counterparties','legal-entities','document-templates'].includes(String(route.query.tab)) ? String(route.query.tab) : 'projects')
 const directoryTitle = computed(() => directoryTab.value === 'document-templates' ? 'Шаблоны документов' : directoryTab.value === 'counterparties' ? 'Контрагенты' : directoryTab.value === 'legal-entities' ? 'Наши Юр. лица' : 'Проекты')
 const activeStage = computed(() => projectStages.find(stage => stage.key === props.section))
+const isSpacesPage = computed(() => props.section === 'spaces')
 const isProcessPage = computed(() => props.section === 'relationships')
 const auth = useAuthStore(), access = useProjectAccess(), client = useQueryClient()
 const projects = useProjectsData()
@@ -108,8 +109,8 @@ watch([()=>route.query.create,()=>access.data.value?.allowed],([create,allowed])
 </script>
 
 <template>
-  <section class="projects-workspace">
-    <NuxtLink v-if="projectId" :to="section?`/projects/${projectId}`:'/projects'" class="project-list-back"><UIcon name="i-lucide-arrow-left"/>{{ section?'К проекту':'Все проекты' }}</NuxtLink>
+  <section class="projects-workspace" :class="{ 'projects-workspace--spaces': isSpacesPage }">
+    <NuxtLink v-if="projectId && !isSpacesPage" :to="section?`/projects/${projectId}`:'/projects'" class="project-list-back"><UIcon name="i-lucide-arrow-left"/>{{ section?'К проекту':'Все проекты' }}</NuxtLink>
     <div v-if="!projectId" class="projects-heading"><div><h1>{{ directoryTitle }}<span class="title-dot">.</span></h1><p>{{ directoryTab === 'projects' ? 'Ваши проекты и люди, с которыми вы работаете.' : directoryTab === 'document-templates' ? 'Общее хранилище шаблонов по этапам проектов.' : 'Общая база компаний для ваших проектов.' }}</p></div><UButton v-if="access.data.value?.allowed && directoryTab === 'projects'" label="Создать проект" icon="i-lucide-plus" size="lg" @click="showCreate" /></div>
     <p v-if="access.isPending.value" class="projects-state"><UIcon name="i-lucide-loader-circle" class="animate-spin" /> Проверяем доступ…</p>
     <UAlert v-else-if="access.error.value" color="error" title="Не удалось проверить доступ" :actions="[{ label: 'Повторить', onClick: () => access.refetch() }]" />
@@ -122,7 +123,7 @@ watch([()=>route.query.create,()=>access.data.value?.allowed],([create,allowed])
       <p v-if="projects.isPending.value" class="projects-state">Загружаем проекты…</p>
       <template v-else-if="projectId">
         <template v-if="currentProject">
-          <header class="projects-heading project-page-heading"><div><span class="eyebrow">{{ activeStage?`ЭТАП ${activeStage.number}`:'ПРОЕКТ' }}</span><h1>{{ section==='spaces'?'Пространства':section==='chats'?'Чаты проекта':section==='passwords'?'Пароли проекта':section==='documents'?'Документы проекта':section==='economy'?'Экономика проекта':section==='counterparties'?'Контрагенты':section==='legal-entities'?'Наши юр. лица':section==='document-templates'?'Шаблоны документов':isProcessPage?'Взаимосвязь':activeStage?activeStage.label:currentProject.name }}<span class="title-dot">.</span></h1><p>{{ section?currentProject.name:'Обзор проекта и его участники.' }}</p></div><div class="project-heading-actions"><ProjectDashboardSettings v-if="section==='economy' && canViewProjectSection(currentProject, 'economy')" :key="currentProject.id" :project-id="currentProject.id"/><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></div></header>
+          <header v-if="!isSpacesPage" class="projects-heading project-page-heading"><div><span class="eyebrow">{{ activeStage?`ЭТАП ${activeStage.number}`:'ПРОЕКТ' }}</span><h1>{{ section==='chats'?'Чаты проекта':section==='passwords'?'Пароли проекта':section==='documents'?'Документы проекта':section==='economy'?'Экономика проекта':section==='counterparties'?'Контрагенты':section==='legal-entities'?'Наши юр. лица':section==='document-templates'?'Шаблоны документов':isProcessPage?'Взаимосвязь':activeStage?activeStage.label:currentProject.name }}<span class="title-dot">.</span></h1><p>{{ section?currentProject.name:'Обзор проекта и его участники.' }}</p></div><div class="project-heading-actions"><ProjectDashboardSettings v-if="section==='economy' && canViewProjectSection(currentProject, 'economy')" :key="currentProject.id" :project-id="currentProject.id"/><UButton color="neutral" variant="outline" icon="i-lucide-settings" label="Настройки проекта" @click="open(currentProject)"/></div></header>
           <UAlert v-if="section && section!=='spaces' && section!=='passwords' && section!=='chats' && !canViewProjectSection(currentProject, section==='documents'?'documents':'economy')" color="neutral" title="Нет доступа к разделу проекта" description="Владелец проекта может предоставить доступ в настройках участников." />
           <template v-else>
           <ProjectSpaces v-if="section==='spaces'" :key="currentProject.id" :project="currentProject"/>
@@ -195,4 +196,7 @@ watch([()=>route.query.create,()=>access.data.value?.allowed],([create,allowed])
 <style scoped>
 .project-heading-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-shrink:0}
 @media(max-width:700px){.project-heading-actions{width:100%}.project-heading-actions>:deep(*){flex:1;justify-content:center}}
+
+.projects-workspace--spaces{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0}
+.projects-workspace--spaces>.projects-state,.projects-workspace--spaces>.projects-empty{margin:24px}
 </style>
