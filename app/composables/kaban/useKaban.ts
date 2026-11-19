@@ -7,7 +7,7 @@ import { projectSharedCards } from '~~/shared/utils/shared-card-sources'
 import { storeToRefs } from 'pinia'
 import type { KabanWorkspace, KabanTask, KabanStage, KabanFile, KabanCategory, KabanEvent } from '~~/shared/types/kaban'
 import type { VaultSource } from '~~/shared/types/sharing'
-import { kabanFileLimit, kabanOverdue, kabanCanEditPlanning, kabanBlockSummary } from '~~/shared/utils/kaban'
+import { kabanFileLimit, kabanOverdue, kabanCanEditPlanning, kabanBlockSummary, kabanTaskBody as taskBody } from '~~/shared/utils/kaban'
 import { createId } from '~/utils/browser'
 import { saveFile } from '~/utils/file-download'
 import { dateLabel, todayDate } from '~~/shared/utils/subscriptions'
@@ -18,6 +18,7 @@ export function useKaban(projectId:()=>string|undefined=()=>undefined) {
  const auth=useAuthStore(),vault=useVaultStore(),shared=useSharedVaultsStore(),filters=useFiltersStore(),toast=useToast()
  const queryClient=useQueryClient()
  const projects=useProjectsData()
+ const project=computed(()=>projects.data.value?.find(item=>item.id===projectId()))
  const navigation=projectId()?useProjectKabanNavigation():null
  if(navigation)Object.assign(navigation.state.value,{projectId:projectId(),view:'board',selectedCategory:'all',onlyMine:false,onlyOverdue:false,canEdit:false,categories:[]})
  const {workspaceId:legacyWorkspaceId}=storeToRefs(filters)
@@ -41,7 +42,7 @@ export function useKaban(projectId:()=>string|undefined=()=>undefined) {
  const sources=computed<VaultSource[]>(()=>[{id:'personal',name:vault.data.name||'Личное',data:vault.data},...shared.groups.map(group=>({id:group.id,name:group.name,data:group.data}))])
  const currentSource=computed(()=>sources.value.find(source=>source.id===workspaceId.value))
  const visibleSources=computed(()=>workspaceId.value==='all'?sources.value.filter(source=>(view.value==='history'?totalTasks.value:tasks.value).some(task=>task.locations.some(location=>(location.vaultId||'personal')===source.id))):sources.value.filter(source=>source.id===workspaceId.value))
- const workspaceName=computed(()=>projectId()?projects.data.value?.find(p=>p.id===projectId())?.name||'Проект':workspaceId.value==='all'?'Старые доски':currentSource.value?.name||'Хранилище')
+ const workspaceName=computed(()=>projectId()?project.value?.name||'Проект':workspaceId.value==='all'?'Старые доски':currentSource.value?.name||'Хранилище')
  const sourceName=(boardId:string)=>{const board=workspaces.value.find(item=>item.board.id===boardId)?.board;if(board?.projectId)return projects.data.value?.find(p=>p.id===board.projectId)?.name||'Проект';if(!board)return 'Хранилище';return sources.value.find(source=>source.id===(board?.vaultId||'personal'))?.name||'Хранилище'}
  const displayData=computed<KabanWorkspace|null>(()=>{
   if(workspaceId.value!=='all')return data.value
@@ -132,7 +133,19 @@ export function useKaban(projectId:()=>string|undefined=()=>undefined) {
    if(options?.keepOpen){const updated=data.value?.tasks.find(item=>item.id===result.id);if(updated)draft.value=JSON.parse(JSON.stringify({...updated,scopeCategoryId:draft.value?.scopeCategoryId,stageId:kabanTaskStage(updated,draft.value?.scopeCategoryId)}))}else{editorOpen.value=false;editorSession++;draft.value=null;clearPreview()}toast.add({title:'Задача сохранена',color:'success'})
   }catch(failure){if(attempt===generation)formError.value=message(failure)}finally{if(attempt===generation)busy.value=false}
  }
- function taskBody(task:KabanTask,selectedScope?:string){const scope=selectedScope||task.scopeCategoryId||task.categoryIds[0];return {scopeCategoryId:scope,boardId:task.boardId,revision:task.revision,stageId:selectedScope?kabanTaskStage(task,scope):task.stageId,participantIds:task.participantIds,closerIds:task.closerIds,categoryIds:task.categoryIds,data:{title:task.title,description:task.description,dueOn:task.dueOn,todos:task.todos,...(task.blocks?{...kabanBlockSummary(task.blocks),blocks:task.blocks}:{})}}}
+ async function rescheduleTask(task:KabanTask,startOn:string,dueOn:string){
+  if(!canOwn(task)||busy.value||task.archived)throw new Error('Даты может менять только создатель открытой задачи с правом редактирования.')
+  const scope=kabanTaskScope(data.value,task.categoryIds),attempt=generation
+  busy.value=true
+  try{
+   await sharedRequest(`/api/kaban/tasks/${task.id}`,{method:'PUT',body:taskBody({...task,startOn,dueOn},scope)})
+   await activeLoad?.promise
+   if(attempt===generation)await load(true)
+  }catch(failure){
+   if(attempt===generation)await load(true)
+   throw new Error(message(failure))
+  }finally{if(attempt===generation)busy.value=false}
+ }
  async function moveTask(task:KabanTask,stageId:string){
   const selected=selectedCategory.value==='all'?undefined:workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value
   const scope=kabanTaskScope(workspaces.value.find(w=>w.board.id===task.boardId)||data.value,task.categoryIds,selected)
@@ -175,7 +188,9 @@ export function useKaban(projectId:()=>string|undefined=()=>undefined) {
   if(workspaceId.value==='all'){const split=id.indexOf(':');if(split<0)return false;const selectedBoard=id.slice(0,split);if(boardId!==selectedBoard)return false;localId=id.slice(split+1);board=workspaces.value.find(item=>item.board.id===boardId)||null}
   return ids.includes(localId)||!!board?.categories.some(category=>category.parentId===localId&&ids.includes(category.id))
  }
- const tasks=computed(()=>displayData.value?.tasks.filter(task=>task.archived===(view.value==='closed')&&(view.value!=='closed'||kabanClosedInRange(task.closedAt,closedFrom.value,closedUntil.value))&&(selectedCategory.value==='all'||categoryContains(selectedCategory.value,task.categoryIds,task.boardId))&&(!onlyMine.value||task.creatorId===auth.user?.id||task.participantIds.includes(auth.user?.id??''))&&(!onlyOverdue.value||kabanOverdue(task,displayData.value?.board.stages.find(stage=>stage.id===task.stageId)?.done))&&`${task.title} ${task.description} ${task.blocks?.map(block=>block.title+('value' in block?' '+block.value:'')).join(' ')||''}`.toLowerCase().includes(search.value.trim().toLowerCase())).map(task=>{const category=selectedCategory.value==='all'?undefined:(workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value);return category?{...task,stageId:kabanTaskStage(task,kabanTaskScope(workspaces.value.find(w=>w.board.id===task.boardId)||data.value,task.categoryIds,category))}:task})??[])
+ const matchesSearch=(task:KabanTask)=>`${task.title} ${task.description} ${task.blocks?.map(block=>block.title+('value' in block?' '+block.value:'')).join(' ')||''}`.toLowerCase().includes(search.value.trim().toLowerCase())
+ const planningTasks=computed(()=>displayData.value?.tasks.filter(task=>!task.archived&&matchesSearch(task))??[])
+ const tasks=computed(()=>displayData.value?.tasks.filter(task=>task.archived===(view.value==='closed')&&(view.value!=='closed'||kabanClosedInRange(task.closedAt,closedFrom.value,closedUntil.value))&&(selectedCategory.value==='all'||categoryContains(selectedCategory.value,task.categoryIds,task.boardId))&&(!onlyMine.value||task.creatorId===auth.user?.id||task.participantIds.includes(auth.user?.id??''))&&(!onlyOverdue.value||kabanOverdue(task,displayData.value?.board.stages.find(stage=>stage.id===task.stageId)?.done))&&matchesSearch(task)).map(task=>{const category=selectedCategory.value==='all'?undefined:(workspaceId.value==='all'?selectedCategory.value.slice(selectedCategory.value.indexOf(':')+1):selectedCategory.value);return category?{...task,stageId:kabanTaskStage(task,kabanTaskScope(workspaces.value.find(w=>w.board.id===task.boardId)||data.value,task.categoryIds,category))}:task})??[])
  const closedTasks=computed(()=>[...tasks.value].sort((a,b)=>(b.closedAt||'').localeCompare(a.closedAt||'')))
  const taskStamp=(value:string)=>new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'}).format(new Date(value))
  const totalTasks=computed(()=>[...new Map(workspaces.value.flatMap(item=>item.tasks).map(task=>[task.id,task])).values()])
@@ -315,5 +330,5 @@ export function useKaban(projectId:()=>string|undefined=()=>undefined) {
  const assistantUpdated=()=>{if(!busy.value&&!editorOpen.value)void load(true)}
  onMounted(()=>{window.addEventListener('assistant:updated',assistantUpdated);void load();timer=setInterval(()=>{if(!realtimeConnected.value&&!busy.value&&!editorOpen.value&&!stagesOpen.value&&document.visibilityState==='visible')void load(true)},30000)})
  onBeforeUnmount(()=>{window.removeEventListener('assistant:updated',assistantUpdated);generation++;editorSession++;clearInterval(timer);clearPreview()})
- return {categoryBoardId,categoryBoardOptions,canCreateCategories,canAddSubcategory,createCategory,openStage,stageCategoryId,stageInherit,realtimeConnected,closedFrom,closedUntil,closedTasks,taskStamp,categoryActionOpen,categoryAction,actionCategory,categoryActionError,openCategoryAction,saveCategoryAction,taskSettings,passwordOptions,passwordEntry,totalTasks,boardStages,changeDraftVault,displayData,canComplete,canOwn,taskSourceNames,workspaces,sourceName,locationOpen,targetVaultId,targetWorkspace,targetCategory,targetStage,locationMove,locationError,locationLoading,newLocationCategory,locationSources,targetCategoryOptions,openLocation,saveLocation,view,history,historyBefore,historyLoading,loadHistory,setView,categoryContains,categoryParent,parentOptions,archiveTask,archiveCategory,auth,vault,shared,filters,data,loading,busy,error,mobileOpen,workspaceId,workspaceName,sources,currentSource,visibleSources,categories,categoryOptions,canCategorize,structureBusy,canEdit,load,selectedCategory,search,onlyMine,onlyOverdue,tasks,categoryCount,chooseCategory,editorOpen,draft,formError,deleteOpen,openTask,closeEditor,chooseFiles,saveTask,moveTask,removeTask,files,filesLoading,pendingFiles,preview,previewName,clearPreview,openFile,removeFile,stagesOpen,stageDraft,stageError,editStages,addStage,shiftStage,stageCount,saveStages,peopleOptions,person,categoryOpen,categoryError,categoryForm,editCategory,saveCategory,dateLabel,todayDate,kabanOverdue}
+ return {project,categoryBoardId,categoryBoardOptions,canCreateCategories,canAddSubcategory,createCategory,openStage,stageCategoryId,stageInherit,realtimeConnected,closedFrom,closedUntil,closedTasks,taskStamp,categoryActionOpen,categoryAction,actionCategory,categoryActionError,openCategoryAction,saveCategoryAction,taskSettings,passwordOptions,passwordEntry,totalTasks,boardStages,changeDraftVault,displayData,canComplete,canOwn,taskSourceNames,workspaces,sourceName,locationOpen,targetVaultId,targetWorkspace,targetCategory,targetStage,locationMove,locationError,locationLoading,newLocationCategory,locationSources,targetCategoryOptions,openLocation,saveLocation,view,history,historyBefore,historyLoading,loadHistory,setView,categoryContains,categoryParent,parentOptions,archiveTask,archiveCategory,auth,vault,shared,filters,data,loading,busy,error,mobileOpen,workspaceId,workspaceName,sources,currentSource,visibleSources,categories,categoryOptions,canCategorize,structureBusy,canEdit,load,selectedCategory,search,onlyMine,onlyOverdue,tasks,planningTasks,categoryCount,chooseCategory,editorOpen,draft,formError,deleteOpen,openTask,closeEditor,chooseFiles,saveTask,rescheduleTask,moveTask,removeTask,files,filesLoading,pendingFiles,preview,previewName,clearPreview,openFile,removeFile,stagesOpen,stageDraft,stageError,editStages,addStage,shiftStage,stageCount,saveStages,peopleOptions,person,categoryOpen,categoryError,categoryForm,editCategory,saveCategory,dateLabel,todayDate,kabanOverdue}
 }

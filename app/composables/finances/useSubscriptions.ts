@@ -28,7 +28,7 @@ export function useSubscriptionCalendar(props:{entries:ScopedCredential[];source
  const common=useSubscriptionFilters(props,'calendar')
  const {month,selected}=toRefs(useFiltersStore().calendar)
  const calendar=useMonthCalendar(month,selected,common.today)
- const {monthTitle,selectedMonth,selectedYear,monthOptions,move,goToday}=calendar
+ const {monthTitle,move,goToday}=calendar
  const payments=computed(()=>sourcePayments(props.sources??[]))
  const charges=computed(()=>{
   const from=addPeriod(month.value,-6,'day'),to=addPeriod(month.value,42,'day')
@@ -44,5 +44,5 @@ export function useSubscriptionCalendar(props:{entries:ScopedCredential[];source
  const monthPaidTotals=computed(()=>currencyTotals(charges.value.filter(event=>event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
  const selectedEndingTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>!event.charge&&!event.paid)))
  const selectedPaidTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>event.paid)))
- return {...common,month,selected,monthTitle,cells,selectedRows,move,goToday,selectedMonth,selectedYear,monthOptions,monthTotals,monthRenewalTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,selectedEndingTotals,amountLabel}
+ return {...common,month,selected,monthTitle,cells,selectedRows,move,goToday,monthTotals,monthRenewalTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,selectedEndingTotals,amountLabel}
 }

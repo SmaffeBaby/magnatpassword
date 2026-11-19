@@ -11,7 +11,7 @@ const auth=useAuthStore(),vault=useVaultStore(),access=useProjectAccess()
 const today=useState('subscription-today',()=>todayDate())
 const month=useState('contract-calendar-month',()=>today.value.slice(0,7)+'-01')
 const selected=useState('contract-calendar-selected',()=>today.value)
-const {monthTitle,selectedMonth,selectedYear,monthOptions,dates,move,goToday}=useMonthCalendar(month,selected,today)
+const {monthTitle,dates,move,goToday}=useMonthCalendar(month,selected,today)
 const q=ref(''),search=ref(''),projectId=ref('all'),origin=ref('all'),status=ref('all'),kind=ref<ContractCalendarKind>('all')
 const current=ref<RegisterContract|null>(null)
 let timer:ReturnType<typeof setTimeout>|undefined
@@ -42,7 +42,7 @@ watch(()=>access.data.value?.allowed,allowed=>{if(!allowed)current.value=null})
       <USelect v-model="status" :items="[{label:'Все сроки',value:'all'},{label:'Просроченные',value:'overdue'},{label:'Без срока',value:'no-deadline'},{label:'Автопродление',value:'auto-renew'}]" aria-label="Срок договора"/>
     </div>
     <UAlert v-if="query.error.value" color="error" title="Не удалось загрузить календарь договоров" :actions="[{label:'Повторить',onClick:()=>query.refetch()}]" class="mb-4"/>
-    <MonthCalendar v-model:month="selectedMonth" v-model:year="selectedYear" v-model:selected="selected" :title="monthTitle" :description="`Даты договоров и сроки окончания. Найдено договоров: ${query.data.value?.total||0}`" :today="today" :cells="cells" :month-options="monthOptions" @move="move" @today="goToday">
+    <MonthCalendar v-model:month="month" v-model:selected="selected" :title="monthTitle" :description="`Даты договоров и сроки окончания. Найдено договоров: ${query.data.value?.total||0}`" :today="today" :cells="cells" @move="move" @today="goToday">
       <template #summary>
         <p v-if="query.isFetching.value" role="status" class="subscription-empty">Загружаем календарь…</p>
         <div class="calendar-total"><span>Даты договоров за месяц</span><strong>{{monthEvents.filter(event=>event.kind==='date').length}}</strong><span>Сроки окончания за месяц</span><strong>{{monthEvents.filter(event=>event.kind==='deadline').length}}</strong></div>

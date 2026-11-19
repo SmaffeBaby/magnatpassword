@@ -184,6 +184,20 @@ try {
   const taskBody = { boardId: board.board.id, revision: 0, stageId: board.board.stages[0].id, participantIds: [viewer.id], categoryIds: [category.id], data: { title: marker, description: '', dueOn: '', todos: [] } }
   const task = await request(viewer, '/api/kaban/tasks', 'POST', taskBody)
   await request(editor, '/api/kaban/tasks', 'POST', taskBody, 403)
+  const taskPath = `/api/kaban/tasks/${task.id}`
+  const savedTask = async () => (await request(viewer, `/api/kaban?project=${id}`)).tasks.find(item => item.id === task.id)
+  assert.equal((await savedTask()).startOn ?? '', '')
+  const planned = { ...taskBody, revision: (await savedTask()).revision, data: { ...taskBody.data, startOn: '2026-11-19', dueOn: '2026-11-24' } }
+  await request(owner, taskPath, 'PUT', planned, 403)
+  await request(viewer, taskPath, 'PUT', { ...planned, data: { ...planned.data, startOn: '2026-11-25' } }, 400)
+  await request(viewer, taskPath, 'PUT', planned)
+  assert.equal((await savedTask()).startOn, planned.data.startOn)
+  await request(viewer, taskPath, 'PUT', planned, 409)
+  const legacyUpdate = { ...taskBody, revision: (await savedTask()).revision, data: { ...taskBody.data, title: `${marker} planned`, dueOn: planned.data.dueOn } }
+  await request(owner, taskPath, 'PUT', legacyUpdate)
+  assert.equal((await savedTask()).startOn, planned.data.startOn)
+  await request(viewer, taskPath, 'PUT', { ...legacyUpdate, revision: (await savedTask()).revision, data: { ...legacyUpdate.data, startOn: '' } })
+  assert.equal((await savedTask()).startOn, '')
 
   await sections(viewer, 'hidden', { economy: 'editor', tasks: 'editor' })
   assert.equal(await project(viewer), undefined)

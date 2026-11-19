@@ -7,7 +7,7 @@ export function activityChanges(previous:KabanTaskData|null,next:KabanTaskData,i
  const before=kabanBlocks(previous,id),after=kabanBlocks(next,id)
  const structure=(blocks:typeof before)=>blocks.map(block=>{const base={id:block.id,type:block.type,title:block.title};if(block.type==='description'||block.type==='link')return {...base,value:block.value};if(block.type==='password')return {...base,vaultId:block.vaultId,entryId:block.entryId};return base})
  const a=kabanBlockSummary(before).todos,b=kabanBlockSummary(after).todos
- return {deadline:previous.dueOn!==next.dueOn,content:previous.title!==next.title||JSON.stringify(structure(before))!==JSON.stringify(structure(after)),checklist:JSON.stringify(a)!==JSON.stringify(b),checked:b.filter(item=>item.done&&!a.find(old=>old.id===item.id)?.done).length}
+ return {deadline:previous.dueOn!==next.dueOn||(previous.startOn||'')!==(next.startOn||''),content:previous.title!==next.title||JSON.stringify(structure(before))!==JSON.stringify(structure(after)),checklist:JSON.stringify(a)!==JSON.stringify(b),checked:b.filter(item=>item.done&&!a.find(old=>old.id===item.id)?.done).length}
 }
 export const activityValue=(day:ActivityDay|undefined,filter:ActivityFilter)=>day?(filter==='all'?day.total:day.kinds[filter]):0
 export const activityLevel=(count:number)=>count>=10?4:count>=6?3:count>=3?2:count>0?1:0

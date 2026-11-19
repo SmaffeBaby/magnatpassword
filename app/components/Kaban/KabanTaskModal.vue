@@ -17,7 +17,10 @@ watch(()=>c.editorOpen,()=>{previousDeadline.value=c.draft?.dueOn||''})
 const withoutDeadline=computed({get:()=>!c.draft?.dueOn,set:(value:boolean)=>{
  if(!c.draft||!planningWritable.value||c.busy)return
  if(value){previousDeadline.value=c.draft.dueOn;c.draft.dueOn=''}
- else c.draft.dueOn=previousDeadline.value||todayDate()
+ else {
+  const deadline=previousDeadline.value||todayDate()
+  c.draft.dueOn=c.draft.startOn&&c.draft.startOn>deadline?c.draft.startOn:deadline
+ }
 }})
 const draftVault=computed({get:()=>c.data?.board.vaultId||'personal',set:(id:string)=>{void c.changeDraftVault(id)}})
 const targetCategoryChoice=computed({get:()=>c.targetCategory||'__new__',set:(value:string)=>{c.targetCategory=value==='__new__'?'':value}})
@@ -26,7 +29,7 @@ const settingsTab=ref('fields')
 const tabs=[{label:'Поля задачи',value:'fields',icon:'i-lucide-layout-list'},{label:'Параметры задачи',value:'parameters',icon:'i-lucide-sliders-horizontal'}]
 watch(()=>c.editorOpen,value=>{if(value)settingsTab.value=c.draft?.id?'fields':'parameters'})
 const fields=ref<{flushTodos:()=>void}|null>(null)
-const snapshot=(task:KabanTask)=>JSON.stringify([task.title,task.dueOn,task.stageId,task.categoryIds,task.participantIds,task.closerIds,task.blocks])
+const snapshot=(task:KabanTask)=>JSON.stringify([task.title,task.startOn||'',task.dueOn,task.stageId,task.categoryIds,task.participantIds,task.closerIds,task.blocks])
 const saved=computed(()=>c.data?.tasks.find(task=>task.id===c.draft?.id))
 const dirty=computed(()=>!!c.draft&&(!saved.value||snapshot(c.draft)!==snapshot(saved.value)||c.pendingFiles.length>0))
 const stageName=computed(()=>c.data?.board.stages.find(stage=>stage.id===c.draft?.stageId)?.name)
@@ -46,14 +49,15 @@ function toggleSettings(){if(c.taskSettings)fields.value?.flushTodos();c.taskSet
      <UFormField v-if="!c.draft.id&&c.workspaceId==='all'" label="Хранилище"><USelect v-model="draftVault" :items="c.sources.map(source=>({label:source.name,value:source.id}))" :disabled="c.busy" class="w-full"/></UFormField>
      <UFormField label="Категория" required><USelectMenu v-model="category" :items="c.categoryOptions" value-key="value" :disabled="!writable||c.busy" placeholder="Выберите категорию" class="w-full"/><UButton v-if="c.canCategorize" type="button" size="xs" variant="link" label="Создать категорию" :disabled="c.busy" @click="c.editCategory()"/></UFormField>
      <UFormField label="Стадия"><USelect v-model="c.draft.stageId" :items="stageOptions" :disabled="!writable||c.busy" class="w-full"/></UFormField>
-     <div><UFormField label="Срок задачи"><UInput v-model="c.draft.dueOn" type="date" :disabled="!planningWritable||withoutDeadline||c.busy" :required="!withoutDeadline" class="w-full"/></UFormField><UCheckbox v-model="withoutDeadline" label="Без срока" :disabled="!planningWritable||c.busy" class="mt-2"/></div>
+     <UFormField label="Дата начала"><SharedDatePicker :model-value="c.draft.startOn || ''" :max="c.draft.dueOn || undefined" :disabled="!planningWritable||c.busy" class="w-full" @update:model-value="c.draft.startOn = String($event ?? '')"/></UFormField>
+     <div><UFormField label="Срок задачи"><SharedDatePicker v-model="c.draft.dueOn" :min="c.draft.startOn || undefined" :disabled="!planningWritable||withoutDeadline||c.busy" :required="!withoutDeadline" class="w-full"/></UFormField><UCheckbox v-model="withoutDeadline" label="Без срока" :disabled="!planningWritable||c.busy" class="mt-2"/></div>
      <UFormField label="Ответственные"><USelectMenu v-model="c.draft.participantIds" :items="c.peopleOptions" value-key="value" multiple :disabled="!planningWritable||c.busy" placeholder="Выберите ответственных" class="w-full"/></UFormField>
     </div><UFormField label="Могут завершать" description="Создатель всегда может завершать задачу. Только он может назначить дополнительных пользователей."><USelectMenu v-model="c.draft.closerIds" :items="c.peopleOptions" value-key="value" multiple :disabled="!planningWritable||c.busy" placeholder="Выберите пользователей" class="w-full"/></UFormField>
     <p v-if="c.draft.locations.length" class="kaban-help">Расположение: {{c.taskSourceNames(c.draft)}}</p><UButton v-if="c.draft.id&&c.canOwn(c.draft)" type="button" label="Перенести в проект" icon="i-lucide-folder-input" color="neutral" variant="outline" :disabled="c.busy" @click="c.openLocation()"/>
     <div v-if="c.draft.id&&writable" class="flex flex-wrap gap-2"><UButton label="Переместить в категорию" icon="i-lucide-folder-input" color="neutral" variant="outline" :disabled="c.busy||dirty" @click="c.openCategoryAction('move')"/><UButton label="Дублировать в категорию" icon="i-lucide-copy" color="neutral" variant="outline" :disabled="c.busy||dirty" @click="c.openCategoryAction('copy')"/></div>
-    <p class="kaban-help">Срок, ответственных и право завершения меняет только создатель задачи. Доступ к содержимому определяется хранилищем и категорией.</p></section>
+    <p class="kaban-help">Даты, ответственных и право завершения меняет только создатель задачи. Доступ к содержимому определяется хранилищем и категорией.</p></section>
    </template>
-   <div v-if="!c.taskSettings" class="kaban-task-overview"><span><UIcon name="i-lucide-folder"/>{{categoryName}}</span><span><UIcon name="i-lucide-columns-3"/>{{stageName}}</span><span><UIcon name="i-lucide-calendar-days"/>{{c.draft.dueOn?c.dateLabel(c.draft.dueOn):'Без срока'}}</span><small>{{c.taskSourceNames(c.draft)}}</small></div>
+   <div v-if="!c.taskSettings" class="kaban-task-overview"><span><UIcon name="i-lucide-folder"/>{{categoryName}}</span><span><UIcon name="i-lucide-columns-3"/>{{stageName}}</span><span><UIcon name="i-lucide-calendar-days"/>{{c.draft.startOn?'Начало: '+c.dateLabel(c.draft.startOn)+' · ':''}}{{c.draft.dueOn?'Срок: '+c.dateLabel(c.draft.dueOn):'Без срока'}}</span><small>{{c.taskSourceNames(c.draft)}}</small></div>
    <div v-show="!c.taskSettings||settingsTab==='fields'" class="kaban-fields-tab"><KabanTaskFields ref="fields" :controller="c" :editing="c.taskSettings" :active="!c.taskSettings||settingsTab==='fields'"/></div>
    <section v-if="!c.taskSettings&&c.data" class="kaban-task-people"><h3 class="kaban-section-title">Люди в задаче</h3><KabanPerson :person="c.person(c.draft.creatorId)" :units="c.data.units" label="Создатель задачи"/><div class="kaban-people-list"><KabanPerson v-for="id in c.draft.participantIds" :key="id" :person="c.person(id)" :units="c.data.units" label="Ответственный"/></div></section>
    <p v-if="dirty&&c.draft.id" class="kaban-unsaved" role="status">Есть несохранённые изменения.</p><UAlert v-if="c.formError" color="error" :description="c.formError"/>

@@ -3,7 +3,7 @@ import type { TeamPerson, TeamUnit } from '../types/team'
 import { assistantHelp } from './assistant-help.ts'
 export function siteSectionReply(question: string): AssistantReply | null {
   if (/проект|смет|выруч|прибыл|ндс/iu.test(question)) return null
-  if (/(?:какие|что)[\s\S]{0,80}(?:разделы|сервисы)|что[\s\S]{0,40}есть на сайте/iu.test(question)) return { message: 'На сайте доступны:\n• Пароли — карточки доступов и хранилища.\n• Финансы — подписки, оплаты, календарь и отчёты.\n• Взаимосвязи — связи карточек и карта.\n• Проекты — смета, договоры, исполнение и закрытие.\n• Команда — сотрудники и должности.\n• Кабан — доска задач.', draft: null, conversation: { topic: 'site' }, links: [{ label: 'Главная', to: '/' }] }
+  if (/(?:какие|что)[\s\S]{0,80}(?:разделы|сервисы)|что[\s\S]{0,40}есть на сайте/iu.test(question)) return { message: 'На сайте доступны:\n• Пароли — карточки доступов и хранилища.\n• Финансы — подписки, оплаты, календарь и отчёты.\n• Взаимосвязи — связи карточек и карта.\n• Проекты — смета, договоры, исполнение и закрытие.\n• Команда — сотрудники и должности.\n• Задачи — Кабан, календарь и диаграмма Ганта.', draft: null, conversation: { topic: 'site' }, links: [{ label: 'Главная', to: '/' }] }
   if (/финанс/iu.test(question)) {
     const doc = assistantHelp.find(doc => doc.id === 'finance')!
     return { message: doc.text, draft: null, conversation: { topic: 'site' }, links: [{ label: 'Финансы', to: '/finances' }, { label: 'История оплат', to: '/finances/history' }] }

@@ -133,7 +133,7 @@ async function upload() {
       <template v-if="action.kind !== 'move_task'">
         <UFormField label="Категории" required><USelectMenu v-model="categoryIds" :items="categoryOptions" value-key="value" multiple class="w-full" :disabled="!editable || busy" /></UFormField>
         <div v-if="!categoryOptions.length && board?.canManage" class="flex gap-2"><UInput v-model="categoryName" placeholder="Название первой категории" :maxlength="60" :disabled="busy" /><UButton label="Создать категорию" color="neutral" variant="outline" :disabled="busy || !categoryName.trim()" @click="createCategory" /></div><p v-else-if="!categoryOptions.length" class="text-sm text-muted">Сначала создайте доступную категорию на доске Кабана.</p>
-        <UFormField label="Срок"><UInput v-model="dueOn" type="date" class="w-full" :disabled="!planningAllowed || !editable || busy" /></UFormField>
+        <UFormField label="Срок"><SharedDatePicker v-model="dueOn" class="w-full" :disabled="!planningAllowed || !editable || busy" /></UFormField>
         <UFormField label="Ответственные"><USelectMenu v-model="participantIds" :items="peopleOptions" value-key="value" multiple class="w-full" :disabled="!planningAllowed || !editable || busy" /></UFormField>
         <p v-if="!planningAllowed" class="text-sm text-muted">Срок и ответственных меняет только создатель задачи.</p>
         <TaskField v-for="field in blocks" :key="field.id" :field="field" :disabled="!editable || busy" :passwords="context?.relations.map(row => ({ label: `${row.title} · ${row.vault}`, value: row.key })) || []" @remove="blocks = blocks.filter(item => item.id !== field.id)" />

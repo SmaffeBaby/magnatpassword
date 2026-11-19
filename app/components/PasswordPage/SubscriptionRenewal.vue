@@ -14,8 +14,8 @@ const formId = useId()
    <div class="subscription-form-grid">
     <UFormField label="Сумма оплаты" required><UInput v-model.number="payment.amount" type="number" :min="0" :max="1000000000" step="0.01" required class="w-full"/></UFormField>
     <UFormField label="Валюта"><USelect v-model="payment.currency" :items="['RUB','USD','EUR','CNY']" class="w-full"/></UFormField>
-    <UFormField label="Дата оплаты" required><UInput v-model="paidOn" type="date" required class="w-full"/></UFormField>
-    <UFormField label="Оплачено до" required><UInput v-model="payment.periodUntil" type="date" :min="payment.periodFrom" required class="w-full"/></UFormField>
+    <UFormField label="Дата оплаты" required><SharedDatePicker v-model="paidOn" required class="w-full"/></UFormField>
+    <UFormField label="Оплачено до" required><SharedDatePicker v-model="payment.periodUntil" :min="payment.periodFrom" required class="w-full"/></UFormField>
    </div>
    <p class="text-sm text-slate-500">Оплачиваемый период: {{ dateLabel(payment.periodFrom) }} — {{ dateLabel(payment.periodUntil) }}. Для прошлой оплаты без продления используйте «Добавить оплату» в истории списаний.</p>
    <UAlert v-if="error" color="error" :description="error"/>

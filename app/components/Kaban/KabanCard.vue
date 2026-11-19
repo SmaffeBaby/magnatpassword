@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import BoarLogo from '~/components/Brand/BoarLogo.vue'
 defineProps<{hero?:boolean}>()
 </script>
-<template><NuxtLink to="/kaban" class="password-glass" :class="{'password-launch-card':hero}" aria-label="Открыть Кабан"><BoarLogo class="finance-app-icon"/><span>Кабан</span></NuxtLink></template>
+<template><NuxtLink to="/kaban" class="password-glass" :class="{'password-launch-card':hero}" aria-label="Открыть задачи"><UIcon name="i-lucide-list-checks" class="finance-app-icon"/><span>Задачи</span></NuxtLink></template>

@@ -9,7 +9,7 @@ export const homeApps = {
   spaces: { label: 'Пространства', actionLabel: 'Пространства', icon: 'i-lucide-orbit' },
   projects: { label: 'Проекты', actionLabel: 'Проекты', icon: 'i-lucide-folder-kanban' },
   team: { label: 'Команда', actionLabel: 'Команду', icon: 'i-lucide-users-round' },
-  kaban: { label: 'Кабан', actionLabel: 'Кабан', icon: 'i-lucide-columns-3' }
+  kaban: { label: 'Задачи', actionLabel: 'Задачи', icon: 'i-lucide-list-checks' }
 } satisfies Record<HomeAppId, { label: string; actionLabel: string; icon: string }>
 
 export const defaultHomeLayout = (): HomeLayout => ({ version: 1, rows: [{ align: 'center', cards: [...HOME_APP_IDS] }], hidden: [] })

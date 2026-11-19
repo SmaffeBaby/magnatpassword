@@ -26,7 +26,7 @@ export function applicationForPath(path: string) {
   if (root === 'contract-register') return { slug: 'contracts', name: 'Реестр договоров' }
   if (root === 'projects') return { slug: 'projects', name: 'Проекты' }
   if (root === 'team') return { slug: 'team', name: 'Команда' }
-  if (root === 'kaban') return { slug: 'kaban', name: 'Кабан' }
+  if (root === 'kaban') return { slug: 'kaban', name: 'Задачи' }
   return null
 }
 

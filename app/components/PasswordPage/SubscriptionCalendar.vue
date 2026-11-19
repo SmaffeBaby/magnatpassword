@@ -7,12 +7,12 @@ import type { VaultSource } from '~~/shared/types/sharing'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 const props=defineProps<{entries:ScopedCredential[];sources?:VaultSource[];busy:boolean}>()
 const emit=defineEmits<{edit:[entry:ScopedCredential];renew:[entry:ScopedCredential,fieldId:string]}>()
-const {rows,today,selected,monthTitle,cells,selectedRows,move,goToday,status,dateLabel,group,currency,search,statusFilter,groups,currencyOptions,statusOptions,selectedMonth,selectedYear,monthOptions,monthTotals,monthRenewalTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,selectedEndingTotals,amountLabel}=useSubscriptionCalendar(props)
+const {rows,today,month,selected,monthTitle,cells,selectedRows,move,goToday,status,dateLabel,group,currency,search,statusFilter,groups,currencyOptions,statusOptions,monthTotals,monthRenewalTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,selectedEndingTotals,amountLabel}=useSubscriptionCalendar(props)
 </script>
 <template>
  <section class="subscription-calendar">
   <SubscriptionFilters v-model:group="group" v-model:currency="currency" v-model:search="search" v-model:status="statusFilter" :groups="groups" :currency-options="currencyOptions" :status-options="statusOptions" />
-  <MonthCalendar v-model:month="selectedMonth" v-model:year="selectedYear" v-model:selected="selected" :title="monthTitle" :description="`Сроки оплаты и плановые списания. Всего подписок: ${rows.length}`" :today="today" :cells="cells" :month-options="monthOptions" event-label="подписок" @move="move" @today="goToday">
+  <MonthCalendar v-model:month="month" v-model:selected="selected" :title="monthTitle" :description="`Сроки оплаты и плановые списания. Всего подписок: ${rows.length}`" :today="today" :cells="cells" event-label="подписок" @move="move" @today="goToday">
    <template #summary>
   <div class="calendar-total"><span>Плановые списания за месяц</span><strong v-for="total in monthTotals" :key="total.currency">{{ amountLabel(total.amount,total.currency) }}</strong><span v-if="!monthTotals.length">Нет списаний</span></div>
   <div class="calendar-total" title="Плановые списания плюс стоимость продления подписок, которые заканчиваются в выбранном месяце."><span>Всего с учётом продления</span><strong v-for="total in monthRenewalTotals" :key="total.currency">{{ amountLabel(total.amount,total.currency) }}</strong><span v-if="!monthRenewalTotals.length">Нет списаний и продлений</span></div>

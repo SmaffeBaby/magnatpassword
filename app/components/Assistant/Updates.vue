@@ -41,7 +41,7 @@ onMounted(load)
       <div class="flex flex-wrap gap-2"><UButton label="Экспорт CSV" variant="outline" color="neutral" :disabled="busy" @click="exportCsv" /><UButton label="Импорт CSV" variant="outline" color="neutral" :disabled="busy" @click="file?.click()" /><UButton label="Обновить" variant="ghost" color="neutral" :disabled="busy" @click="load" /><input ref="file" type="file" accept=".csv,text/csv" class="hidden" @change="importCsv" /></div>
       <form class="space-y-3 rounded-xl border border-default p-4" @submit.prevent="publish">
         <UFormField label="Заголовок" required><UInput v-model="title" :maxlength="200" class="w-full" :disabled="busy" /></UFormField>
-        <UFormField label="Дата" required><UInput v-model="date" type="date" :disabled="busy" /></UFormField>
+        <UFormField label="Дата" required><SharedDatePicker v-model="date" :disabled="busy" /></UFormField>
         <USelect v-model="kind" :items="[{label:'Нововведение',value:'feature'},{label:'Исправление',value:'fix'}]" :disabled="busy" />
         <UFormField label="Текст" required><UTextarea v-model="body" :maxlength="10000" class="w-full" :rows="5" :disabled="busy" /></UFormField>
         <UButton type="submit" :label="editing ? 'Сохранить пост' : 'Опубликовать пост'" :loading="busy" :disabled="busy || !title.trim() || !body.trim() || !date" />

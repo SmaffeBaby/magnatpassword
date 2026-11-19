@@ -15,7 +15,8 @@ export const kabanBlocksSchema=z.array(z.discriminatedUnion('type',[
  z.object({...blockBase,type:z.literal('todo'),items:todoSchema}).strict(),
  z.object({...blockBase,type:z.literal('files')}).strict()
 ])).max(40).refine(blocks=>new Set(blocks.map(block=>block.id)).size===blocks.length).refine(blocks=>{const summary=kabanBlockSummary(blocks);return summary.description.length<=20000&&summary.todos.length<=100&&new Set(summary.todos.map(item=>item.id)).size===summary.todos.length})
-export const kabanDataSchema=z.object({title:z.string().trim().min(1).max(200),description:z.string().max(20000),dueOn:z.string().refine(value=>!value||validDate(value)),todos:todoSchema,blocks:kabanBlocksSchema.optional()}).strict()
+const planningDate = z.string().refine(value => !value || validDate(value))
+export const kabanDataSchema=z.object({title:z.string().trim().min(1).max(200),description:z.string().max(20000),startOn:planningDate.optional(),dueOn:planningDate,todos:todoSchema,blocks:kabanBlocksSchema.optional()}).strict()
 export const kabanTaskSchema = z.object({ scopeCategoryId: z.string().min(1).max(128).optional(), boardId: z.uuid(), stageId: z.uuid(), participantIds: z.array(z.uuid()).max(50), closerIds: z.array(z.uuid()).max(50).optional(), categoryIds: z.array(z.string().min(1).max(128)).min(1).max(50), data: kabanDataSchema }).strict()
 export const kabanStagesSchema = z.array(z.object({ id: z.uuid(), name: z.string().trim().min(1).max(60), color: z.string().regex(/^#[\da-fA-F]{6}$/), done: z.boolean() }).strict()).min(1).max(12).refine(stages => new Set(stages.map(stage => stage.id)).size === stages.length)
 export const kabanBucket = 'kaban-files'
@@ -52,17 +53,21 @@ export async function writeKabanTask(event: H3Event, id: string, create = false)
     const row = current.data
     const previous=kabanDataSchema.parse(openSharedVault(row.encrypted_data,sharedSecret(event),`kaban-task:${id}`,1))
     activityPrevious=previous
+    if (body.data.startOn === undefined && previous.startOn !== undefined) body.data.startOn = previous.startOn
     if(previous.blocks&&!body.data.blocks){
       if(previous.description!==body.data.description||JSON.stringify(previous.todos)!==JSON.stringify(body.data.todos))throw createError({statusCode:409,message:'Задача использует новые поля. Обновите приложение перед редактированием.'})
       body.data.blocks=previous.blocks
     }
     if (row.revision !== body.revision) kabanFailure({ message: 'REVISION_CONFLICT' })
     if (!kabanCanEditPlanning(context.user.id, { creatorId: row.creator_id })) {
-      if ((body.closerIds && (body.closerIds.length !== row.closer_ids.length || body.closerIds.some(value => !row.closer_ids.includes(value)))) || kabanPlanningChanged({ dueOn: readKabanTaskData(event, row).dueOn, participantIds: row.participant_ids }, { dueOn: body.data.dueOn, participantIds: body.participantIds })) {
-        throw createError({ statusCode: 403, message: 'Только создатель задачи может менять срок и ответственных.' })
+      if ((body.closerIds && (body.closerIds.length !== row.closer_ids.length || body.closerIds.some(value => !row.closer_ids.includes(value)))) || kabanPlanningChanged({ ...previous, participantIds: row.participant_ids }, { ...body.data, participantIds: body.participantIds })) {
+        throw createError({ statusCode: 403, message: 'Только создатель задачи может менять даты и ответственных.' })
       }
     }
     // The mutation checks this same revision under a row lock, so concurrent edits cannot bypass this comparison.
+  }
+  if (body.data.startOn && body.data.dueOn && body.data.startOn > body.data.dueOn) {
+    throw createError({ statusCode: 400, message: 'Дата начала должна быть не позже срока задачи.' })
   }
   if(body.data.blocks)Object.assign(body.data,kabanBlockSummary(body.data.blocks))
   const { error } = await context.client.rpc('kaban_task_mutate', { p_actor: context.user.id, p_board: body.boardId, p_id: id, p_revision: body.revision, p_payload: { ...(body.scopeCategoryId ? { scopeCategoryId: body.scopeCategoryId } : {}), activity:activityChanges(activityPrevious,body.data,id),stageId: body.stageId, participantIds: [...new Set(body.participantIds)], ...(body.closerIds ? { closerIds: [...new Set(body.closerIds)] } : {}), categoryIds: [...new Set(body.categoryIds)], encryptedData: sealSharedVault(body.data, sharedSecret(event), `kaban-task:${id}`, 1) } })

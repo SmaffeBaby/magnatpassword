@@ -35,6 +35,7 @@
     "test:project-documents": "node --env-file=.env tests/project-documents.integration.mjs"
   },
   "dependencies": {
+    "@internationalized/date": "3.12.4",
     "@nuxt/content": "3.16.2",
     "@nuxt/ui": "4.11.3",
     "@nuxtjs/i18n": "10.6.0",

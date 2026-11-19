@@ -47,8 +47,8 @@ const date=(value:string)=>value?value.split('-').reverse().join('.'):'—'
    <UFormField label="Проект"><USelectMenu v-model="filters.projectId" value-key="value" :search-input="{placeholder:'Найти проект…'}" aria-label="Проект" :items="[{label:'Все проекты',value:'all'},...(query.data.value?.projects.map(p=>({label:p.name,value:p.id}))||[])]" class="w-full" :disabled="filters.origin==='standalone'"><template #empty>Проекты не найдены</template></USelectMenu></UFormField>
    <UFormField label="Тип"><USelect v-model="filters.source" :items="[{label:'Все типы',value:'all'},{label:'Выручка сметы',value:'revenue'},{label:'Затраты сметы',value:'expenses'},{label:'Добавленные вручную',value:'manual'}]" class="w-full"/></UFormField>
    <UFormField label="Срок"><USelect v-model="filters.status" :items="[{label:'Любой срок',value:'all'},{label:'Срок прошёл',value:'overdue'},{label:'Сегодня или позже',value:'upcoming'},{label:'Без срока',value:'no-deadline'},{label:'Автопродление',value:'auto-renew'}]" class="w-full"/></UFormField>
-   <UFormField label="Дата договора от"><UInput v-model="filters.from" type="date" class="w-full"/></UFormField>
-   <UFormField label="Дата договора до"><UInput v-model="filters.until" type="date" class="w-full"/></UFormField>
+   <UFormField label="Дата договора от"><SharedDatePicker v-model="filters.from" class="w-full"/></UFormField>
+   <UFormField label="Дата договора до"><SharedDatePicker v-model="filters.until" class="w-full"/></UFormField>
    <UFormField label="Вложения"><USelect v-model="filters.files" :items="[{label:'Любые',value:'all'},{label:'Есть файлы',value:'yes'},{label:'Без файлов',value:'no'}]" class="w-full"/></UFormField>
    <UFormField label="На странице"><USelect v-model="filters.pageSize" :items="[{label:'10',value:'10'},{label:'25',value:'25'},{label:'50',value:'50'},{label:'100',value:'100'}]" class="w-full"/></UFormField>
   </div>
