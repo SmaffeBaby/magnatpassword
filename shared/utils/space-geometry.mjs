@@ -1,8 +1,8 @@
 /** Resize in board coordinates, keeping the opposite corner fixed. */
-export function resizeFrame(rect, corner, dx, dy) {
+export function resizeFrame(rect, corner, dx, dy, maxSize = 2000) {
  const west=corner.includes('w'), north=corner.includes('n')
- const width=Math.max(160,Math.min(2000,rect.width+(west?-dx:dx)))
- const height=Math.max(100,Math.min(2000,rect.height+(north?-dy:dy)))
+ const width=Math.max(160,Math.min(maxSize,rect.width+(west?-dx:dx)))
+ const height=Math.max(100,Math.min(maxSize,rect.height+(north?-dy:dy)))
  return {width,height,x:west?rect.x+rect.width-width:rect.x,y:north?rect.y+rect.height-height:rect.y}
 }
 

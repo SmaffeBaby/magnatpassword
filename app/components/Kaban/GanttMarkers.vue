@@ -2,7 +2,7 @@
 import type { GanttMarker, GanttMarkerProject } from '~~/shared/utils/project-task-planning'
 import { dateLabel, validDate } from '~~/shared/utils/subscriptions'
 
-const props = defineProps<{ projects: GanttMarkerProject[]; markers: GanttMarker[]; anchor: string }>()
+const props = defineProps<{ projects: GanttMarkerProject[]; markers: GanttMarker[]; anchor: string; portal?: HTMLElement }>()
 const emit = defineEmits<{ jump: [day: string]; changed: [marker: GanttMarker, deleted: boolean] }>()
 const auth = useAuthStore()
 const projectsById = computed(() => new Map(props.projects.map(project => [project.id, project])))
@@ -77,11 +77,11 @@ watch(() => auth.user?.id, () => { open.value = false })
       </li>
     </ul>
   </section>
-  <UModal :open="open" :title="editing ? 'Изменить маркер' : 'Добавить маркер'" description="Маркер отмечает выбранную дату на диаграмме Ганта." :dismissible="!busy" :close="!busy" @update:open="value => { if (!busy) open = value }">
+  <UModal :portal="portal ?? true" :ui="portal ? { overlay: 'z-[150]', content: 'z-[151]' } : undefined" :open="open" :title="editing ? 'Изменить маркер' : 'Добавить маркер'" description="Маркер отмечает выбранную дату на диаграмме Ганта." :dismissible="!busy" :close="!busy" @update:open="value => { if (!busy) open = value }">
     <template #body>
       <form :id="formId" class="grid gap-4" @submit.prevent="save()">
         <UFormField v-if="!editing && projects.length > 1" label="Проект">
-          <USelect v-model="draft.projectId" :items="options" class="w-full" :disabled="busy" />
+          <USelect :portal="portal ?? true" v-model="draft.projectId" :items="options" class="w-full" :disabled="busy" />
         </UFormField>
         <UFormField label="Название" required>
           <UInput v-model="draft.title" placeholder="Показать проект заказчику" class="w-full" :maxlength="120" :disabled="busy" required />

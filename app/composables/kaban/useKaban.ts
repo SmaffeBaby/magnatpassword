@@ -89,7 +89,7 @@ export function useKaban(projectId:()=>string|undefined=()=>undefined, {embedded
   finally{if(attempt===generation&&request===requestNumber){loading.value=false}}
  }
  function clearPreview(){if(preview.value)URL.revokeObjectURL(preview.value);preview.value='';previewName.value=''}
- function closeEditor(){if(!busy.value){if(!embedded&&route.query.task)void router.replace({query:{...route.query,task:undefined}});editorOpen.value=false;editorSession++;draft.value=null;files.value=[];pendingFiles.value=[];clearPreview()}}
+ function closeEditor(){if(!busy.value){if(!embedded&&route.query.task)void router.replace({query:{...route.query,task:undefined,editTask:undefined}});editorOpen.value=false;editorSession++;draft.value=null;files.value=[];pendingFiles.value=[];clearPreview()}}
  async function openTask(task?:KabanTask,stageId?:string,settings=false,categoryId?:string){
   if(task&&workspaceId.value==='all')data.value=workspaces.value.find(item=>item.board.id===task.boardId)||null
   if(!task&&workspaceId.value==='all'&&selectedCategory.value.includes(':'))data.value=workspaces.value.find(item=>item.board.id===selectedCategory.value.split(':')[0])||data.value
@@ -376,9 +376,9 @@ export function useKaban(projectId:()=>string|undefined=()=>undefined, {embedded
   const categoryId=task.categoryIds.find(id=>workspace.categories.some(category=>category.id===id&&!category.archived))
   setView(task.archived?'closed':'board')
   if(categoryId)selectedCategory.value=workspaceId.value==='all'?`${workspace.board.id}:${categoryId}`:categoryId
-  await openTask(task)
+  await openTask(task, undefined, route.query.editTask === '1' && task.canEdit && !task.archived)
  }
- if(!embedded)watch([()=>route.query.task,()=>route.query.vault,()=>auth.user?.id,()=>vault.unlocked],()=>{
+ if(!embedded)watch([()=>route.query.task,()=>route.query.editTask,()=>route.query.vault,()=>auth.user?.id,()=>vault.unlocked],()=>{
   openedLink=''
   if(!route.query.task||!vault.unlocked)return
   const target=projectId()?`project:${projectId()}`:typeof route.query.vault==='string'?route.query.vault:'all'

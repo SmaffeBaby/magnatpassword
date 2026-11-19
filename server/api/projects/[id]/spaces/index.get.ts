@@ -9,7 +9,13 @@ export default defineEventHandler(async event=>{
  if(!raw)return {spaces:spaces.data,objects:[],cursors:[]}
  const space=z.uuid().parse(raw)
  if(!spaces.data?.some((s:{id:string})=>s.id===space))throw createError({statusCode:404,message:'Пространство недоступно'})
- const objects=await context.client.from('project_space_objects').select('*').eq('space_id',space)
- if(objects.error)throw createError({statusCode:503,message:'Не удалось загрузить пространство'})
- return {spaces:spaces.data,objects:objects.data,cursors:[]}
+ const objects=[]
+ const pageSize=500
+ for(let offset=0;;offset+=pageSize){
+  const page=await context.client.from('project_space_objects').select('*').eq('space_id',space).order('id').range(offset,offset+pageSize-1)
+  if(page.error)throw createError({statusCode:503,message:'Не удалось загрузить пространство'})
+  objects.push(...page.data)
+  if(page.data.length<pageSize)break
+ }
+ return {spaces:spaces.data,objects,cursors:[]}
 })

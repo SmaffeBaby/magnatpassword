@@ -10,6 +10,8 @@ import GanttMarkers from './GanttMarkers.vue'
 
 const props = defineProps<{
   mode: 'calendar' | 'gantt'
+  embedded?: boolean
+  portal?: HTMLElement
   projectStartOn?: string
   projectEndOn?: string
   projectBoards?: PlanningProjectBoard[]
@@ -245,8 +247,11 @@ async function showProjectDate(date: string) {
   const day = container?.querySelector<HTMLElement>(`[data-gantt-day="${date}"]`)
   if (!container || !day) return
   const nameWidth = container.querySelector('.gantt-name')?.getBoundingClientRect().width ?? 0
-  const position = day.getBoundingClientRect().left - container.getBoundingClientRect().left
-  container.scrollLeft += position - (container.clientWidth + nameWidth) / 2
+  const viewport = container.getBoundingClientRect()
+  const scale = viewport.width / container.offsetWidth || 1
+  const bounds = day.getBoundingClientRect()
+  const position = bounds.left + bounds.width / 2 - viewport.left
+  container.scrollLeft += (position - (viewport.width + nameWidth) / 2) / scale
 }
 
 const editing = ref<KabanTask | null>(null)
@@ -324,7 +329,7 @@ async function saveDates() {
 </script>
 
 <template>
-  <section class="task-planner" :aria-label="mode === 'calendar' ? 'Календарь задач' : 'Диаграмма Ганта'">
+  <section class="task-planner" :class="{ embedded }" :aria-label="mode === 'calendar' ? 'Календарь задач' : 'Диаграмма Ганта'">
     <header class="planner-toolbar">
       <div class="flex flex-wrap items-center gap-2">
         <UButton icon="i-lucide-chevron-left" color="neutral" variant="outline" aria-label="Предыдущий период" @click="shift(-1)" />
@@ -334,15 +339,15 @@ async function saveDates() {
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <SharedDatePicker :model-value="anchor" :clearable="false" aria-label="Перейти к дате" class="w-36" @update:model-value="jumpTo" />
-        <USelect v-model="period" :items="options" aria-label="Масштаб периода" />
+        <USelect :portal="portal ?? true" v-model="period" :items="options" aria-label="Масштаб периода" />
       </div>
     </header>
 
     <div class="task-filters" :class="{ 'gantt-filters': mode === 'gantt' }" role="group" :aria-label="mode === 'gantt' ? 'Фильтры и сортировка диаграммы Ганта' : 'Фильтры календаря задач'">
-      <USelectMenu v-model="categories" :items="categoryOptions" value-key="value" multiple placeholder="Все категории" aria-label="Категории" class="min-w-0 w-full" />
-      <USelectMenu v-model="assignees" :items="assigneeOptions" value-key="value" multiple placeholder="Все исполнители" aria-label="Исполнители" class="min-w-0 w-full" />
-      <USelectMenu v-model="stages" :items="stageOptions" value-key="value" multiple placeholder="Все стадии" aria-label="Стадии" class="min-w-0 w-full" />
-      <USelect v-model="deadline" :items="deadlineOptions" aria-label="Срок задачи" class="min-w-0 w-full" />
+      <USelectMenu :portal="portal ?? true" v-model="categories" :items="categoryOptions" value-key="value" multiple placeholder="Все категории" aria-label="Категории" class="min-w-0 w-full" />
+      <USelectMenu :portal="portal ?? true" v-model="assignees" :items="assigneeOptions" value-key="value" multiple placeholder="Все исполнители" aria-label="Исполнители" class="min-w-0 w-full" />
+      <USelectMenu :portal="portal ?? true" v-model="stages" :items="stageOptions" value-key="value" multiple placeholder="Все стадии" aria-label="Стадии" class="min-w-0 w-full" />
+      <USelect :portal="portal ?? true" v-model="deadline" :items="deadlineOptions" aria-label="Срок задачи" class="min-w-0 w-full" />
       <USelect v-if="mode === 'gantt'" v-model="ganttSort" :items="sortOptions" icon="i-lucide-arrow-down-up" aria-label="Сортировка задач" class="min-w-0 w-full" />
       <UButton v-if="hasFilters" type="button" label="Сбросить фильтры" icon="i-lucide-x" color="neutral" variant="ghost" @click="resetFilters" />
     </div>
@@ -363,7 +368,7 @@ async function saveDates() {
 
     <template v-if="mode === 'gantt' && markerProjects?.length">
       <UAlert v-if="markerQuery.error.value" color="error" title="Не удалось загрузить маркеры" :actions="[{ label: 'Повторить', onClick: () => markerQuery.refetch() }]" />
-      <GanttMarkers :projects="markerProjects" :markers="markers" :anchor="anchor" @jump="showProjectDate" @changed="markerChanged" />
+      <GanttMarkers :portal="portal" :projects="markerProjects" :markers="markers" :anchor="anchor" @jump="showProjectDate" @changed="markerChanged" />
     </template>
     <div v-if="mode === 'gantt' && stageLegend.length" class="gantt-legend">
       <h3>Цвета стадий</h3>
@@ -435,7 +440,7 @@ async function saveDates() {
         </div>
       </div>
     </div>
-    <Teleport to="body">
+    <Teleport :to="portal ?? 'body'">
       <div v-if="markerTooltip" class="gantt-marker-tooltip" aria-hidden="true" :class="{ 'above-pointer': markerTooltip.above }" :style="{ left: `${markerTooltip.x}px`, top: `${markerTooltip.y}px` }">
         <strong>{{ markerTooltip.title }}</strong>
         <time :datetime="markerTooltip.date">{{ dateLabel(markerTooltip.date) }}</time>
@@ -467,11 +472,11 @@ async function saveDates() {
       </ul>
     </details>
 
-    <UModal :open="!!selectedDay" :title="dateLabel(selectedDay)" description="Задачи на выбранный день" @update:open="value => { if (!value) selectedDay = '' }">
+    <UModal :portal="portal ?? true" :ui="portal ? { overlay: 'z-[150]', content: 'z-[151]' } : undefined" :open="!!selectedDay" :title="dateLabel(selectedDay)" description="Задачи на выбранный день" @update:open="value => { if (!value) selectedDay = '' }">
       <template #body><ul class="planner-day-list"><li v-for="task in dayTasks" :key="taskKey(task)"><UButton :label="taskLabel(task)" color="neutral" variant="ghost" @click="selectedDay = ''; emit('open', task)" /></li></ul></template>
       <template v-if="canCreate" #footer><UButton label="Добавить задачу" icon="i-lucide-plus" :disabled="busy" @click="emit('create', selectedDay); selectedDay = ''" /></template>
     </UModal>
-    <UModal :open="!!editing" title="Даты задачи" :description="editing?.title" :dismissible="!busy" @update:open="value => { if (!value && !busy) editing = null }">
+    <UModal :portal="portal ?? true" :ui="portal ? { overlay: 'z-[150]', content: 'z-[151]' } : undefined" :open="!!editing" title="Даты задачи" :description="editing?.title" :dismissible="!busy" @update:open="value => { if (!value && !busy) editing = null }">
       <template #body>
         <form :id="dateForm" class="grid gap-4 sm:grid-cols-2" @submit.prevent="saveDates">
           <UFormField label="Дата начала"><SharedDatePicker v-model="dates.startOn" :max="dates.dueOn || undefined" class="w-full" :disabled="busy" /></UFormField>
@@ -486,6 +491,12 @@ async function saveDates() {
 
 <style scoped>
 .task-planner{display:grid;gap:16px;min-width:0;color:#334155}
+.task-planner.embedded{container-type:inline-size}
+@container (max-width: 780px){
+  .embedded .gantt{--day-min:16px;--name-width:8rem}
+  .embedded .gantt-filters{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@container (max-width: 420px){.embedded .gantt-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .planner-toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
 .planner-toolbar h2{margin-inline:4px;font-size:15px;font-weight:650}.planner-toolbar h2::first-letter{text-transform:uppercase}
 .task-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;align-items:center;gap:8px}.gantt-filters{grid-template-columns:repeat(4,minmax(0,1fr)) minmax(12rem,1.35fr) auto}.filter-empty{margin:0;font-size:13px;color:#64748b}

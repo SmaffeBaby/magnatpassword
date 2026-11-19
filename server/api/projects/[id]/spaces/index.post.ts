@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-const schema=z.object({space:z.uuid(),id:z.uuid(),action:z.enum(['create','rename','delete-space','put','delete','cursor','leave','access','reply']),revision:z.number().int().min(0).default(0),data:spaceObjectDataSchema.default({})}).strict()
+const schema=z.object({space:z.uuid(),id:z.uuid(),action:z.enum(['create','rename','delete-space','put','delete','cursor','leave','access','reply']),revision:z.number().int().min(0).default(0),data:spaceObjectDataSchema.refine(validSpaceObjectSize).default({})}).strict()
 export default defineEventHandler(async event=>{
  const context=await requireProjectsUser(event), project=projectId(event), body=await sharedBody(event,schema)
  if(['create','rename'].includes(body.action)&&!body.data.name) throw createError({statusCode:400,message:'Укажите название'})
