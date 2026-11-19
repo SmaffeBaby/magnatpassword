@@ -12,11 +12,28 @@ import KabanTaskModal from './KabanTaskModal.vue'
 import KabanHistorySettings from './KabanHistorySettings.vue'
 import ProjectTasksPlanner from './ProjectTasksPlanner.vue'
 import { projectTaskView, projectTaskViews } from '~~/shared/utils/project-task-planning'
+import { groupKabanTasksByStage, type KabanBoardSort } from '~~/shared/utils/kaban-board-sort'
 const props=defineProps<{projectId?:string}>()
 const c=reactive(useKaban(()=>props.projectId)),dragged=ref('')
 const route=useRoute(),router=useRouter()
 const activeView=computed(()=>props.projectId?projectTaskView(route.query.view):'board')
 const planner=computed(()=>activeView.value==='board'?null:projectTaskViews.find(view=>view.value===activeView.value))
+const sortOrder = ref<KabanBoardSort>('default')
+const sortOptions: { label: string; value: KabanBoardSort }[] = [
+  { label: 'Порядок по умолчанию', value: 'default' },
+  { label: 'Сначала ближайший срок', value: 'due-asc' },
+  { label: 'Сначала самый поздний срок', value: 'due-desc' },
+  { label: 'Сначала новые задачи', value: 'created-desc' },
+  { label: 'Сначала старые задачи', value: 'created-asc' },
+  { label: 'Недавно обновлённые', value: 'updated-desc' },
+  { label: 'Давно обновлённые', value: 'updated-asc' },
+  { label: 'Название от А до Я', value: 'title-asc' },
+  { label: 'Название от Я до А', value: 'title-desc' }
+]
+const boardColumns = computed(() => {
+  const byStage = groupKabanTasksByStage(c.tasks, sortOrder.value)
+  return c.boardStages.map(stage => ({ stage, tasks: byStage.get(stage.id) ?? [] }))
+})
 watch(activeView,()=>{c.setView('board')})
 let consumingCreate=false
 watch([()=>route.query.create,()=>c.displayData?.canEdit,()=>c.busy],async ([create,canEdit,busy])=>{
@@ -103,16 +120,16 @@ function notification(notification:{entryId:string|null;vaultId:string|null}){na
      <div class="kaban-history"><article v-for="event in c.history" :key="event.id"><SharedPersonAvatar :name="event.actor?.fullName||'Система'" :src="event.actor?.avatarUrl"/><div><strong>{{event.label}}</strong><p v-for="detail in event.details" :key="detail">{{detail}}</p><small>{{event.actor?.fullName||event.actor?.email||'Система'}} · {{new Intl.DateTimeFormat('ru-RU',{dateStyle:'medium',timeStyle:'short',timeZone:'Europe/Moscow'}).format(new Date(event.createdAt))}}</small></div></article><p v-if="!c.history.length&&!c.historyLoading" class="kaban-help">Изменений пока нет.</p></div><UButton v-if="c.historyBefore" label="Показать ещё" color="neutral" variant="outline" :loading="c.historyLoading" @click="c.loadHistory(true)"/>
     </template>
     <template v-else-if="c.displayData">
-     <div class="kaban-toolbar"><UInput v-model="c.search" icon="i-lucide-search" placeholder="Найти задачу…" aria-label="Поиск задач" class="flex-1"/><UButton v-if="!projectId" color="neutral" :variant="c.onlyMine?'soft':'ghost'" label="Мои задачи" :aria-pressed="c.onlyMine" @click="c.onlyMine=!c.onlyMine"/><UButton v-if="!projectId" color="neutral" :variant="c.onlyOverdue?'soft':'ghost'" label="Просроченные" :aria-pressed="c.onlyOverdue" @click="c.onlyOverdue=!c.onlyOverdue"/><UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" aria-label="Обновить доску" :loading="c.loading" @click="c.load()"/></div>
+     <div class="kaban-toolbar"><UInput v-model="c.search" icon="i-lucide-search" placeholder="Найти задачу…" aria-label="Поиск задач" class="flex-1"/><UButton v-if="!projectId" color="neutral" :variant="c.onlyMine?'soft':'ghost'" label="Мои задачи" :aria-pressed="c.onlyMine" @click="c.onlyMine=!c.onlyMine"/><UButton v-if="!projectId" color="neutral" :variant="c.onlyOverdue?'soft':'ghost'" label="Просроченные" :aria-pressed="c.onlyOverdue" @click="c.onlyOverdue=!c.onlyOverdue"/><USelect v-if="activeView==='board'&&c.view==='board'" v-model="sortOrder" :items="sortOptions" icon="i-lucide-arrow-down-up" aria-label="Сортировка задач в колонках" class="w-full sm:w-64"/><UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" aria-label="Обновить доску" :loading="c.loading" @click="c.load()"/></div>
      <UAlert v-if="!c.displayData.canEdit" title="Доступ только для просмотра" color="neutral" class="mb-4"/>
      <div v-if="c.workspaceId!=='all'&&c.view==='board'&&!planner&&!c.categoryOptions.length" class="kaban-onboarding"><UIcon name="i-lucide-folder-plus"/><strong>Начните с категории</strong><p>{{c.canCategorize?'Создайте собственную категорию Кабана и добавляйте в неё подкатегории. Категории паролей здесь не используются.':'Попросите администратора хранилища создать категорию или открыть доступ к существующей.'}}</p><UButton v-if="c.canCategorize" label="Создать категорию" icon="i-lucide-plus" @click="c.editCategory()"/></div>
      <div v-if="c.view==='closed'" class="kaban-closed-filters"><UFormField label="Закрыты с"><SharedDatePicker v-model="c.closedFrom" aria-label="Закрыты с" :max="c.closedUntil||undefined"/></UFormField><UFormField label="По"><SharedDatePicker v-model="c.closedUntil" aria-label="Закрыты по" :min="c.closedFrom||undefined"/></UFormField><UButton label="Сбросить период" color="neutral" variant="ghost" :disabled="!c.closedFrom&&!c.closedUntil" @click="c.closedFrom='';c.closedUntil=''"/><small>По дате закрытия · московское время</small></div><div v-if="c.view==='closed'" class="kaban-closed-grid"><KabanTaskCard v-for="task in c.closedTasks" :key="task.id" :task="task" :controller="c"/><p v-if="!c.closedTasks.length" class="kaban-help">За выбранный период закрытых задач нет.</p></div>
      <p v-if="c.view!=='closed'&&c.workspaceId==='all'&&!c.tasks.length" class="kaban-loading">Нет задач по выбранным условиям.</p>
      <ProjectTasksPlanner v-if="activeView !== 'board'" :mode="activeView" :project-start-on="c.project?.profile?.startOn" :project-end-on="c.project?.profile?.endOn" :tasks="c.planningTasks" :stages="c.displayData.board.stages" :categories="c.categories" :people="c.displayData.people" :category-contains="c.categoryContains" :can-create="c.displayData.canEdit" :can-reschedule="c.canOwn" :reschedule="c.rescheduleTask" :busy="c.busy" @open="c.openTask($event)" @create="createForDay" />
      <div v-else-if="c.view!=='closed'" ref="boardElement" class="kaban-board" aria-label="Канбан-доска">
-      <section v-for="stage in c.boardStages" :key="stage.id" :data-kaban-stage="stage.id" class="kaban-column" :class="{'is-drop-target':!!dragged}" @dragover.prevent @drop.prevent="drop(stage.id)">
-       <header><span class="kaban-stage-dot" :style="{background:stage.color}"/><h2><button v-if="c.workspaceId==='all'" type="button" class="kaban-stage-link" :disabled="c.loading||c.busy" :aria-label="`Открыть доску: ${stage.name}`" @click="openStage(stage.id)">{{stage.name}}</button><template v-else>{{stage.name}}</template></h2><span class="kaban-column-count">{{c.tasks.filter(task=>task.stageId===stage.id).length}}</span><UButton v-if="projectId&&c.workspaceId!=='all'&&c.displayData.canEdit&&c.view==='board'" size="xs" icon="i-lucide-plus" color="neutral" variant="ghost" :aria-label="`Добавить задачу: ${stage.name}`" :disabled="c.busy" @click="c.openTask(undefined,stage.id)"/></header>
-       <div class="kaban-column-body"><KabanTaskCard v-for="task in c.tasks.filter(task=>task.stageId===stage.id)" :key="task.id" :task="task" :done="stage.done" :controller="c" @drag="dragged=$event" @pointer-drag="pointerDrag"/><p v-if="!c.tasks.some(task=>task.stageId===stage.id)" class="kaban-column-empty">{{c.displayData.canEdit?'Перетащите задачу сюда или создайте новую':'Пока нет задач'}}</p></div>
+      <section v-for="{ stage, tasks } in boardColumns" :key="stage.id" :data-kaban-stage="stage.id" class="kaban-column" :class="{'is-drop-target':!!dragged}" @dragover.prevent @drop.prevent="drop(stage.id)">
+       <header><span class="kaban-stage-dot" :style="{background:stage.color}"/><h2><button v-if="c.workspaceId==='all'" type="button" class="kaban-stage-link" :disabled="c.loading||c.busy" :aria-label="`Открыть доску: ${stage.name}`" @click="openStage(stage.id)">{{stage.name}}</button><template v-else>{{stage.name}}</template></h2><span class="kaban-column-count">{{tasks.length}}</span><UButton v-if="projectId&&c.workspaceId!=='all'&&c.displayData.canEdit&&c.view==='board'" size="xs" icon="i-lucide-plus" color="neutral" variant="ghost" :aria-label="`Добавить задачу: ${stage.name}`" :disabled="c.busy" @click="c.openTask(undefined,stage.id)"/></header>
+       <div class="kaban-column-body"><KabanTaskCard v-for="task in tasks" :key="task.id" :task="task" :done="stage.done" :controller="c" @drag="dragged=$event" @pointer-drag="pointerDrag"/><p v-if="!tasks.length" class="kaban-column-empty">{{c.displayData.canEdit?'Перетащите задачу сюда или создайте новую':'Пока нет задач'}}</p></div>
       </section>
      </div>
     </template>
