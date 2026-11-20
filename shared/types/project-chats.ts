@@ -10,6 +10,16 @@ export interface ProjectChatHeader {
   avatar: string
   peer: { name: string; avatarUrl: string; lastSeenAt: string | null; online: boolean } | null
 }
+export interface ProjectChatParticipant {
+  userId: string
+  name: string
+  avatarUrl: string
+  lastSeenAt: string | null
+  online: boolean
+}
+export type ChatMaterialTab = 'media' | 'files' | 'links' | 'gifs'
+export type ChatMaterial = { seq: number } & ({ file: ProjectChatFile; url?: never } | { url: string; file?: never })
+export interface ChatMaterialPage { items: ChatMaterial[]; nextBefore: number | null }
 export interface ProjectChatFile extends ProjectDocumentMetadata { id: string; documentId: string | null; revision: number; canEdit: boolean }
 export interface ProjectChatPoll { question: string; options: { id: string; label: string }[] }
 export interface ProjectChatTodo { title: string; items: { id: string; label: string }[] }

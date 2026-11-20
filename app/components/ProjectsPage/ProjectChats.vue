@@ -16,6 +16,7 @@ import ChatForwardModal from '~/components/Chats/ChatForwardModal.vue'
 import ChatTaskPicker from '~/components/Chats/ChatTaskPicker.vue'
 import ProjectChatActivities from './ProjectChatActivities.vue'
 import ProjectChatAttachment from './ProjectChatAttachment.vue'
+import ProjectChatInfo from './ProjectChatInfo.vue'
 const props = defineProps<{ project: Project; embedded?: boolean; personal?: boolean; initialChatId?: string; initialMessageSeq?: number }>()
 const auth = useAuthStore(), route = useRoute(), router = useRouter(), queryClient = useQueryClient(), toast = useToast()
 const selectedId = ref(props.initialChatId ?? (!props.embedded && typeof route.query.chat === 'string' ? route.query.chat : ''))
@@ -226,7 +227,18 @@ const forwarding=ref<{projectId:string|null;chatId:string;messageIds:string[]}|n
 function startForward(ids:string[]){forwarding.value={projectId:props.personal?null:props.project.id,chatId:selectedId.value,messageIds:ids}}
 function addTask(task:{taskId:string;boardId:string;title:string}){if(!draft.value.tasks.some(item=>item.taskId===task.taskId))draft.value.tasks.push(task);taskPicker.value=false}
 function openTask(task:ProjectChatMessage['tasks'][number]) { if(!task.available)return;useChatHubStore().opened=false;void navigateTo({path:task.projectId?`/projects/${task.projectId}/tasks`:'/kaban',query:{task:task.taskId,...(!task.projectId?{vault:task.vaultId||'personal'}:{})}}) }
-const panel = ref<'pins' | 'search' | null>(null), messageSearch = ref(''), searchTerm = ref('')
+const panel = ref<'info' | 'pins' | 'search' | null>(null), messageSearch = ref(''), searchTerm = ref('')
+const conversationVisible = computed(() => panel.value !== 'pins' && panel.value !== 'info')
+const infoTrigger = ref<HTMLButtonElement | null>(null)
+let pinsOpenedFromInfo = false
+function closeInfo() {
+  panel.value = null
+  void nextTick(() => infoTrigger.value?.focus())
+}
+function writeFromInfo() {
+  panel.value = null
+  void nextTick(() => chatInput.value?.textareaRef?.focus())
+}
 watch(selectedId, () => { panel.value = null })
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 watch(messageSearch, value => { if (searchTimer) clearTimeout(searchTimer); searchTimer = setTimeout(() => { searchTerm.value = value.trim() }, 300) })
@@ -264,7 +276,7 @@ async function olderPins() {
 }
 const searchRows = computed(() => (searchFeed.data.value?.pages ?? []).flatMap(page => [...page.messages].reverse()))
 watch([searchFeed.isFetching, searchFeed.hasNextPage, () => searchRows.value.length], ([fetching, more, count]) => { if (panel.value === 'search' && searchTerm.value && !fetching && more && !count && !searchFeed.error.value) void searchFeed.fetchNextPage() })
-function jumpToMessage(message: ProjectChatMessage) {
+function jumpToMessage(message: Pick<ProjectChatMessage, 'seq'>) {
   panel.value = null
   messageAnchor.value = message.seq
   pendingJump.value = message.seq
@@ -295,7 +307,14 @@ const headerActions = computed(() => [
     { label: 'Аватар беседы', icon: 'i-lucide-image', disabled: avatarBusy.value, onSelect: editAvatar }
   ] : [])
 ])
-function togglePins() { panel.value = panel.value === 'pins' ? null : 'pins' }
+function togglePins() {
+  if (panel.value === 'pins') {
+    panel.value = pinsOpenedFromInfo ? 'info' : null
+    return
+  }
+  pinsOpenedFromInfo = panel.value === 'info'
+  panel.value = 'pins'
+}
 async function mutateMessage(action: () => Promise<unknown>) {
   if (actionBusy.value) return
   actionBusy.value = true; error.value = ''
@@ -362,7 +381,7 @@ let observer: IntersectionObserver | undefined, readTimer: ReturnType<typeof set
 const readSent: Record<string, number> = {}
 function observeMessages() {
   observer?.disconnect()
-  if (panel.value === 'pins' || unreadOpening.value || !scroller.value || !current.value || document.visibilityState !== 'visible' || !document.hasFocus()) return
+  if (!conversationVisible.value || unreadOpening.value || !scroller.value || !current.value || document.visibilityState !== 'visible' || !document.hasFocus()) return
   observer = new IntersectionObserver(entries => {
     if (unreadOpening.value || !current.value || document.visibilityState !== 'visible' || !document.hasFocus()) return
     const own = current.value.members.find(member => member.userId === auth.user?.id)?.lastReadSeq ?? 0
@@ -371,7 +390,7 @@ function observeMessages() {
     const chat = selectedId.value
     readTimer = setTimeout(async () => {
       readTimer = undefined
-      if (stopped || panel.value === 'pins' || unreadOpening.value || selectedId.value !== chat || document.visibilityState !== 'visible' || !document.hasFocus()) return
+      if (stopped || !conversationVisible.value || unreadOpening.value || selectedId.value !== chat || document.visibilityState !== 'visible' || !document.hasFocus()) return
       const seq = pendingRead; readSent[chat] = seq
       try { await sharedRequest(`${base.value}/${chat}/read`, { method: 'PUT', body: { seq } }) }
       catch { delete readSent[chat] }
@@ -382,7 +401,7 @@ function observeMessages() {
 watch(selectedId, async () => { unreadBoundary.value = null; awayBoundary = null; pendingRead = 0; if (readTimer) clearTimeout(readTimer); readTimer = undefined; atBottom.value = true; activePasswordId.value = ''; await snapshotUnread(); await nextTick(); if (scroller.value && !messageAnchor.value && atBottom.value) scroller.value.scrollTop = scroller.value.scrollHeight; observeMessages() })
 watch([scroller, rows, panel, pendingJump, messageAnchor], () => {
   if (pendingJump.value !== null) scrollToAnchor()
-  else if (scroller.value && !messageAnchor.value && atBottom.value && !loadingOlder.value && panel.value !== 'pins') scroller.value.scrollTop = scroller.value.scrollHeight
+  else if (scroller.value && !messageAnchor.value && atBottom.value && !loadingOlder.value && conversationVisible.value) scroller.value.scrollTop = scroller.value.scrollHeight
   observeMessages()
 }, { flush: 'post' })
 watch(() => auth.user?.id, () => { closeSelection(); forwarding.value=null;inlinePassword.value=null; for (const id of Object.keys(drafts)) delete drafts[id]; managing.value = false; picker.value = null; activePasswordId.value = '' })
@@ -395,16 +414,19 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
     <UAlert v-if="chats.error.value" color="error" title="Не удалось загрузить беседы" :actions="[{label:'Повторить',onClick:()=>refresh()}]"/>
     <div v-else class="chats-shell" :class="{'chat-mobile-conversation':mobileConversation,'chats-with-panel':panel === 'search' && !!current}">
       <aside class="chats-sidebar"><header><h2>Чаты проекта</h2><UButton icon="i-lucide-square-pen" aria-label="Создать беседу" color="neutral" variant="ghost" @click="manage()"/></header><UInput v-model="chatSearch" icon="i-lucide-search" placeholder="Поиск беседы" aria-label="Поиск беседы" class="chat-search"/><p v-if="chats.isPending.value" class="chat-hint">Загружаем беседы…</p><nav v-else aria-label="Беседы проекта"><button v-for="chat in visibleChats" :key="chat.id" class="chat-list-item" :class="{'is-active':selectedId===chat.id}" :disabled="busy||sending" @click="selectChat(chat.id)"><span class="chat-avatar"><UIcon name="i-lucide-messages-square"/></span><span class="chat-list-label"><strong>{{chat.name}}</strong><small>{{chat.members.length}} участн. · {{time(chat.updatedAt)}}</small></span><UIcon v-if="chat.muted" name="i-lucide-bell-off" class="chat-muted-icon"/><UBadge v-if="chat.unreadCount" color="primary" variant="solid" size="sm">{{chat.unreadCount}}</UBadge></button><p v-if="!visibleChats.length" class="chat-hint">{{chatSearch?'Беседы не найдены':'Создайте первую беседу и пригласите участников.'}}</p></nav></aside>
-      <div v-if="current" v-show="panel !== 'pins'" class="chat-conversation">
+      <div v-if="current" v-show="conversationVisible" class="chat-conversation">
         <header class="chat-header">
           <div class="chat-header-row">
             <div class="chat-identity">
               <UButton v-if="!embedded || !initialChatId" class="chat-mobile-back chat-header-button" icon="i-lucide-arrow-left" aria-label="К списку бесед" color="neutral" variant="ghost" @click="mobileConversation = false"/>
-              <PersonAvatar class="chat-header-avatar" :name="headerName" :src="headerAvatar"/>
-              <div class="chat-identity-text">
-                <h2 :title="headerName">{{ headerName }}</h2>
-                <small v-if="headerStatus" :class="{ 'is-online': peer?.online }" :title="headerStatusTitle">{{ headerStatus }}</small>
-              </div>
+              <button ref="infoTrigger" type="button" class="chat-identity-trigger" :aria-label="`Открыть сведения о беседе ${headerName}`" @click="panel = 'info'">
+                <PersonAvatar class="chat-header-avatar" :name="headerName" :src="headerAvatar"/>
+                <span class="chat-identity-text">
+                  <span class="chat-identity-title" :title="headerName">{{ headerName }}</span>
+                  <small v-if="headerStatus" :class="{ 'is-online': peer?.online }" :title="headerStatusTitle">{{ headerStatus }}</small>
+                </span>
+                <UIcon class="chat-info-chevron" name="i-lucide-chevron-right"/>
+              </button>
             </div>
             <div class="chat-header-actions">
               <UButton class="chat-header-button" icon="i-lucide-search" aria-label="Поиск сообщений" color="neutral" variant="ghost" :aria-expanded="panel === 'search'" @click="panel = panel === 'search' ? null : 'search'"/>
@@ -503,9 +525,30 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
         </form>
       </div>
       <div v-else class="chat-no-selection"><UIcon name="i-lucide-messages-square"/><h2>Обсуждайте проект вместе</h2><p>{{chats.isPending.value?'Загружаем переписку…':'Выберите беседу или создайте новую.'}}</p><UButton v-if="!personal&&!chats.isPending.value" label="Создать беседу" icon="i-lucide-plus" @click="manage()"/></div>
+      <ProjectChatInfo
+        v-if="panel === 'info' && current"
+        :key="current.id"
+        :chat="current"
+        :project-id="project.id"
+        :personal="!!personal"
+        :name="headerName"
+        :avatar="headerAvatar"
+        :status="headerStatus"
+        :online="peer?.online"
+        :can-manage="canEditAvatar"
+        :mute-busy="actionBusy"
+        :error="!managing && !avatarDialog ? error : ''"
+        @close="closeInfo"
+        @write="writeFromInfo"
+        @mute="toggleMute"
+        @pins="togglePins"
+        @manage="manage(current)"
+        @avatar="editAvatar"
+        @jump="jumpToMessage"
+      />
       <section v-if="panel === 'pins' && current" class="chat-pins-view" aria-label="Закреплённые сообщения">
         <header class="chat-pins-header">
-          <UButton class="chat-pins-back" icon="i-lucide-arrow-left" aria-label="Вернуться в беседу" color="neutral" variant="ghost" @click="panel = null"/>
+          <UButton class="chat-pins-back" icon="i-lucide-arrow-left" aria-label="Назад" color="neutral" variant="ghost" @click="togglePins"/>
           <div class="chat-identity">
             <PersonAvatar class="chat-header-avatar" :name="headerName" :src="headerAvatar"/>
             <div class="chat-identity-text">
@@ -621,16 +664,20 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
   border-radius: 16px;
 }
 .chat-identity { flex: 1; padding: 4px 12px 4px 5px; }
+.chat-identity-trigger { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; border-radius: 10px; text-align: left; }
+.chat-identity-trigger:hover { background: #eff5fb; }
+.chat-identity-trigger:focus-visible { outline: 2px solid #356c9e; outline-offset: 2px; }
+.chat-info-chevron { margin-left: auto; flex-shrink: 0; color: #637b96; }
 .chat-identity .chat-header-avatar { height: 34px; width: 34px; border-radius: 50%; }
 .chat-identity-text { display: grid; gap: 2px; min-width: 0; }
-.chat-identity-text h2,
+.chat-identity-title, .chat-identity-text h2,
 .chat-identity-text small,
 .chat-pinned-preview small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.chat-identity-text h2 { color: #26374d; font-size: 14px; line-height: 18px; font-weight: 650; }
+.chat-identity-title, .chat-identity-text h2 { color: #26374d; font-size: 14px; line-height: 18px; font-weight: 650; }
 .chat-identity-text small { color: #5d6f85; font-size: 11px; line-height: 15px; }
 .chat-identity-text small.is-online { color: #147354; font-weight: 600; }
 .chat-header-actions { gap: 2px; padding: 0 4px; }

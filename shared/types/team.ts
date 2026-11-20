@@ -4,3 +4,8 @@ export interface TeamUnit { id: string; parentId: string | null; name: string; k
 export interface TeamPerson { isHidden?: boolean; id: string; fullName: string; email: string; workEmail: string; telegram: string; brand: 'light' | 'magnat'; avatarUrl: string; roleIds: string[]; commonVaultCount?: number }
 export interface TeamDirectory { people: TeamPerson[]; units: TeamUnit[]; total: number; page: number }
 export interface TeamProfile { person: TeamPerson; units: TeamUnit[]; commonUnits: string[]; commonVaults: { id: string; name: string; role: VaultRole; owner: boolean; svg?:string }[] }
+export interface TeamProfileOverview {
+  lastSeenAt: string | null
+  online: boolean
+  projects: { id: string | null; name: string }[]
+}
