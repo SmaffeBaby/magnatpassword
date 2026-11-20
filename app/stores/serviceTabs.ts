@@ -169,11 +169,12 @@ export const useServiceTabsStore = defineStore('service-tabs', () => {
       const historyTab = matching.find(tab => tab.id === historyId)
       const previous = tabs.value.find(tab => tab.id === saved.activeId)
       const restoreRoute = () => {
-        activeId.value = (historyTab ?? matching.find(tab => tab.id === saved.activeId) ?? matching[0])?.id ?? ''
-        window.history.replaceState({ ...window.history.state, [stateKey]: activeId.value || null }, '')
+        const restoredTab = historyTab ?? matching.find(tab => tab.id === saved.activeId) ?? matching[0]
+        activeId.value = (restoredTab ?? (route.path === '/' ? previous : undefined))?.id ?? ''
+        window.history.replaceState({ ...window.history.state, [stateKey]: restoredTab?.id ?? null }, '')
         sync(route)
       }
-      const launchingHome = route.path === '/' && !route.hash && Object.keys(route.query).every(key => key === 'native' || key === 'appVersion')
+      const launchingHome = route.path === '/' && historyId !== null && !route.hash && Object.keys(route.query).every(key => key === 'native' || key === 'appVersion')
       if (launchingHome && !historyTab && previous && router.resolve(previous.path).path !== '/') {
         activeId.value = previous.id
         void visit(previous.path, previous.id, true).catch(() => false).then(success => {
@@ -191,10 +192,23 @@ export const useServiceTabsStore = defineStore('service-tabs', () => {
   function sync(to: RouteLocationNormalized, from?: RouteLocationNormalized) {
     if (!import.meta.client) return
     const state = window.history.state?.[stateKey]
+    if (to.path === '/' && typeof state !== 'string') {
+      if (from && from.path !== '/' && state !== null) {
+        window.history.replaceState({ ...window.history.state, [stateKey]: null }, '')
+      }
+      return
+    }
+
+    const fromHome = from?.path === '/'
+    const matchesDestination = (tab: ServiceTab) => !tab.editor && tab.path === to.fullPath
+    const existing = fromHome && typeof state !== 'string'
+      ? (active.value && matchesDestination(active.value) ? active.value : tabs.value.find(matchesDestination))
+      : undefined
     const fromService = from && describeService(from.path), toService = describeService(to.path)
     const crossService = !!fromService && !!toService && fromService.slug !== toService.slug
     const leavingEditor = !!active.value?.editor && !to.path.startsWith('/office/')
-    const id = typeof state === 'string' ? state : (!crossService && !leavingEditor && activeId.value) || crypto.randomUUID()
+    const keepActive = !fromHome && !crossService && !leavingEditor
+    const id = typeof state === 'string' ? state : existing?.id ?? ((keepActive && activeId.value) || crypto.randomUUID())
     let tab = tabs.value.find(item => item.id === id)
     if (!tab) {
       const draft = pending.get(id)

@@ -1,23 +1,16 @@
 <script setup lang="ts">
-import ApplicationsCard from '~/components/Editors/ApplicationsCard.vue'
-import ContractRegisterCard from '~/components/ProjectsPage/ContractRegisterCard.vue'
-import SpacesCard from '~/components/ProjectsPage/SpacesCard.vue'
-import ProjectsCard from '~/components/ProjectsPage/ProjectsCard.vue'
-import RelationshipsCard from '~/components/Relationships/RelationshipsCard.vue'
-import FinanceCard from '~/components/Finances/FinanceCard.vue'
-import PasswordCard from '~/components/PasswordPage/PasswordCard.vue'
-import TeamCard from '~/components/AccountPage/TeamCard.vue'
-import KabanCard from '~/components/Kaban/KabanCard.vue'
+import HomeServiceCard from '~/components/Layout/HomeServiceCard.vue'
 definePageMeta({ layout: 'home' })
 const home = useHomeLayoutStore()
-const components = { applications: ApplicationsCard, contracts: ContractRegisterCard, passwords: PasswordCard, finances: FinanceCard, relationships: RelationshipsCard, projects: ProjectsCard, spaces: SpacesCard, team: TeamCard, kaban: KabanCard }
 const rows = computed(() => home.display.rows.map(row => ({ ...row, cards: row.cards })).filter(row => row.cards.length))
 </script>
 <template>
   <div class="home-custom-layout">
     <p v-if="home.loading" class="home-layout-loading" role="status">Загружаем главную страницу…</p>
     <template v-else>
-      <div v-for="(row,index) in rows" :key="index" class="home-application-row" :class="`align-${row.align}`" :aria-label="`Ряд ${index + 1}`"><component v-for="id in row.cards" :key="id" :is="components[id]" hero/></div>
+      <div v-for="(row,index) in rows" :key="index" class="home-application-row" :class="`align-${row.align}`" :aria-label="`Ряд ${index + 1}`">
+        <HomeServiceCard v-for="id in row.cards" :key="id" :service="id" />
+      </div>
       <div v-if="!rows.length" class="home-layout-empty"><UIcon name="i-lucide-layout-dashboard"/><h1>Всё по-своему</h1><p>Плашки скрыты. Верните нужные через «Настроить главную».</p><UButton color="neutral" variant="outline" label="Настроить главную" @click="home.open"/></div>
     </template>
     <UAlert v-if="home.error && !home.editing" color="error" title="Настройки главной страницы недоступны" :description="home.error" :actions="[{label:'Повторить',onClick:()=>home.load()}]"/>

@@ -18,7 +18,11 @@ export default defineNuxtConfig({
   modules: ['./modules/breakpoints', '@nuxt/ui', ...(!native ? ['nuxt-security', '@nuxt/content'] : []), '@pinia/nuxt', '@nuxtjs/i18n'],
   experimental: { appManifest: false },
   ui: { fonts: false, colorMode: false },
-  icon: { serverBundle: { collections: ['lucide'] }, ...(native ? { clientBundle: { scan: true, includeCustomCollections: true } } : {}) },
+  icon: {
+    customCollections: [{ prefix: 'magnat', dir: './app/assets/icons' }],
+    serverBundle: { collections: ['lucide'] },
+    ...(native ? { clientBundle: { scan: true, includeCustomCollections: true } } : {})
+  },
   routeRules: {
     // Authenticated APIs use validated-account budgets in requireSharedUser.
     ...Object.fromEntries(['assistant','finance-reports','finance-subscriptions','kaban','notifications','personal-vault','profile','projects','relationship-cards','shared-cards','shared-vaults','team','workspace'].flatMap(root=>[[`/api/${root}`,{security:{rateLimiter:false}}],[`/api/${root}/**`,{security:{rateLimiter:false}}]])),

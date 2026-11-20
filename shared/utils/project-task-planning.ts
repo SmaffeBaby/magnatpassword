@@ -2,7 +2,7 @@ import type { KabanTaskData } from '../types/kaban'
 import { addPeriod, dayDifference } from './subscriptions'
 
 export const projectTaskViews = [
-  { value: 'board', label: 'Кабан', icon: 'i-lucide-columns-3' },
+  { value: 'board', label: 'Кабан', icon: 'i-magnat-boar' },
   { value: 'calendar', label: 'Календарь задач', icon: 'i-lucide-calendar-days' },
   { value: 'gantt', label: 'Диаграмма Ганта', icon: 'i-lucide-chart-gantt' }
 ] as const
