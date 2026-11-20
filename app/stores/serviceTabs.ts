@@ -21,8 +21,22 @@ const tabSchema = z.object({
 })
 const savedTabsSchema = z.object({ tabs: z.array(tabSchema), activeId: z.uuid() })
 type ServiceTab = z.infer<typeof tabSchema>
+type SavedTabs = z.infer<typeof savedTabsSchema>
+type TabStorage = 'sessionStorage' | 'localStorage'
 const stateKey = 'magnatServiceTab'
 const storagePrefix = 'magnat-service-tabs:'
+
+function readSnapshot(storage: TabStorage, key: string): SavedTabs | undefined {
+  try {
+    const result = savedTabsSchema.safeParse(JSON.parse(window[storage].getItem(key) ?? 'null'))
+    return result.success ? result.data : undefined
+  } catch { return undefined }
+}
+
+function writeSnapshot(storage: TabStorage, key: string, snapshot: string) {
+  try { window[storage].setItem(key, snapshot) }
+  catch { /* Navigation still works when browser storage is unavailable. */ }
+}
 
 export function describeService(path: string) {
   const [, root, section] = path.split('/')
@@ -104,17 +118,25 @@ export const useServiceTabsStore = defineStore('service-tabs', () => {
   const savedViews = new Map<string, unknown>()
   let removeHook: (() => void) | undefined
   let accountId: string | undefined
+  let lastSnapshot: string | undefined
 
   function restorable(tab: ServiceTab) {
-    return router.resolve(tab.path).matched.length > 0 && !/^\/auth(?:[/?#]|$)/.test(tab.path)
+    if (/^\/auth(?:[/?#]|$)/.test(tab.path)) return false
+    try { return router.resolve(tab.path).matched.length > 0 }
+    catch { return false }
   }
 
   function persist() {
     if (!import.meta.client || !accountId) return
-    try {
-      const saved = tabs.value.filter(restorable)
-      window.sessionStorage.setItem(storagePrefix + accountId, JSON.stringify({ tabs: saved, activeId: activeId.value }))
-    } catch { /* Keep the open tabs when storage is unavailable. */ }
+    const saved = tabs.value.filter(restorable)
+    const current = saved.find(tab => tab.id === activeId.value) ?? saved.at(-1)
+    if (!current) return
+    const snapshot = JSON.stringify({ tabs: saved, activeId: current.id })
+    if (snapshot === lastSnapshot) return
+    const key = storagePrefix + accountId
+    writeSnapshot('sessionStorage', key, snapshot)
+    writeSnapshot('localStorage', key, snapshot)
+    lastSnapshot = snapshot
   }
 
   function setAccount(id?: string) {
@@ -122,28 +144,45 @@ export const useServiceTabsStore = defineStore('service-tabs', () => {
     if (accountId) {
       persist()
       accountId = undefined
+      lastSnapshot = undefined
       reset()
     }
     if (!id) return
+    accountId = id
     const route = router.currentRoute.value
-    try {
-      const stored = JSON.parse(window.sessionStorage.getItem(storagePrefix + id) ?? 'null')
-      const result = savedTabsSchema.safeParse(stored)
-      if (result.success) {
-        const seen = new Set<string>()
-        tabs.value = result.data.tabs.filter(tab => {
-          if (seen.has(tab.id) || !restorable(tab)) return false
-          seen.add(tab.id)
-          return true
-        })
-        const historyId = window.history.state?.[stateKey]
-        const matching = tabs.value.filter(tab => tab.path === route.fullPath)
-        activeId.value = (matching.find(tab => tab.id === historyId) ?? matching.find(tab => tab.id === result.data.activeId) ?? matching[0])?.id ?? ''
+    const key = storagePrefix + id
+    const durable = readSnapshot('localStorage', key)
+    const saved = readSnapshot('sessionStorage', key) ?? durable
+    if (saved) {
+      const seen = new Set<string>()
+      tabs.value = saved.tabs.filter(tab => {
+        if (seen.has(tab.id) || !restorable(tab)) return false
+        seen.add(tab.id)
+        return true
+      })
+      lastSnapshot = JSON.stringify(saved)
+      writeSnapshot('sessionStorage', key, lastSnapshot)
+      if (!durable) writeSnapshot('localStorage', key, lastSnapshot)
+
+      const historyId = window.history.state?.[stateKey]
+      const matching = tabs.value.filter(tab => tab.path === route.fullPath)
+      const historyTab = matching.find(tab => tab.id === historyId)
+      const previous = tabs.value.find(tab => tab.id === saved.activeId)
+      const restoreRoute = () => {
+        activeId.value = (historyTab ?? matching.find(tab => tab.id === saved.activeId) ?? matching[0])?.id ?? ''
         window.history.replaceState({ ...window.history.state, [stateKey]: activeId.value || null }, '')
         sync(route)
       }
-    } catch { /* A stale or unreadable snapshot leaves normal navigation available. */ }
-    accountId = id
+      const launchingHome = route.path === '/' && !route.hash && Object.keys(route.query).every(key => key === 'native' || key === 'appVersion')
+      if (launchingHome && !historyTab && previous && router.resolve(previous.path).path !== '/') {
+        activeId.value = previous.id
+        void visit(previous.path, previous.id, true).catch(() => false).then(success => {
+          if (!success && accountId === id && router.currentRoute.value === route) restoreRoute()
+        })
+        return
+      }
+      restoreRoute()
+    }
     persist()
   }
 
