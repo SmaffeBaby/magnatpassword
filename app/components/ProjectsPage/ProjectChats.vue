@@ -2,7 +2,7 @@
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/vue-query'
 import type { Credential } from '~~/shared/types/vault'
 import type { Project } from '~~/shared/types/projects'
-import type { ProjectChat, ProjectChatMessage, ProjectChatFile, ProjectChatPoll, ProjectChatTodo, ProjectChatPage } from '~~/shared/types/project-chats'
+import type { ChatMessageDraft, ProjectChat, ProjectChatHeader, ProjectChatMessage, ProjectChatFile, ProjectChatPage } from '~~/shared/types/project-chats'
 import type { ProjectDocument, ProjectDocumentFolder } from '~~/shared/types/project-documents'
 import type { ProjectPassword } from '~~/shared/types/project-passwords'
 import { canEditProjectSection, canViewProjectSection } from '~~/shared/utils/project-permissions'
@@ -21,12 +21,15 @@ const auth = useAuthStore(), route = useRoute(), router = useRouter(), queryClie
 const selectedId = ref(props.initialChatId ?? (!props.embedded && typeof route.query.chat === 'string' ? route.query.chat : ''))
 function writeRoute(value: Parameters<typeof router.replace>[0]) { if (!props.embedded) void router.replace(value) }
 const messageAnchor = ref<number | null>(props.initialMessageSeq ?? (!props.embedded && Number(route.query.message) > 0 ? Number(route.query.message) : null))
+const pendingJump = ref(messageAnchor.value)
+let focusJump = false
+watch(messageAnchor, seq => { pendingJump.value = seq; focusJump = false }, { flush: 'sync' })
 const { base, chats, messages, rows, connected, refresh } = useProjectChats(() => props.project.id, selectedId, messageAnchor)
 const current = computed(() => chats.data.value?.find(chat => chat.id === selectedId.value))
 const typing = useChatTyping(() => props.project.id, selectedId, () => !!current.value)
 const typingNames = computed(() => (typing.people.data.value??[]).map(id=>memberName(id)).join(', '))
 const chatSearch = ref(''), visibleChats = computed(() => (chats.data.value ?? []).filter(chat => chat.name.toLocaleLowerCase('ru').includes(chatSearch.value.toLocaleLowerCase('ru'))))
-const error = ref(''), busy = ref(false), sending = ref(false), managing = ref(false), manageId = ref(''), manageRevision = ref(0), manageName = ref(''), manageMembers = ref<string[]>([])
+const error = ref(''), busy = ref(false), managing = ref(false), manageId = ref(''), manageRevision = ref(0), manageName = ref(''), manageMembers = ref<string[]>([])
 const picker = ref<'upload' | 'documents' | 'passwords' | null>(null), pickerSearch = ref(''), mobileConversation = ref(!!selectedId.value)
 const saveToDocuments = ref(!props.personal && canEditProjectSection(props.project, 'documents')), uploadFolder = ref('root')
 const canViewDocuments = computed(() => !props.personal && canViewProjectSection(props.project, 'documents'))
@@ -40,21 +43,102 @@ const folderOptions = computed(() => [{ label: 'Документы проект�
 const passwords = useQuery({ queryKey: computed(() => ['account', auth.user?.id, 'project-passwords', props.project.id]), queryFn: ({ signal }) => sharedRequest<ProjectPassword[]>(`/api/projects/${props.project.id}/passwords`, { signal }), enabled: computed(() => !!selectedId.value && !props.personal), retry: false })
 const matchingFiles = computed(() => (documents.data.value ?? []).filter(file => file.name.toLocaleLowerCase('ru').includes(pickerSearch.value.toLocaleLowerCase('ru'))))
 const matchingPasswords = computed(() => (passwords.data.value ?? []).filter(row => `${row.entry.title} ${row.entry.username}`.toLocaleLowerCase('ru').includes(pickerSearch.value.toLocaleLowerCase('ru'))))
-interface Draft { text: string; files: ProjectChatFile[]; passwordIds: string[]; nonce: string; retry: boolean; tasks: { taskId: string; boardId: string; title: string }[]; poll?: ProjectChatPoll; todo?: ProjectChatTodo }
-const drafts = reactive<Record<string, Draft>>({})
-const draft = computed(() => drafts[selectedId.value] ?? (drafts[selectedId.value] = { text: '', files: [], passwordIds: [], nonce: '', retry: false, tasks: [] }))
+const drafts = reactive<Record<string, ChatMessageDraft>>({})
 const hub = useChatHubStore()
+const header = useQuery({
+  queryKey: computed(() => ['account', auth.user?.id, 'project-chats', props.project.id, selectedId.value, 'header']),
+  queryFn: ({ signal }) => sharedRequest<ProjectChatHeader>(`${base.value}/${selectedId.value}/header`, { signal }),
+  enabled: computed(() => !!auth.user && !!current.value),
+  refetchInterval: computed(() => props.personal ? 30_000 : connected.value ? false : 15_000)
+})
+const peer = computed(() => header.data.value?.peer)
+const headerName = computed(() => peer.value?.name || current.value?.name || '')
+const headerAvatar = computed(() => {
+  if (!props.personal) return header.data.value?.avatar || props.project.profile?.avatar
+  if (peer.value) return peer.value.avatarUrl
+  return hub.items.find(item => !item.projectId && item.id === selectedId.value)?.people.find(person => person.userId !== auth.user?.id)?.avatarUrl
+})
+const shortActivityDate = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+const headerStatus = computed(() => {
+  if (!props.personal) return `${props.project.name} · Участников: ${current.value?.members.length ?? 0}`
+  if (peer.value?.online) return 'В сети'
+  const lastSeen = peer.value?.lastSeenAt
+  if (lastSeen) return `Был(а) ${shortActivityDate.format(new Date(lastSeen))}`
+  if (header.isSuccess.value || header.isError.value) return 'Активность неизвестна'
+  return ''
+})
+const headerStatusTitle = computed(() => props.personal ? headerStatus.value : current.value?.members.map(member => memberName(member.userId)).join(', '))
+const canEditAvatar = computed(() => !!current.value && !props.personal && current.value.createdBy === auth.user?.id)
+const avatarDialog = ref(false), avatarDraft = ref(''), avatarError = ref(''), avatarBusy = ref(false)
+const avatarRevision = ref(0)
+const avatarAccept = 'image/png,image/jpeg,image/webp'
+
+function editAvatar() {
+  if (!current.value || avatarBusy.value) return
+  avatarDraft.value = header.data.value?.avatar ?? ''
+  avatarRevision.value = current.value.revision
+  avatarError.value = ''
+  avatarDialog.value = true
+}
+
+function chooseAvatar(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  input.value = ''
+  if (!avatarAccept.split(',').includes(file.type) || file.size > 500_000 || !file.size) {
+    avatarError.value = 'Выберите PNG, JPEG или WebP до 500 КБ'
+    return
+  }
+  avatarError.value = ''
+  avatarBusy.value = true
+  const reader = new FileReader()
+  reader.onload = () => { avatarDraft.value = String(reader.result) }
+  reader.onerror = () => { avatarError.value = 'Не удалось прочитать изображение' }
+  reader.onloadend = () => { avatarBusy.value = false }
+  reader.readAsDataURL(file)
+}
+
+async function saveAvatar() {
+  const chat = current.value
+  if (!chat || !canEditAvatar.value || avatarBusy.value) return
+  avatarBusy.value = true
+  avatarError.value = ''
+  try {
+    await sharedRequest(`${base.value}/${chat.id}/header`, {
+      method: 'PUT',
+      body: { avatar: avatarDraft.value, revision: avatarRevision.value }
+    })
+    await refresh()
+    avatarDialog.value = false
+  } catch (failure: any) {
+    avatarError.value = failure?.data?.message || 'Не удалось сохранить аватар'
+    if (failure?.statusCode === 409) {
+      await refresh()
+      if (current.value?.id === chat.id) avatarRevision.value = current.value.revision
+    }
+  } finally { avatarBusy.value = false }
+}
+watch(selectedId, () => { avatarDialog.value = false })
 const forwardKey = computed(() => hub.draftKey(props.personal ? null : props.project.id, selectedId.value))
 const forwardDraft = computed(() => hub.forwardDrafts[forwardKey.value])
+const draft = computed(() => {
+  const entries = props.embedded ? hub.messageDrafts : drafts
+  const key = forwardKey.value
+  entries[key] ??= { text: '', files: [], passwordIds: [], nonce: '', retry: false, sending: false, tasks: [] }
+  return entries[key]!
+})
+const sending = computed(() => draft.value.sending)
 const attachmentCount = computed(() => draft.value.files.length + draft.value.passwordIds.length)
-const canSend = computed(() => !!current.value && !sending.value && !busy.value && (!!draft.value.text.trim() || attachmentCount.value > 0 || !!draft.value.poll || !!draft.value.todo || !!draft.value.tasks.length || !!forwardDraft.value))
+const hasMessageContent = computed(() => !!(draft.value.text.trim() || attachmentCount.value || draft.value.poll || draft.value.todo || draft.value.tasks.length || forwardDraft.value))
+const canSend = computed(() => !!current.value && !sending.value && !busy.value && hasMessageContent.value)
 const inlinePassword = ref<Credential|null>(null)
 const activePasswordId = ref(''), activePassword = computed(() => passwords.data.value?.find(row => row.id === activePasswordId.value))
 const passwordDetail = computed(() => inlinePassword.value ? {...inlinePassword.value,vaultId:props.project.id,vaultName:current.value?.name||props.project.name} : activePassword.value ? { ...activePassword.value.entry, vaultId: props.project.id, vaultName: props.project.name } : null)
 const passwordTitle = (id: string) => passwords.data.value?.find(row => row.id === id)?.entry.title || (passwords.isPending.value ? 'Загружаем пароль…' : 'Пароль недоступен')
 async function copy(value: string, trigger?: HTMLElement) { try { await copyText(value, trigger); toast.add({ title: 'Скопировано', color: 'success' }) } catch { toast.add({ title: 'Не удалось скопировать', color: 'error' }) } }
 function selectChat(id: string) { if (busy.value || sending.value) return; messageAnchor.value = null; selectedId.value = id; mobileConversation.value = true; error.value = ''; writeRoute({ query: { ...route.query, chat: id, message: undefined } }) }
-watch(()=>props.initialMessageSeq,value=>{if(props.embedded){messageAnchor.value=value??null;highlightedId.value='';atBottom.value=!value}})
+watch(()=>props.initialMessageSeq,value=>{if(props.embedded){messageAnchor.value=value??null;atBottom.value=!value}})
 watch(() => route.query.message, value => { if(props.embedded)return; messageAnchor.value = Number(value) > 0 ? Number(value) : null })
 watch(() => route.query.chat, id => { if (!props.embedded && typeof id === 'string') selectedId.value = id })
 watch(chats.data, list => { if (list && !list.some(chat => chat.id === selectedId.value)) { selectedId.value = list[0]?.id ?? ''; if (!selectedId.value) mobileConversation.value = false } }, { immediate: true })
@@ -98,7 +182,7 @@ async function send() {
   if (!canSend.value) return
   const chat = selectedId.value, target = draft.value, forward = forwardDraft.value, key = forwardKey.value
   if (!target.nonce) target.nonce = crypto.randomUUID()
-  sending.value = true; error.value = ''; typing.stop()
+  target.sending = true; error.value = ''; typing.stop()
   try {
     if (forward) {
       for (let i=0;i<forward.source.messageIds.length;i+=100) await sharedRequest('/api/chats/forward',{method:'POST',body:{operationId:forward.operationId,source:{...forward.source,messageIds:forward.source.messageIds.slice(i,i+100)},target:{projectId:props.personal?null:props.project.id,chatId:chat}}})
@@ -108,7 +192,7 @@ async function send() {
     target.tasks = []; target.poll = undefined; target.todo = undefined; target.text = ''; target.files = []; target.passwordIds = []; target.nonce = ''; target.retry = false
     atBottom.value = true; await refresh()
   } catch (failure: any) { target.retry = true; error.value = failure?.data?.message || 'Сообщение не отправлено. Повторите отправку.'; await refresh() }
-  finally { sending.value = false }
+  finally { target.sending = false }
 }
 function enter(event: KeyboardEvent) { if (event.key === 'Escape') { mentionDismissed.value = true; return }; if (shouldSendChatKey(event)) { event.preventDefault(); if (suggestedMentions.value.length) insertMention(suggestedMentions.value[0]!.handle); else void send() } }
 const actionBusy = ref(false), editingMessage = ref<ProjectChatMessage | null>(null), editText = ref(''), deletingMessage = ref<ProjectChatMessage | null>(null)
@@ -142,20 +226,76 @@ const forwarding=ref<{projectId:string|null;chatId:string;messageIds:string[]}|n
 function startForward(ids:string[]){forwarding.value={projectId:props.personal?null:props.project.id,chatId:selectedId.value,messageIds:ids}}
 function addTask(task:{taskId:string;boardId:string;title:string}){if(!draft.value.tasks.some(item=>item.taskId===task.taskId))draft.value.tasks.push(task);taskPicker.value=false}
 function openTask(task:ProjectChatMessage['tasks'][number]) { if(!task.available)return;useChatHubStore().opened=false;void navigateTo({path:task.projectId?`/projects/${task.projectId}/tasks`:'/kaban',query:{task:task.taskId,...(!task.projectId?{vault:task.vaultId||'personal'}:{})}}) }
-const panel = ref<'pins' | 'search' | null>(null), messageSearch = ref(''), searchTerm = ref(''), highlightedId = ref('')
+const panel = ref<'pins' | 'search' | null>(null), messageSearch = ref(''), searchTerm = ref('')
+watch(selectedId, () => { panel.value = null })
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 watch(messageSearch, value => { if (searchTimer) clearTimeout(searchTimer); searchTimer = setTimeout(() => { searchTerm.value = value.trim() }, 300) })
-const panelFeed = useInfiniteQuery({ queryKey: computed(() => ['account', auth.user?.id, 'project-chats', props.project.id, selectedId.value, 'panel', panel.value, searchTerm.value]),
+const searchFeed = useInfiniteQuery({ queryKey: computed(() => ['account', auth.user?.id, 'project-chats', props.project.id, selectedId.value, 'search', searchTerm.value]),
   initialPageParam: null as number | null,
-  queryFn: ({ signal, pageParam }) => { const query = new URLSearchParams(); if (pageParam) query.set('before', String(pageParam)); if (panel.value === 'pins') query.set('pinned', 'true'); else query.set('search', searchTerm.value); return sharedRequest<ProjectChatPage>(`${base.value}/${selectedId.value}/messages?${query}`, { signal }) },
+  queryFn: ({ signal, pageParam }) => { const query = new URLSearchParams({ search: searchTerm.value }); if (pageParam) query.set('before', String(pageParam)); return sharedRequest<ProjectChatPage>(`${base.value}/${selectedId.value}/messages?${query}`, { signal }) },
   getNextPageParam: page => page.nextBefore ?? undefined,
-  enabled: computed(() => !!current.value && !!panel.value && (panel.value === 'pins' || !!searchTerm.value)), retry: false })
-const panelRows = computed(() => (panelFeed.data.value?.pages ?? []).flatMap(page => [...page.messages].reverse()))
-watch([() => panelFeed.isFetching.value, () => panelFeed.hasNextPage.value, () => panelRows.value.length], ([fetching, more, count]) => { if (panel.value === 'search' && searchTerm.value && !fetching && more && !count && !panelFeed.error.value) void panelFeed.fetchNextPage() })
-function jumpToMessage(message: ProjectChatMessage) { messageAnchor.value = message.seq; highlightedId.value = message.id; atBottom.value = false; mobileConversation.value = true; writeRoute({ query: { ...route.query, chat: selectedId.value, message: String(message.seq) } }); void nextTick(scrollToHighlight) }
-function scrollToHighlight() { const id = highlightedId.value || rows.value.find(message => message.seq === messageAnchor.value)?.id; const target = id ? scroller.value?.querySelector(`[data-message-id="${id}"]`) : null; if (target) target.scrollIntoView({ block: 'center' }) }
-function latest() { highlightedId.value = ''; messageAnchor.value = null; atBottom.value = true; writeRoute({ query: { ...route.query, message: undefined } }) }
+  enabled: computed(() => !!current.value && panel.value === 'search' && !!searchTerm.value), retry: false })
+const pinsFeed = useInfiniteQuery({
+  queryKey: computed(() => ['account', auth.user?.id, 'project-chats', props.project.id, selectedId.value, 'pins']),
+  initialPageParam: null as number | null,
+  queryFn: ({ signal, pageParam }) => {
+    const query = new URLSearchParams({ pinned: 'true' })
+    if (pageParam) query.set('before', String(pageParam))
+    return sharedRequest<ProjectChatPage>(`${base.value}/${selectedId.value}/messages?${query}`, { signal })
+  },
+  getNextPageParam: page => page.nextBefore ?? undefined,
+  enabled: computed(() => !!current.value),
+  refetchInterval: computed(() => connected.value ? false : 15000),
+  retry: false
+})
+const pinnedPreview = computed(() => pinsFeed.data.value?.pages[0]?.messages.at(-1))
+const pinnedRows = computed(() => [...(pinsFeed.data.value?.pages ?? [])].reverse().flatMap(page => page.messages))
+const pinsScroller = ref<HTMLElement | null>(null)
+watch([pinsScroller, () => pinnedRows.value.length], ([element, count], [previous, previousCount]) => {
+  if (element && count && (element !== previous || !previousCount)) element.scrollTop = element.scrollHeight
+}, { flush: 'post' })
+async function olderPins() {
+  const element = pinsScroller.value
+  if (!element || pinsFeed.isFetching.value) return
+  const height = element.scrollHeight
+  await pinsFeed.fetchNextPage()
+  await nextTick()
+  if (element === pinsScroller.value) element.scrollTop += element.scrollHeight - height
+}
+const searchRows = computed(() => (searchFeed.data.value?.pages ?? []).flatMap(page => [...page.messages].reverse()))
+watch([searchFeed.isFetching, searchFeed.hasNextPage, () => searchRows.value.length], ([fetching, more, count]) => { if (panel.value === 'search' && searchTerm.value && !fetching && more && !count && !searchFeed.error.value) void searchFeed.fetchNextPage() })
+function jumpToMessage(message: ProjectChatMessage) {
+  panel.value = null
+  messageAnchor.value = message.seq
+  pendingJump.value = message.seq
+  focusJump = true
+  atBottom.value = false
+  mobileConversation.value = true
+  writeRoute({ query: { ...route.query, chat: selectedId.value, message: String(message.seq) } })
+}
+function scrollToAnchor() {
+  const element = scroller.value
+  const seq = pendingJump.value
+  if (!element?.clientHeight || seq === null || messages.isPending.value) return
+  const target = element.querySelector<HTMLElement>(`[data-message-seq="${seq}"]`)
+  if (!target) return
+  const offset = target.getBoundingClientRect().top - element.getBoundingClientRect().top
+  element.scrollTop += offset - Math.max(0, (element.clientHeight - target.offsetHeight) / 2)
+  if (focusJump) target.focus({ preventScroll: true })
+  pendingJump.value = null
+}
+function latest() { messageAnchor.value = null; atBottom.value = true; writeRoute({ query: { ...route.query, message: undefined } }) }
 const summary = (message: ProjectChatMessage) => message.text || message.poll?.question || message.todo?.title || message.tasks[0]?.title || (message.files.length ? message.files.map(file => file.name).join(', ') : 'Пароль проекта')
+const headerActions = computed(() => [
+  { label: 'Закреплённые сообщения', icon: 'i-lucide-pin', onSelect: togglePins },
+  { label: selectionMode.value ? 'Выйти из режима выбора' : 'Выбрать мои сообщения', icon: 'i-lucide-list-checks', onSelect: () => { if (selectionMode.value) closeSelection(); else selectionMode.value = true } },
+  { label: current.value?.muted ? 'Включить уведомления' : 'Отключить уведомления', icon: current.value?.muted ? 'i-lucide-bell-off' : 'i-lucide-bell', disabled: actionBusy.value, onSelect: toggleMute },
+  ...(canEditAvatar.value ? [
+    { label: 'Настройки беседы', icon: 'i-lucide-users-round', disabled: busy.value || sending.value, onSelect: () => manage(current.value) },
+    { label: 'Аватар беседы', icon: 'i-lucide-image', disabled: avatarBusy.value, onSelect: editAvatar }
+  ] : [])
+])
+function togglePins() { panel.value = panel.value === 'pins' ? null : 'pins' }
 async function mutateMessage(action: () => Promise<unknown>) {
   if (actionBusy.value) return
   actionBusy.value = true; error.value = ''
@@ -189,6 +329,7 @@ function insertMention(handle: string) { const before = draft.value.text.slice(0
 function messageParts(message: ProjectChatMessage) { return message.text.split(/(@[\p{L}\p{N}_]+)/gu).map(text => ({ text, mention: text.startsWith('@') && mentionOptions.value.some(member => '@' + member.handle.toLocaleLowerCase('ru') === text.toLocaleLowerCase('ru')) })) }
 const unreadBoundary = ref<number | null>(null), unreadOpening = ref(true)
 const firstUnreadSeq = computed(() => firstUnreadChatSeq(rows.value, unreadBoundary.value, auth.user?.id))
+const visibleRows = computed(() => rows.value.filter(row => !row.deletedAt))
 let awayBoundary: number | null = null, openingEpoch = 0
 async function snapshotUnread() {
   const attempt = ++openingEpoch, chat = selectedId.value
@@ -206,12 +347,22 @@ const day = (value: string) => new Intl.DateTimeFormat('ru-RU', { day: 'numeric'
 const readers = (message: ProjectChatMessage) => current.value?.members.filter(member => member.userId !== message.authorId && member.lastReadSeq >= message.seq) ?? []
 const readTitle = (message: ProjectChatMessage) => { const users = readers(message); return users.length ? `Прочитали: ${users.map(member => memberName(member.userId)).join(', ')}` : 'Ещё не прочитано' }
 function onScroll() { const el = scroller.value; if (el) atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 100 }
-async function older() { const el = scroller.value; if (!el || loadingOlder.value) return; loadingOlder.value = true; const height = el.scrollHeight; await messages.fetchNextPage(); await nextTick(); el.scrollTop += el.scrollHeight - height; loadingOlder.value = false; observeMessages() }
+async function older() {
+  const el = scroller.value
+  if (!el || loadingOlder.value) return
+  loadingOlder.value = true
+  const height = el.scrollHeight, anchor = messageAnchor.value, chat = selectedId.value
+  await messages.fetchNextPage()
+  await nextTick()
+  if (anchor === messageAnchor.value && chat === selectedId.value) el.scrollTop += el.scrollHeight - height
+  loadingOlder.value = false
+  observeMessages()
+}
 let observer: IntersectionObserver | undefined, readTimer: ReturnType<typeof setTimeout> | undefined, pendingRead = 0, stopped = false
 const readSent: Record<string, number> = {}
 function observeMessages() {
   observer?.disconnect()
-  if (unreadOpening.value || !scroller.value || !current.value || document.visibilityState !== 'visible' || !document.hasFocus()) return
+  if (panel.value === 'pins' || unreadOpening.value || !scroller.value || !current.value || document.visibilityState !== 'visible' || !document.hasFocus()) return
   observer = new IntersectionObserver(entries => {
     if (unreadOpening.value || !current.value || document.visibilityState !== 'visible' || !document.hasFocus()) return
     const own = current.value.members.find(member => member.userId === auth.user?.id)?.lastReadSeq ?? 0
@@ -220,7 +371,7 @@ function observeMessages() {
     const chat = selectedId.value
     readTimer = setTimeout(async () => {
       readTimer = undefined
-      if (stopped || unreadOpening.value || selectedId.value !== chat || document.visibilityState !== 'visible' || !document.hasFocus()) return
+      if (stopped || panel.value === 'pins' || unreadOpening.value || selectedId.value !== chat || document.visibilityState !== 'visible' || !document.hasFocus()) return
       const seq = pendingRead; readSent[chat] = seq
       try { await sharedRequest(`${base.value}/${chat}/read`, { method: 'PUT', body: { seq } }) }
       catch { delete readSent[chat] }
@@ -228,8 +379,12 @@ function observeMessages() {
   }, { root: scroller.value, threshold: 0.5 })
   for (const element of scroller.value.querySelectorAll('[data-seq]')) observer.observe(element)
 }
-watch(selectedId, async () => { unreadBoundary.value = null; awayBoundary = null; pendingRead = 0; if (readTimer) clearTimeout(readTimer); readTimer = undefined; atBottom.value = true; activePasswordId.value = ''; await snapshotUnread(); await nextTick(); if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight; observeMessages() })
-watch(() => [rows.value.length, rows.value.at(-1)?.seq, current.value?.id, messageAnchor.value], async () => { await nextTick(); if (scroller.value && atBottom.value && !loadingOlder.value) scroller.value.scrollTop = scroller.value.scrollHeight; if (messageAnchor.value) scrollToHighlight(); observeMessages() }, { flush: 'post' })
+watch(selectedId, async () => { unreadBoundary.value = null; awayBoundary = null; pendingRead = 0; if (readTimer) clearTimeout(readTimer); readTimer = undefined; atBottom.value = true; activePasswordId.value = ''; await snapshotUnread(); await nextTick(); if (scroller.value && !messageAnchor.value && atBottom.value) scroller.value.scrollTop = scroller.value.scrollHeight; observeMessages() })
+watch([scroller, rows, panel, pendingJump, messageAnchor], () => {
+  if (pendingJump.value !== null) scrollToAnchor()
+  else if (scroller.value && !messageAnchor.value && atBottom.value && !loadingOlder.value && panel.value !== 'pins') scroller.value.scrollTop = scroller.value.scrollHeight
+  observeMessages()
+}, { flush: 'post' })
 watch(() => auth.user?.id, () => { closeSelection(); forwarding.value=null;inlinePassword.value=null; for (const id of Object.keys(drafts)) delete drafts[id]; managing.value = false; picker.value = null; activePasswordId.value = '' })
 onMounted(() => { void snapshotUnread(); window.addEventListener('focus', resumeUnread); window.addEventListener('blur', rememberAway); document.addEventListener('visibilitychange', resumeUnread) })
 onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); if (readTimer) clearTimeout(readTimer); if (searchTimer) clearTimeout(searchTimer); window.removeEventListener('focus', resumeUnread); window.removeEventListener('blur', rememberAway); document.removeEventListener('visibilitychange', resumeUnread) })
@@ -238,14 +393,47 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
   <section class="project-chats" :class="{'chat-embedded':embedded,'chat-embedded-directory':embedded&&!initialChatId}">
     <div v-if="!embedded" class="chats-intro"><p>Отдельные беседы с участниками проекта, файлами и доступами к сервисам.</p></div>
     <UAlert v-if="chats.error.value" color="error" title="Не удалось загрузить беседы" :actions="[{label:'Повторить',onClick:()=>refresh()}]"/>
-    <div v-else class="chats-shell" :class="{'chat-mobile-conversation':mobileConversation,'chats-with-panel':!!panel&&!!current}">
+    <div v-else class="chats-shell" :class="{'chat-mobile-conversation':mobileConversation,'chats-with-panel':panel === 'search' && !!current}">
       <aside class="chats-sidebar"><header><h2>Чаты проекта</h2><UButton icon="i-lucide-square-pen" aria-label="Создать беседу" color="neutral" variant="ghost" @click="manage()"/></header><UInput v-model="chatSearch" icon="i-lucide-search" placeholder="Поиск беседы" aria-label="Поиск беседы" class="chat-search"/><p v-if="chats.isPending.value" class="chat-hint">Загружаем беседы…</p><nav v-else aria-label="Беседы проекта"><button v-for="chat in visibleChats" :key="chat.id" class="chat-list-item" :class="{'is-active':selectedId===chat.id}" :disabled="busy||sending" @click="selectChat(chat.id)"><span class="chat-avatar"><UIcon name="i-lucide-messages-square"/></span><span class="chat-list-label"><strong>{{chat.name}}</strong><small>{{chat.members.length}} участн. · {{time(chat.updatedAt)}}</small></span><UIcon v-if="chat.muted" name="i-lucide-bell-off" class="chat-muted-icon"/><UBadge v-if="chat.unreadCount" color="primary" variant="solid" size="sm">{{chat.unreadCount}}</UBadge></button><p v-if="!visibleChats.length" class="chat-hint">{{chatSearch?'Беседы не найдены':'Создайте первую беседу и пригласите участников.'}}</p></nav></aside>
-      <div v-if="current" class="chat-conversation">
-        <header class="chat-header"><UButton class="chat-mobile-back" icon="i-lucide-arrow-left" aria-label="К списку бесед" color="neutral" variant="ghost" @click="mobileConversation=false"/><span class="chat-avatar"><UIcon name="i-lucide-messages-square"/></span><div><h2>{{current.name}}</h2><small :title="current.members.map(member=>memberName(member.userId)).join(', ')">{{current.members.length}} участников · {{current.members.slice(0,3).map(member=>memberName(member.userId)).join(', ')}}</small></div><UButton icon="i-lucide-list-checks" aria-label="Выбрать несколько своих сообщений" color="neutral" variant="ghost" :aria-pressed="selectionMode" @click="selectionMode?closeSelection():selectionMode=true"/>
-        <UButton icon="i-lucide-search" aria-label="Поиск сообщений" color="neutral" variant="ghost" :aria-expanded="panel==='search'" @click="panel=panel==='search'?null:'search'"/>
-        <UButton icon="i-lucide-pin" aria-label="Закреплённые сообщения" color="neutral" variant="ghost" :aria-expanded="panel==='pins'" @click="panel=panel==='pins'?null:'pins'"/>
-        <UButton :icon="current.muted?'i-lucide-bell-off':'i-lucide-bell'" :aria-label="current.muted?'Включить уведомления беседы':'Отключить уведомления беседы'" :title="current.muted?'Уведомления отключены':'Уведомления включены'" color="neutral" variant="ghost" :disabled="actionBusy" @click="toggleMute"/>
-        <UButton v-if="current.createdBy===auth.user?.id" icon="i-lucide-users-round" :label="embedded?undefined:'Участники'" color="neutral" variant="ghost" :disabled="busy||sending" @click="manage(current)"/></header>
+      <div v-if="current" v-show="panel !== 'pins'" class="chat-conversation">
+        <header class="chat-header">
+          <div class="chat-header-row">
+            <div class="chat-identity">
+              <UButton v-if="!embedded || !initialChatId" class="chat-mobile-back chat-header-button" icon="i-lucide-arrow-left" aria-label="К списку бесед" color="neutral" variant="ghost" @click="mobileConversation = false"/>
+              <PersonAvatar class="chat-header-avatar" :name="headerName" :src="headerAvatar"/>
+              <div class="chat-identity-text">
+                <h2 :title="headerName">{{ headerName }}</h2>
+                <small v-if="headerStatus" :class="{ 'is-online': peer?.online }" :title="headerStatusTitle">{{ headerStatus }}</small>
+              </div>
+            </div>
+            <div class="chat-header-actions">
+              <UButton class="chat-header-button" icon="i-lucide-search" aria-label="Поиск сообщений" color="neutral" variant="ghost" :aria-expanded="panel === 'search'" @click="panel = panel === 'search' ? null : 'search'"/>
+              <UDropdownMenu :items="headerActions" :content="{ align: 'end' }">
+                <UButton class="chat-header-button" icon="i-lucide-ellipsis" aria-label="Действия с беседой" color="neutral" variant="ghost"/>
+              </UDropdownMenu>
+            </div>
+          </div>
+          <div v-if="pinnedPreview" class="chat-pinned">
+            <button type="button" class="chat-pinned-preview" aria-label="Перейти к закреплённому сообщению" :title="summary(pinnedPreview)" @click="jumpToMessage(pinnedPreview)">
+              <span class="chat-pin-marker" aria-hidden="true">
+                <i v-for="segment in Math.min(3, pinnedRows.length)" :key="segment"/>
+              </span>
+              <ProjectChatAttachment
+                v-if="pinnedPreview.files[0]"
+                :key="`${pinnedPreview.files[0].id}:${pinnedPreview.files[0].revision}`"
+                :file="pinnedPreview.files[0]"
+                :project-id="project.id"
+                :chat-id="current.id"
+                preview-mode="thumbnail"
+              />
+              <span>
+                <strong>Закреплённое сообщение</strong>
+                <small>{{ summary(pinnedPreview) }}</small>
+              </span>
+            </button>
+            <UButton class="chat-header-button" icon="i-lucide-list" aria-label="Все закреплённые сообщения" color="neutral" variant="ghost" :aria-expanded="panel === 'pins'" @click="togglePins"/>
+          </div>
+        </header>
         <div v-if="selectionMode" class="chat-selection-toolbar"><span>Выбрано: {{selectedMessages.length}}</span><UButton label="Выбрать все мои сообщения" color="neutral" variant="ghost" size="sm" :disabled="actionBusy" @click="selectOwnMessages"/><UButton label="Переслать" icon="i-lucide-forward" color="neutral" variant="soft" size="sm" :disabled="!selectedMessages.length||actionBusy" @click="startForward(selectedMessages.map(item=>item.id))"/><UButton label="Удалить выбранные" icon="i-lucide-trash-2" color="error" variant="soft" size="sm" :disabled="!selectedMessages.length||actionBusy" @click="error='';deletingBatch=[...selectedMessages]"/><UButton label="Отмена" color="neutral" variant="ghost" size="sm" :disabled="actionBusy" @click="closeSelection"/></div>
         <div ref="scroller" class="chat-messages" role="log" aria-label="Сообщения беседы" aria-live="polite" @scroll.passive="onScroll">
           <div class="chat-history-action"><UButton v-if="messageAnchor" label="К последним сообщениям" icon="i-lucide-arrow-down" color="neutral" variant="soft" size="sm" @click="latest"/><UButton v-if="messages.hasNextPage.value" label="Загрузить предыдущие сообщения" color="neutral" variant="soft" size="sm" :loading="loadingOlder" @click="older"/></div>
@@ -253,10 +441,10 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
           <p v-else-if="messages.isPending.value" class="chat-hint">Загружаем переписку…</p>
           <p v-else-if="!rows.length" class="chat-welcome">Начните обсуждение в «{{current.name}}»</p>
           <template v-if="!messages.error.value">
-            <template v-for="(message,index) in rows.filter(row=>!row.deletedAt)" :key="message.id">
-              <div v-if="!index||day(rows[index-1]!.createdAt)!==day(message.createdAt)" class="chat-date">{{day(message.createdAt)}}</div>
+            <template v-for="(message,index) in visibleRows" :key="message.id">
+              <div v-if="!index||day(visibleRows[index-1]!.createdAt)!==day(message.createdAt)" class="chat-date">{{day(message.createdAt)}}</div>
               <div v-if="message.seq===firstUnreadSeq" class="chat-unread-divider" role="separator" aria-label="Новые сообщения"><span>Новые сообщения</span></div>
-              <article :data-message-id="message.id" class="chat-message" :class="{'is-own':message.authorId===auth.user?.id,'is-highlighted':message.id===highlightedId||message.seq===messageAnchor,'mentions-me':message.mentionIds.includes(auth.user?.id||''),'is-selected':selectedMessages.some(item=>item.id===message.id)}">
+              <article :data-message-seq="message.seq" tabindex="-1" class="chat-message" :class="{'is-own':message.authorId===auth.user?.id,'is-highlighted':message.seq===messageAnchor,'mentions-me':message.mentionIds.includes(auth.user?.id||''),'is-selected':selectedMessages.some(item=>item.id===message.id)}">
                 <UCheckbox v-if="selectionMode&&message.authorId===auth.user?.id" class="chat-message-select" @click.capture="captureSelectionShift" :model-value="selectedMessages.some(item=>item.id===message.id)" :aria-label="`Выбрать сообщение от ${time(message.createdAt)}`" :disabled="actionBusy" @update:model-value="value=>selectMessage(message,value===true)"/>
                 <PersonAvatar v-if="message.authorId!==auth.user?.id" class="chat-message-avatar" :name="message.authorName||memberName(message.authorId)" :src="message.authorAvatarUrl" :title="message.authorName||memberName(message.authorId)"/>
                 <div class="chat-bubble">
@@ -283,16 +471,102 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
           <div v-if="suggestedMentions.length" class="chat-mention-picker" role="listbox" aria-label="Упомянуть участника"><button v-for="member in suggestedMentions" :key="member.id" type="button" role="option" :aria-selected="false" @mousedown.prevent @click="insertMention(member.handle)"><PersonAvatar :name="member.name"/><span>{{member.name}}<small>@{{member.handle}}</small></span></button></div>
           <div v-if="attachmentCount" class="chat-draft-files"><span v-for="file in draft.files" :key="file.id"><UIcon name="i-lucide-paperclip"/>{{file.name}}<UButton icon="i-lucide-x" :aria-label="`Убрать вложение: ${file.name}`" color="neutral" variant="ghost" size="xs" :disabled="busy||sending||draft.retry" @click="removeFile(file)"/></span><span v-for="id in draft.passwordIds" :key="id"><UIcon name="i-lucide-key-round"/>{{passwordTitle(id)}}<UButton icon="i-lucide-x" :aria-label="`Убрать пароль: ${passwordTitle(id)}`" color="neutral" variant="ghost" size="xs" :disabled="sending||draft.retry" @click="draft.passwordIds=draft.passwordIds.filter(value=>value!==id)"/></span></div>
           <UButton v-if="draft.retry&&!sending" label="Изменить черновик" color="neutral" variant="ghost" @click="draft.retry=false;draft.nonce=''"/>
-          <div class="chat-compose-row"><UDropdownMenu :items="[{label:'Загрузить файл или изображение',icon:'i-lucide-upload',onSelect:()=>showPicker('upload')},...(canViewDocuments?[{label:'Из документов проекта',icon:'i-lucide-folder-open',onSelect:()=>showPicker('documents')}]:[]),...(!personal?[{label:'Пароль проекта',icon:'i-lucide-key-round',onSelect:()=>showPicker('passwords')}]:[]),{label:'Задача Кабана',icon:'i-lucide-columns-3',onSelect:()=>taskPicker=true},{label:'Голосование',icon:'i-lucide-chart-bar',onSelect:()=>createActivity('poll')},{label:'Список дел',icon:'i-lucide-list-todo',onSelect:()=>createActivity('todo')}]"><UButton icon="i-lucide-paperclip" aria-label="Прикрепить файл или пароль" color="neutral" variant="ghost" :disabled="busy||sending||draft.retry"/></UDropdownMenu><UTextarea ref="chatInput" v-model="draft.text" aria-label="Сообщение" placeholder="Сообщение…" :maxlength="10000" :rows="1" autoresize class="chat-input" :disabled="sending||draft.retry" @keydown="enter" @input="trackCaret($event);typing.input(!!draft.text.trim())" @keyup="trackCaret" @click="trackCaret" @blur="typing.stop"/><UButton type="submit" :icon="draft.retry?'i-lucide-refresh-cw':'i-lucide-send'" :aria-label="draft.retry?'Повторить отправку':'Отправить сообщение'" :loading="sending" :disabled="!canSend"/></div><small class="chat-compose-hint">Enter — отправить · Shift+Enter — новая строка</small>
+          <div class="chat-compose-row">
+            <UDropdownMenu :items="[{label:'Загрузить файл или изображение',icon:'i-lucide-upload',onSelect:()=>showPicker('upload')},...(canViewDocuments?[{label:'Из документов проекта',icon:'i-lucide-folder-open',onSelect:()=>showPicker('documents')}]:[]),...(!personal?[{label:'Пароль проекта',icon:'i-lucide-key-round',onSelect:()=>showPicker('passwords')}]:[]),{label:'Задача Кабана',icon:'i-lucide-columns-3',onSelect:()=>taskPicker=true},{label:'Голосование',icon:'i-lucide-chart-bar',onSelect:()=>createActivity('poll')},{label:'Список дел',icon:'i-lucide-list-todo',onSelect:()=>createActivity('todo')}]"><UButton type="button" class="chat-compose-attach" icon="i-lucide-paperclip" aria-label="Добавить вложение" color="neutral" variant="outline" :disabled="busy||sending||draft.retry"/></UDropdownMenu>
+            <UTextarea
+              ref="chatInput"
+              v-model="draft.text"
+              aria-label="Сообщение"
+              aria-description="Enter — отправить. Shift+Enter — новая строка."
+              placeholder="Сообщение…"
+              :maxlength="10000"
+              :rows="1"
+              autoresize
+              class="chat-input"
+              :disabled="sending || draft.retry"
+              @keydown="enter"
+              @input="trackCaret($event); typing.input(!!draft.text.trim())"
+              @keyup="trackCaret"
+              @click="trackCaret"
+              @blur="typing.stop"
+            />
+            <UButton
+              v-if="hasMessageContent || sending"
+              type="submit"
+              class="chat-compose-send"
+              :icon="draft.retry ? 'i-lucide-refresh-cw' : 'i-lucide-send'"
+              :aria-label="draft.retry ? 'Повторить отправку' : 'Отправить сообщение'"
+              :loading="sending"
+              :disabled="!canSend"
+            />
+          </div>
         </form>
       </div>
       <div v-else class="chat-no-selection"><UIcon name="i-lucide-messages-square"/><h2>Обсуждайте проект вместе</h2><p>{{chats.isPending.value?'Загружаем переписку…':'Выберите беседу или создайте новую.'}}</p><UButton v-if="!personal&&!chats.isPending.value" label="Создать беседу" icon="i-lucide-plus" @click="manage()"/></div>
-      <aside v-if="panel&&current" class="chat-side-panel" :aria-label="panel==='pins'?'Закреплённые сообщения':'Поиск сообщений'">
-        <header><h3>{{panel==='pins'?'Закреплённые сообщения':'Поиск сообщений'}}</h3><UButton icon="i-lucide-x" aria-label="Закрыть панель" color="neutral" variant="ghost" @click="panel=null"/></header>
-        <UInput v-if="panel==='search'" v-model="messageSearch" placeholder="Поиск по всей переписке" aria-label="Поиск по всей переписке" icon="i-lucide-search" class="chat-panel-search"/>
-        <div class="chat-panel-results"><p v-if="panel==='search'&&!searchTerm" class="chat-hint">Введите текст сообщения, заголовок голосования или пункт списка.</p><UAlert v-else-if="panelFeed.error.value" color="error" title="Не удалось загрузить сообщения" :actions="[{label:'Повторить',onClick:()=>panelFeed.refetch()}]"/><template v-else><button v-for="message in panelRows" :key="message.id" class="chat-panel-result" @click="jumpToMessage(message)"><strong>{{message.authorName||memberName(message.authorId)}}</strong><span>{{summary(message)}}</span><small>{{day(message.createdAt)}} · {{time(message.createdAt)}}</small></button><p v-if="panelFeed.isFetching.value" class="chat-hint">{{panel==='pins'?'Загружаем закреплённые…':'Ищем в переписке…'}}</p><p v-else-if="!panelRows.length&&(panel==='pins'||searchTerm)" class="chat-hint">{{panel==='pins'?'Закреплённых сообщений пока нет':'Сообщения не найдены'}}</p><UButton v-if="panelFeed.hasNextPage.value" label="Загрузить ещё" color="neutral" variant="ghost" :loading="panelFeed.isFetchingNextPage.value" @click="panelFeed.fetchNextPage()"/></template></div>
+      <section v-if="panel === 'pins' && current" class="chat-pins-view" aria-label="Закреплённые сообщения">
+        <header class="chat-pins-header">
+          <UButton class="chat-pins-back" icon="i-lucide-arrow-left" aria-label="Вернуться в беседу" color="neutral" variant="ghost" @click="panel = null"/>
+          <div class="chat-identity">
+            <PersonAvatar class="chat-header-avatar" :name="headerName" :src="headerAvatar"/>
+            <div class="chat-identity-text">
+              <h2>Закреплённые сообщения</h2>
+              <small>{{ headerName }}<template v-if="pinnedRows.length && !pinsFeed.hasNextPage.value"> · {{ pinnedRows.length }}</template></small>
+            </div>
+          </div>
+        </header>
+        <div ref="pinsScroller" class="chat-messages chat-pins-feed">
+          <UAlert v-if="pinsFeed.error.value" color="error" title="Не удалось загрузить закреплённые сообщения" :actions="[{ label: 'Повторить', onClick: () => pinsFeed.refetch() }]"/>
+          <p v-if="pinsFeed.isPending.value" class="chat-hint">Загружаем закреплённые…</p>
+          <p v-else-if="!pinnedRows.length && !pinsFeed.error.value" class="chat-welcome">Закреплённых сообщений пока нет</p>
+          <div v-if="pinsFeed.hasNextPage.value" class="chat-history-action">
+            <UButton label="Загрузить более ранние" color="neutral" variant="soft" :loading="pinsFeed.isFetchingNextPage.value" @click="olderPins"/>
+          </div>
+          <template v-for="(message, index) in pinnedRows" :key="message.id">
+            <div v-if="!index || day(pinnedRows[index - 1]!.createdAt) !== day(message.createdAt)" class="chat-date">{{ day(message.createdAt) }}</div>
+            <div class="chat-message" :class="{ 'is-own': message.authorId === auth.user?.id }">
+              <PersonAvatar v-if="message.authorId !== auth.user?.id" class="chat-message-avatar" :name="message.authorName || memberName(message.authorId)" :src="message.authorAvatarUrl"/>
+              <button type="button" class="chat-bubble chat-pinned-message" title="Перейти к сообщению в беседе" @click="jumpToMessage(message)">
+                <strong v-if="message.authorId !== auth.user?.id" class="chat-message-author">{{ message.authorName || memberName(message.authorId) }}</strong>
+                <small v-if="message.forwardedFrom" class="chat-forwarded">Переслано от {{ message.forwardedFrom.authorName }}</small>
+                <span v-if="message.text" class="chat-text">{{ message.text }}</span>
+                <span v-if="message.poll || message.todo" class="chat-pinned-reference">
+                  <UIcon :name="message.poll ? 'i-lucide-chart-bar' : 'i-lucide-list-todo'"/>{{ message.poll?.question || message.todo?.title }}
+                </span>
+                <ProjectChatAttachment v-for="file in message.files" :key="`${file.id}:${file.revision}`" :file="file" :project-id="project.id" :chat-id="current.id" preview-mode="pinned"/>
+                <span v-for="task in message.tasks" :key="task.taskId" class="chat-pinned-reference"><UIcon name="i-lucide-columns-3"/>{{ task.title }}</span>
+                <span v-if="message.passwordIds.length || message.passwordCopies.length" class="chat-pinned-reference"><UIcon name="i-lucide-key-round"/>Пароль проекта</span>
+                <span class="chat-pinned-meta"><UIcon name="i-lucide-pin" aria-label="Закреплено"/><time :datetime="message.createdAt">{{ time(message.createdAt) }}</time></span>
+              </button>
+            </div>
+          </template>
+        </div>
+      </section>
+      <aside v-if="panel === 'search' && current" class="chat-side-panel" aria-label="Поиск сообщений">
+        <header><h3>Поиск сообщений</h3><UButton icon="i-lucide-x" aria-label="Закрыть панель" color="neutral" variant="ghost" @click="panel = null"/></header>
+        <UInput v-model="messageSearch" placeholder="Поиск по всей переписке" aria-label="Поиск по всей переписке" icon="i-lucide-search" class="chat-panel-search"/>
+        <div class="chat-panel-results">
+          <p v-if="!searchTerm" class="chat-hint">Введите текст сообщения, заголовок голосования или пункт списка.</p>
+          <UAlert v-else-if="searchFeed.error.value" color="error" title="Не удалось загрузить сообщения" :actions="[{ label: 'Повторить', onClick: () => searchFeed.refetch() }]"/>
+          <template v-else>
+            <button v-for="message in searchRows" :key="message.id" class="chat-panel-result" @click="jumpToMessage(message)"><strong>{{ message.authorName || memberName(message.authorId) }}</strong><span>{{ summary(message) }}</span><small>{{ day(message.createdAt) }} · {{ time(message.createdAt) }}</small></button>
+            <p v-if="searchFeed.isFetching.value" class="chat-hint">Ищем в переписке…</p>
+            <p v-else-if="!searchRows.length" class="chat-hint">Сообщения не найдены</p>
+            <UButton v-if="searchFeed.hasNextPage.value" label="Загрузить ещё" color="neutral" variant="ghost" :loading="searchFeed.isFetchingNextPage.value" @click="searchFeed.fetchNextPage()"/>
+          </template>
+        </div>
       </aside>
     </div>
+    <UModal v-model:open="avatarDialog" title="Аватар беседы" description="Загрузите изображение для этой беседы. По умолчанию отображается фото проекта." :dismissible="!avatarBusy">
+      <template #body>
+        <form class="chat-modal-form" @submit.prevent="saveAvatar">
+          <PersonAvatar class="chat-avatar-preview" :name="headerName" :src="avatarDraft || project.profile?.avatar"/>
+          <FileUpload label="Выбрать аватар беседы" hint="PNG, JPEG или WebP до 500 КБ" :accept="avatarAccept" :disabled="avatarBusy" @change="chooseAvatar"/>
+          <UButton v-if="avatarDraft" type="button" label="Использовать фото проекта" color="neutral" variant="ghost" :disabled="avatarBusy" @click="avatarDraft = ''; avatarError = ''"/>
+          <UAlert v-if="avatarError" color="error" :description="avatarError"/>
+          <UButton type="submit" label="Сохранить" :loading="avatarBusy"/>
+        </form>
+      </template>
+    </UModal>
     <UModal v-model:open="managing" :title="manageId?'Настройки беседы':'Создать беседу'" description="В беседу можно добавить только участников этого проекта. Приглашённые увидят всю историю сообщений и вложения." :dismissible="!busy"><template #body><form class="chat-modal-form" @submit.prevent="saveChat"><UFormField label="Название беседы" required><UInput v-model="manageName" placeholder="Например, Дизайнерский чат" required :maxlength="120" class="w-full"/></UFormField><fieldset class="chat-member-picker"><legend>Участники</legend><UCheckbox v-for="member in eligibleMembers" :key="member.userId" :model-value="manageMembers.includes(member.userId)" :label="`${member.fullName||member.email}${member.userId===auth.user?.id?' (вы)':''}`" :disabled="busy||member.userId===auth.user?.id" @update:model-value="value=>manageMembers=value?[...new Set([...manageMembers,member.userId])]:manageMembers.filter(id=>id!==member.userId)"/></fieldset><UAlert v-if="error" color="error" :description="error"/><UButton type="submit" :label="manageId?'Сохранить':'Создать беседу'" :loading="busy" :disabled="!manageName.trim()"/></form></template></UModal>
     <UModal :open="!!picker" :title="picker==='upload'?'Загрузить вложения':picker==='documents'?'Документы проекта':'Поделиться паролем проекта'" :dismissible="!busy" @update:open="value=>{if(!value)picker=null}"><template #body><div class="chat-modal-form"><UAlert v-if="error" color="error" :description="error"/><template v-if="picker==='upload'"><UCheckbox v-if="!personal" v-model="saveToDocuments" label="Сохранить также в «Документы проекта»" :disabled="!canSaveDocuments||busy"/><p v-if="!canSaveDocuments&&!personal" class="chat-hint">Вложения сохранятся в беседе. Для сохранения в документах нужны права редактирования раздела.</p><USelect v-if="saveToDocuments&&canSaveDocuments" v-model="uploadFolder" :items="folderOptions" aria-label="Папка в документах проекта" :disabled="busy||folders.isPending.value"/><UAlert v-if="folders.error.value" color="error" title="Не удалось загрузить папки" :actions="[{label:'Повторить',onClick:()=>folders.refetch()}]"/><FileUpload label="Выбрать файлы или изображения" hint="До 20 МБ на файл, до 10 вложений в сообщении." multiple :disabled="busy||draft.files.length>=10" @change="upload"/><p class="chat-hint">После загрузки нажмите «Отправить» в беседе.<template v-if="!personal"> Копия, сохранённая в документах, останется там, даже если убрать вложение из черновика.</template></p></template><template v-else><UInput v-model="pickerSearch" icon="i-lucide-search" placeholder="Поиск" aria-label="Поиск вложений"/><template v-if="picker==='documents'"><p class="chat-hint">В чат отправится копия документа. Она будет доступна участникам беседы независимо от доступа к оригиналу.</p><p v-if="documents.isPending.value">Загружаем файлы…</p><UAlert v-else-if="documents.error.value" color="error" title="Не удалось загрузить документы" :actions="[{label:'Повторить',onClick:()=>documents.refetch()}]"/><div v-else class="chat-picker-list"><button v-for="file in matchingFiles" :key="file.id" :disabled="busy||draft.files.length>=10" @click="attachDocument(file)"><UIcon name="i-lucide-file"/><span>{{file.name}}<small>{{documentSize(file.size)}}</small></span><UIcon name="i-lucide-plus"/></button><p v-if="!matchingFiles.length" class="chat-hint">Доступных файлов по этому запросу нет.</p></div></template><template v-else><p class="chat-hint">Все участники проекта уже имеют доступ к паролям этого раздела.</p><p v-if="passwords.isPending.value">Загружаем пароли…</p><UAlert v-else-if="passwords.error.value" color="error" title="Не удалось загрузить пароли" :actions="[{label:'Повторить',onClick:()=>passwords.refetch()}]"/><div v-else class="chat-picker-list"><button v-for="row in matchingPasswords" :key="row.id" :disabled="draft.passwordIds.length>=10||draft.passwordIds.includes(row.id)" @click="attachPassword(row.id)"><UIcon name="i-lucide-key-round"/><span>{{row.entry.title}}<small>{{row.entry.username}}</small></span><UIcon :name="draft.passwordIds.includes(row.id)?'i-lucide-check':'i-lucide-plus'"/></button><p v-if="!matchingPasswords.length" class="chat-hint">Добавьте используемые доступы в раздел «Пароли проекта».</p></div><UButton :to="`/projects/${project.id}/passwords`" label="Пароли проекта" icon="i-lucide-external-link" color="neutral" variant="outline"/></template></template></div></template></UModal>
     <UModal :open="!!editingMessage" title="Редактировать сообщение" :description="editingMessage?.forwardedFrom?'Изменение текста уберёт подпись исходного автора пересылки.':'Изменить текст может только отправитель.'" :dismissible="!actionBusy" @update:open="value=>{if(!value)editingMessage=null}"><template #body><form class="chat-modal-form" @submit.prevent="saveMessage"><UTextarea v-model="editText" aria-label="Текст сообщения" :rows="4" :maxlength="10000" class="w-full"/><UAlert v-if="error" color="error" :description="error"/><UButton type="submit" label="Сохранить" :loading="actionBusy"/></form></template></UModal>
@@ -305,17 +579,154 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
   </section>
 </template>
 <style scoped>
-.project-chats{display:grid;gap:16px;min-width:0}.chats-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;color:#8292a8;font-size:12px;line-height:1.7}.chat-connection{display:flex;align-items:center;gap:6px;font-size:11px}.chat-connection i{width:6px;height:6px;border-radius:50%;background:#c69838}.chat-connection.is-connected i{background:#22a06b}.chats-shell{display:grid;grid-template-columns:280px minmax(0,1fr);height: min(760px,78vh);min-height:480px;border:1px solid #e2e8f0;border-radius:20px;background:white;overflow:hidden}.chats-sidebar{min-width:0;min-height:0;display:flex;flex-direction:column;border-right:1px solid #e8edf3}.chats-sidebar>header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:15px 16px}.chats-sidebar h2,.chat-header h2{font-weight:600;font-size:14px;color:#334155}.chat-search{margin:0 12px 12px}.chats-sidebar nav{overflow:auto;min-height:0;flex:1}.chat-list-item{display:flex;align-items:center;gap:10px;padding:15px 12px;width:100%;text-align:left}.chat-list-item:hover{background:#f8fafc}.chat-list-item.is-active{background:#eef2ff}.chat-avatar{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:50%;background:#e7ecf5;color:#6b7e9a;font-size:20px}.chat-list-label{min-width:0;flex:1;display:grid;gap:6px}.chat-list-label strong{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#475569}.chat-list-label small,.chat-header small{font-size:10px;color:#94a3b8}.chat-conversation{display:flex;flex-direction:column;min-width:0;min-height:0}.chat-header{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #e8edf3;min-height:68px}.chat-header>div{display:grid;gap:5px;flex:1;min-width:0}.chat-header small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chat-messages{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 22px 20px;background:#f1f4f8;background-image:radial-gradient(#c9d3df55 .8px,transparent .8px);background-size:18px 18px;scrollbar-gutter:stable}.chat-history-action{text-align:center;margin-bottom:12px}.chat-date{width:fit-content;margin:16px auto;padding:4px 10px;border-radius:12px;background:#e0e6ee;color:#64748b;font-size:10px}.chat-message{display:flex;margin:8px 0;justify-content:flex-start}.chat-message.is-own{justify-content:flex-end}.chat-bubble{display:grid;gap:8px;min-width:100px;max-width:min(80%,600px);padding:10px 13px 7px;border-radius:14px 14px 14px 4px;background:white;box-shadow:0 1px 2px #33415512;overflow-wrap:anywhere}.is-own .chat-bubble{background:#e2f1e9;border-radius:14px 14px 4px 14px}.chat-message-author{font-size:11px;color:#6477a1}.chat-text{white-space:pre-wrap;font-size:13px;line-height:1.65;color:#334155}.chat-bubble footer{display:flex;align-items:center;justify-content:flex-end;gap:4px;font-size:9px;color:#94a3b8}.chat-read-check{width:17px;height:17px;color:#64748b}.chat-read-check.is-read{color:#008a43}.chat-password{display:flex;align-items:center;gap:10px;padding:10px;text-align:left;border:1px solid #cbd5e1;border-radius:10px}.chat-password>span{display:grid;gap:5px}.chat-password strong{font-size:12px}.chat-password small{font-size:10px;color:#8292a8}.chat-composer{padding:12px 16px 8px;display:grid;gap:8px;border-top:1px solid #e8edf3;background:#fff}.chat-compose-row{display:flex;align-items:flex-end;gap:10px}.chat-input{flex:1;min-width:0}.chat-compose-hint{font-size:9px;color:#a2adbc;text-align:right}.chat-draft-files{display:flex;gap:6px;flex-wrap:wrap;max-height:110px;overflow:auto}.chat-draft-files>span{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:8px;background:#f1f5f9;max-width:100%;overflow-wrap:anywhere;font-size:11px;color:#64748b}.chat-no-selection{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px;background:#f6f8fb;color:#8292a8}.chat-no-selection>.iconify{font-size:48px}.chat-no-selection h2{font-size:20px;color:#475569}.chat-no-selection p,.chat-hint{font-size:12px;line-height:1.7;color:#8292a8}.chat-hint{padding:6px 12px}.chat-welcome{text-align:center;font-size:12px;color:#8292a8;margin:40px 0}.chat-mobile-back{display:none}.chat-modal-form{display:grid;gap:18px}.chat-member-picker{display:grid;gap:12px;max-height:320px;overflow:auto}.chat-member-picker legend{font-size:13px;font-weight:600;margin-bottom:12px}.chat-picker-list{display:grid;gap:8px;max-height:45vh;overflow:auto}.chat-picker-list>button{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #e2e8f0;border-radius:10px;text-align:left;font-size:13px}.chat-picker-list>button>span{display:grid;gap:5px;flex:1;overflow-wrap:anywhere}.chat-picker-list small{font-size:11px;color:#94a3b8}.chat-picker-list>button:hover{background:#f8fafc}.chat-picker-list>button:disabled{opacity:.5}.chat-list-item:focus-visible,.chat-picker-list>button:focus-visible{outline:2px solid #6366f1;outline-offset:-2px}@media(max-width:1000px){.chats-shell{grid-template-columns:230px minmax(0,1fr)}.chat-bubble{max-width:90%}}@media(max-width:700px){.chats-shell{grid-template-columns:minmax(0,1fr);height:75dvh;min-height:430px}.chat-conversation,.chat-no-selection{display:none}.chat-mobile-conversation .chats-sidebar{display:none}.chat-mobile-conversation .chat-conversation{display:flex}.chat-mobile-back{display:flex}.chat-messages{padding:10px}.chat-header{padding:10px;gap:8px}.chat-composer{padding:10px}.chat-compose-hint{display:none}.chat-header>.chat-avatar{display:none}.chat-bubble{max-width:94%}.chats-intro{font-size:11px}}
+.project-chats{display:grid;gap:16px;min-width:0}.chats-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;color:#8292a8;font-size:12px;line-height:1.7}.chat-connection{display:flex;align-items:center;gap:6px;font-size:11px}.chat-connection i{width:6px;height:6px;border-radius:50%;background:#c69838}.chat-connection.is-connected i{background:#22a06b}.chats-shell{display:grid;grid-template-columns:280px minmax(0,1fr);height: min(760px,78vh);min-height:480px;border:1px solid #e2e8f0;border-radius:20px;background:white;overflow:hidden}.chats-sidebar{min-width:0;min-height:0;display:flex;flex-direction:column;border-right:1px solid #e8edf3}.chats-sidebar>header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:15px 16px}.chats-sidebar h2{font-weight:600;font-size:14px;color:#334155}.chat-search{margin:0 12px 12px}.chats-sidebar nav{overflow:auto;min-height:0;flex:1}.chat-list-item{display:flex;align-items:center;gap:10px;padding:15px 12px;width:100%;text-align:left}.chat-list-item:hover{background:#f8fafc}.chat-list-item.is-active{background:#eef2ff}.chat-avatar{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:50%;background:#e7ecf5;color:#6b7e9a;font-size:20px}.chat-list-label{min-width:0;flex:1;display:grid;gap:6px}.chat-list-label strong{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#475569}.chat-list-label small{font-size:10px;color:#94a3b8}.chat-conversation{display:flex;flex-direction:column;min-width:0;min-height:0}.chat-messages{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 22px 20px;background:#f1f4f8;background-image:radial-gradient(#c9d3df55 .8px,transparent .8px);background-size:18px 18px;scrollbar-gutter:stable}.chat-history-action{text-align:center;margin-bottom:12px}.chat-date{width:fit-content;margin:16px auto;padding:4px 10px;border-radius:12px;background:#e0e6ee;color:#64748b;font-size:10px}.chat-message{display:flex;margin:8px 0;justify-content:flex-start}.chat-message.is-own{justify-content:flex-end}.chat-bubble{display:grid;gap:8px;min-width:100px;max-width:min(80%,600px);padding:10px 13px 7px;border-radius:14px 14px 14px 4px;background:white;box-shadow:0 1px 2px #33415512;overflow-wrap:anywhere}.is-own .chat-bubble{background:#e2f1e9;border-radius:14px 14px 4px 14px}.chat-message-author{font-size:11px;color:#6477a1}.chat-text{white-space:pre-wrap;font-size:13px;line-height:1.65;color:#334155}.chat-bubble footer{display:flex;align-items:center;justify-content:flex-end;gap:4px;font-size:9px;color:#94a3b8}.chat-read-check{width:17px;height:17px;color:#64748b}.chat-read-check.is-read{color:#008a43}.chat-password{display:flex;align-items:center;gap:10px;padding:10px;text-align:left;border:1px solid #cbd5e1;border-radius:10px}.chat-password>span{display:grid;gap:5px}.chat-password strong{font-size:12px}.chat-password small{font-size:10px;color:#8292a8}.chat-draft-files{display:flex;gap:6px;flex-wrap:wrap;max-height:110px;overflow:auto}.chat-draft-files>span{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:8px;background:#f1f5f9;max-width:100%;overflow-wrap:anywhere;font-size:11px;color:#64748b}.chat-no-selection{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px;background:#f6f8fb;color:#8292a8}.chat-no-selection>.iconify{font-size:48px}.chat-no-selection h2{font-size:20px;color:#475569}.chat-no-selection p,.chat-hint{font-size:12px;line-height:1.7;color:#8292a8}.chat-hint{padding:6px 12px}.chat-welcome{text-align:center;font-size:12px;color:#8292a8;margin:40px 0}.chat-mobile-back{display:none}.chat-modal-form{display:grid;gap:18px}.chat-member-picker{display:grid;gap:12px;max-height:320px;overflow:auto}.chat-member-picker legend{font-size:13px;font-weight:600;margin-bottom:12px}.chat-picker-list{display:grid;gap:8px;max-height:45vh;overflow:auto}.chat-picker-list>button{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #e2e8f0;border-radius:10px;text-align:left;font-size:13px}.chat-picker-list>button>span{display:grid;gap:5px;flex:1;overflow-wrap:anywhere}.chat-picker-list small{font-size:11px;color:#94a3b8}.chat-picker-list>button:hover{background:#f8fafc}.chat-picker-list>button:disabled{opacity:.5}.chat-list-item:focus-visible,.chat-picker-list>button:focus-visible{outline:2px solid #6366f1;outline-offset:-2px}@media(max-width:1000px){.chats-shell{grid-template-columns:230px minmax(0,1fr)}.chat-bubble{max-width:90%}}@media(max-width:700px){.chats-shell{grid-template-columns:minmax(0,1fr);height:75dvh;min-height:430px}.chat-conversation,.chat-no-selection{display:none}.chat-mobile-conversation .chats-sidebar{display:none}.chat-mobile-conversation .chat-conversation{display:flex}.chat-mobile-back{display:flex}.chat-messages{padding:10px}.chat-bubble{max-width:94%}.chats-intro{font-size:11px}}
 
-.chats-shell{position:relative}.chats-with-panel{grid-template-columns:250px minmax(0,1fr) 280px}.chat-message{align-items:flex-end;gap:8px}.chat-message-avatar{width:30px;height:30px;flex:0 0 30px;border-radius:50%;overflow:hidden}.chat-message-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:16px}.is-own .chat-message-heading{justify-content:flex-end}.chat-message-heading>button{margin:-5px -7px -6px 0}.chat-message-heading:has(>button:only-child){height:10px}.chat-message.mentions-me .chat-bubble{border-left:3px solid #3b82b6}.chat-message.is-highlighted .chat-bubble{outline:2px solid #82a9ca;outline-offset:3px}.chat-edited{font-size:9px;color:#8292a8}.chat-deleted{font-size:12px;font-style:italic;color:#8292a8}.chat-mention{color:#176da1;font-weight:600}.chat-muted-icon{width:14px;height:14px;color:#8292a8}.chat-side-panel{min-height:0;min-width:0;display:flex;flex-direction:column;border-left:1px solid #e2e8f0;background:#fff}.chat-side-panel>header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px;border-bottom:1px solid #e8edf3}.chat-side-panel h3{font-size:13px;font-weight:600}.chat-panel-search{margin:12px}.chat-panel-results{overflow:auto;flex:1;min-height:0;padding:8px}.chat-panel-result{display:grid;gap:7px;padding:13px 9px;border-bottom:1px solid #e8edf3;text-align:left;width:100%}.chat-panel-result strong{font-size:11px;color:#6477a1}.chat-panel-result span{font-size:12px;color:#475569;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.chat-panel-result small{font-size:10px;color:#94a3b8}.chat-panel-result:hover{background:#f5f8fb}.chat-composer{position:relative}.chat-mention-picker{max-height:220px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;background:white}.chat-mention-picker>button{display:flex;gap:10px;align-items:center;padding:8px 12px;width:100%;text-align:left}.chat-mention-picker>button:hover{background:#eef2ff}.chat-mention-picker>button>span:last-child{display:grid;gap:3px;font-size:12px}.chat-mention-picker small{font-size:10px;color:#8292a8}.chat-activity-item,.chat-draft-activities>span{display:flex;gap:8px;align-items:center}.chat-draft-activities{display:grid;gap:5px;font-size:12px;color:#64748b}.chat-draft-activities>span{padding:5px 10px;background:#f1f5f9;border-radius:8px;overflow-wrap:anywhere}.chat-unread-divider{display:flex;align-items:center;gap:12px;margin:22px 0;color:#718096;font-size:11px;letter-spacing:.2px}.chat-unread-divider::before,.chat-unread-divider::after{content:'';height:1px;flex:1;background:#c6ced8}.chat-unread-divider span{white-space:nowrap}.chat-history-action{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+.chats-shell{position:relative}.chats-with-panel{grid-template-columns:250px minmax(0,1fr) 280px}.chat-message{align-items:flex-end;gap:8px}.chat-message-avatar{width:30px;height:30px;flex:0 0 30px;border-radius:50%;overflow:hidden}.chat-message-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:16px}.is-own .chat-message-heading{justify-content:flex-end}.chat-message-heading>button{margin:-5px -7px -6px 0}.chat-message-heading:has(>button:only-child){height:10px}.chat-message.mentions-me .chat-bubble{border-left:3px solid #3b82b6}.chat-message.is-highlighted .chat-bubble{outline:2px solid #82a9ca;outline-offset:3px}.chat-edited{font-size:9px;color:#8292a8}.chat-deleted{font-size:12px;font-style:italic;color:#8292a8}.chat-mention{color:#176da1;font-weight:600}.chat-muted-icon{width:14px;height:14px;color:#8292a8}.chat-side-panel{min-height:0;min-width:0;display:flex;flex-direction:column;border-left:1px solid #e2e8f0;background:#fff}.chat-side-panel>header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px;border-bottom:1px solid #e8edf3}.chat-side-panel h3{font-size:13px;font-weight:600}.chat-panel-search{margin:12px}.chat-panel-results{overflow:auto;flex:1;min-height:0;padding:8px}.chat-panel-result{display:grid;gap:7px;padding:13px 9px;border-bottom:1px solid #e8edf3;text-align:left;width:100%}.chat-panel-result strong{font-size:11px;color:#6477a1}.chat-panel-result span{font-size:12px;color:#475569;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.chat-panel-result small{font-size:10px;color:#94a3b8}.chat-panel-result:hover{background:#f5f8fb}.chat-mention-picker{max-height:220px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;background:white}.chat-mention-picker>button{display:flex;gap:10px;align-items:center;padding:8px 12px;width:100%;text-align:left}.chat-mention-picker>button:hover{background:#eef2ff}.chat-mention-picker>button>span:last-child{display:grid;gap:3px;font-size:12px}.chat-mention-picker small{font-size:10px;color:#8292a8}.chat-activity-item,.chat-draft-activities>span{display:flex;gap:8px;align-items:center}.chat-draft-activities{display:grid;gap:5px;font-size:12px;color:#64748b}.chat-draft-activities>span{padding:5px 10px;background:#f1f5f9;border-radius:8px;overflow-wrap:anywhere}.chat-unread-divider{display:flex;align-items:center;gap:12px;margin:22px 0;color:#718096;font-size:11px;letter-spacing:.2px}.chat-unread-divider::before,.chat-unread-divider::after{content:'';height:1px;flex:1;background:#c6ced8}.chat-unread-divider span{white-space:nowrap}.chat-history-action{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
 @media(max-width:1150px){.chats-with-panel{grid-template-columns:230px minmax(0,1fr)}.chat-side-panel{position:absolute;right:0;top:0;bottom:0;width:min(330px,90%);z-index:20;box-shadow:-10px 0 30px #33415520}}
-@media(max-width:700px){.chats-with-panel{grid-template-columns:minmax(0,1fr)}.chat-message-avatar{width:26px;height:26px;flex-basis:26px}.chat-header>button{padding:5px}.chat-header>div{min-width:70px}.chat-header h2{font-size:12px}.chat-header>button:last-child span:not(.iconify){display:none}.chat-side-panel{width:100%}.chat-bubble{max-width:calc(100% - 34px)}.is-own .chat-bubble{max-width:94%}}
+@media(max-width:700px){.chats-with-panel{grid-template-columns:minmax(0,1fr)}.chat-message-avatar{width:26px;height:26px;flex-basis:26px}.chat-side-panel{width:100%}.chat-bubble{max-width:calc(100% - 34px)}.is-own .chat-bubble{max-width:94%}}
 .chat-selection-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 14px;border-bottom:1px solid #dce3ed;background:#f4f7fb;font-size:12px;color:#64748b}.chat-message.is-selected{background:#d5e6f480;border-radius:12px;outline:1px solid #a8c3dc}.chat-message-select{flex-shrink:0;align-self:center;margin:0 4px}
 .chat-message:has(.chat-message-select) .chat-bubble{max-width:calc(100% - 34px)}
 .chat-forwarded{display:block;font-size:11px;color:#7a8b9f}.chat-task-card{display:flex;align-items:center;gap:10px;text-align:left;padding:10px;border:1px solid #b9c9d6;border-radius:10px}.chat-task-card>span{display:grid;gap:5px}.chat-task-card strong{font-size:12px}.chat-task-card small{font-size:10px;color:#8292a8}.chat-task-card:disabled{opacity:.65}.chat-embedded{display:flex;flex-direction:column;gap:0;min-height:0;height:100%}.chat-embedded .chats-shell{height:100%;flex:1;min-height:0;border:0;border-radius:0;grid-template-columns:minmax(0,1fr)}.chat-embedded:not(.chat-embedded-directory) .chats-sidebar{display:none}.chat-embedded.chats-with-panel .chats-shell{grid-template-columns:minmax(0,1fr) 260px}.chat-embedded .chat-side-panel{position:absolute;inset:0 0 0 auto;width:min(330px,100%);z-index:20}.chat-embedded.chat-embedded-directory .chats-shell{grid-template-columns:220px minmax(0,1fr)}@media(max-width:700px){.chat-embedded.chat-embedded-directory .chats-shell{grid-template-columns:minmax(0,1fr)}}
-.chat-embedded{container-type:inline-size;container-name:chat-pane}@container chat-pane (max-width:650px){.chat-header{gap:4px;padding:10px}.chat-header>.chat-avatar{display:none}.chat-header>button{padding:5px}.chat-header>div{min-width:60px}.chat-embedded-directory .chats-shell{grid-template-columns:minmax(0,1fr)}.chat-embedded-directory .chat-conversation{display:none}.chat-embedded-directory .chat-mobile-conversation .chats-sidebar{display:none}.chat-embedded-directory .chat-mobile-conversation .chat-conversation{display:flex}}
+.chat-embedded{container-type:inline-size;container-name:chat-pane}@container chat-pane (max-width:650px){.chat-embedded-directory .chats-shell{grid-template-columns:minmax(0,1fr)}.chat-embedded-directory .chat-conversation{display:none}.chat-embedded-directory .chat-mobile-conversation .chats-sidebar{display:none}.chat-embedded-directory .chat-mobile-conversation .chat-conversation{display:flex}.chat-embedded-directory .chat-mobile-back{display:flex}}
 </style>
 
 <style scoped>.chat-forward-draft{display:flex;align-items:center;gap:10px;padding:8px 10px;border-left:3px solid #6295b8;background:#f1f5f9;border-radius:6px}.chat-forward-draft>span{display:grid;gap:4px;flex:1}.chat-forward-draft strong{font-size:12px;color:#475569}.chat-forward-draft small{font-size:11px;color:#8292a8}</style>
 
 <style scoped>.chat-typing{height:24px;flex-shrink:0;padding:3px 18px;background:#f1f4f8;font-size:11px;color:#64748b}.chat-typing>span{display:flex;align-items:center;gap:8px}.typing-dots{display:flex;gap:3px;align-items:center;height:16px}.typing-dots b{width:4px;height:4px;border-radius:50%;background:#64748b;animation:chat-typing-dot 1.2s ease-in-out infinite}.typing-dots b:nth-child(2){animation-delay:.16s}.typing-dots b:nth-child(3){animation-delay:.32s}.chat-typing-enter-active,.chat-typing-leave-active{transition:opacity .2s ease}.chat-typing-enter-from,.chat-typing-leave-to{opacity:0}@keyframes chat-typing-dot{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-3px);opacity:1}}@media(prefers-reduced-motion:reduce){.typing-dots b{animation:none}.chat-typing-enter-active,.chat-typing-leave-active{transition:none}}</style>
+
+<style scoped>
+.chat-header {
+  display: grid;
+  gap: 7px;
+  flex-shrink: 0;
+  min-width: 0;
+  padding: 9px clamp(8px, 2vw, 16px) 6px;
+  background: #f1f4f8;
+}
+.chat-header-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+.chat-identity,
+.chat-header-actions,
+.chat-pinned {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid #dce5ef;
+  background: #fff;
+  border-radius: 16px;
+}
+.chat-identity { flex: 1; padding: 4px 12px 4px 5px; }
+.chat-identity .chat-header-avatar { height: 34px; width: 34px; border-radius: 50%; }
+.chat-identity-text { display: grid; gap: 2px; min-width: 0; }
+.chat-identity-text h2,
+.chat-identity-text small,
+.chat-pinned-preview small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-identity-text h2 { color: #26374d; font-size: 14px; line-height: 18px; font-weight: 650; }
+.chat-identity-text small { color: #5d6f85; font-size: 11px; line-height: 15px; }
+.chat-identity-text small.is-online { color: #147354; font-weight: 600; }
+.chat-header-actions { gap: 2px; padding: 0 4px; }
+.chat-header .chat-header-button { flex-shrink: 0; border-radius: 10px; }
+
+.chat-pinned {
+  justify-content: space-between;
+  padding-right: 4px;
+  border-radius: 16px;
+  background: #f7faff;
+}
+.chat-pinned-preview {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+  margin: 3px 0 3px 3px;
+  padding: 3px 8px 3px 5px;
+  border-radius: 6px;
+  color: #356c9e;
+  text-align: left;
+}
+.chat-pinned-preview:hover { background: #ecf4fd; }
+.chat-pinned-preview:focus-visible { outline: 2px solid #356c9e; outline-offset: -2px; }
+.chat-pinned-preview > span:last-child { display: grid; gap: 1px; min-width: 0; }
+.chat-pinned-preview strong { font-size: 11px; }
+.chat-pinned-preview small { font-size: 12px; color: #334155; }
+.chat-pin-marker {
+  display: flex;
+  flex: 0 0 3px;
+  flex-direction: column;
+  align-self: stretch;
+  min-height: 28px;
+  gap: 2px;
+  margin-right: 2px;
+}
+.chat-pin-marker i { flex: 1; border-radius: 3px; background: #c8d8e8; }
+.chat-pin-marker i:last-child { background: #356c9e; }
+.chat-pins-view { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: #f1f4f8; }
+.chat-pins-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px clamp(8px, 2vw, 16px) 6px;
+}
+.chat-pins-back { flex-shrink: 0; padding: 9px; border: 1px solid #dce5ef; border-radius: 12px; background: #fff; }
+.chat-pins-feed { padding-block: 8px 18px; }
+.chat-pinned-message { text-align: left; min-width: 0; }
+.chat-pinned-message:hover { box-shadow: 0 0 0 1px #b4cada; }
+.chat-pinned-message:focus-visible { outline: 2px solid #356c9e; outline-offset: 2px; }
+.chat-pinned-reference { display: flex; align-items: center; gap: 8px; color: #526781; font-size: 12px; }
+.chat-pinned-reference > .iconify { flex-shrink: 0; }
+.chat-pinned-meta { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 10px; color: #526781; }
+.chat-avatar-preview { width: 64px; height: 64px; font-size: 20px; border-radius: 50%; }
+
+.chat-composer {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 10px clamp(8px, 2vw, 16px) 12px;
+  background: #f1f4f8;
+}
+
+.chat-compose-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.chat-input { flex: 1; min-width: 0; }
+.chat-input :deep(textarea) {
+  min-height: 42px;
+  max-height: 126px;
+  padding: 10px 15px;
+  border-radius: 22px;
+  background: #fff;
+  font-size: 14px;
+  line-height: 22px;
+  overflow-y: auto;
+  resize: none;
+}
+
+.chat-compose-attach,
+.chat-compose-send {
+  display: grid;
+  place-items: center;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 50%;
+}
+.chat-compose-attach { background: #fff; color: #475569; }
+.chat-compose-attach:not(:disabled):hover { background: #e8edf6; }
+.chat-compose-send { background: #356c9e; color: #fff; }
+.chat-compose-send:not(:disabled):hover { background: #285782; }
+</style>

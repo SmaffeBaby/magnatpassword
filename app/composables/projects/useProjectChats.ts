@@ -8,7 +8,11 @@ export function useProjectChats(projectId: MaybeRefOrGetter<string>, chatId: May
   const key = computed(() => ['account', auth.user?.id, 'project-chats', toValue(projectId)])
   const chats = useQuery({ queryKey: computed(() => [...key.value, 'list']), queryFn: ({ signal }) => sharedRequest<ProjectChat[]>(base.value, { signal }), enabled: computed(() => !!auth.user), retry: false, refetchInterval: computed(() => connected.value ? false : 15000) })
   const messages = useInfiniteQuery({ queryKey: computed(() => [...key.value, toValue(chatId), 'messages', toValue(anchor)]), initialPageParam: null as number | null,
-    queryFn: ({ signal, pageParam }) => sharedRequest<ProjectChatPage>(`${base.value}/${toValue(chatId)}/messages${(pageParam ?? (toValue(anchor) ? toValue(anchor)! + 1 : null)) ? `?before=${pageParam ?? toValue(anchor)! + 1}` : ''}`, { signal }),
+    queryFn: ({ signal, pageParam, queryKey }) => {
+      const [, , , project, chat, , sequence] = queryKey
+      const query = pageParam ? `?before=${pageParam}` : sequence ? `?around=${sequence}` : ''
+      return sharedRequest<ProjectChatPage>(`/api/projects/${project}/chats/${chat}/messages${query}`, { signal })
+    },
     getNextPageParam: page => page.nextBefore ?? undefined, enabled: computed(() => !!auth.user && !!toValue(chatId)), retry: false, refetchInterval: computed(() => connected.value ? false : 15000) })
   const rows = computed(() => [...(messages.data.value?.pages ?? [])].reverse().flatMap(page => page.messages))
   async function refresh() { await Promise.all([client.invalidateQueries({ queryKey: key.value }), client.invalidateQueries({ queryKey: ['account', auth.user?.id, 'project-passwords', toValue(projectId)] })]) }
