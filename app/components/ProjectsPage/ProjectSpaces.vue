@@ -3,12 +3,10 @@ import { useQuery } from '@tanstack/vue-query'
 import ChatTaskPicker from '~/components/Chats/ChatTaskPicker.vue'
 import type { ProjectPassword,ProjectPasswordChoice } from '~~/shared/types/project-passwords'
 import type { ProjectChat } from '~~/shared/types/project-chats'
-import type { OfficeEditorAdapter } from '~/composables/office/useOffice'
 import { resizeFrame, inkDistance } from '~~/shared/utils/space-geometry.mjs'
 import type { Project } from '~~/shared/types/projects'
 import type { ProjectDocument } from '~~/shared/types/project-documents'
 import type { RealtimeChannel } from '@supabase/supabase-js'
-import ProjectDocumentEditor from './ProjectDocumentEditor.vue'
 import SpaceLayers from './SpaceLayers.vue'
 import SpaceTaskPlanning from './SpaceTaskPlanning.vue'
 import { canViewProjectSection } from '~~/shared/utils/project-permissions'
@@ -16,7 +14,6 @@ import type { KabanWorkspace } from '~~/shared/types/kaban'
 import { groupSpaceLayers, moveSpaceLayer, moveSpaceLayers, spaceHiddenLayers, spaceLayers, spaceSearchText, ungroupSpaceLayers, type SpaceLayerChange, type SpaceLayerPosition } from '~~/shared/utils/space-layers'
 import { documentEditor } from '~~/shared/utils/project-documents'
 import { saveFile } from '~/utils/file-download'
-import { isNativeShell } from '~/utils/native-shell'
 const props=defineProps<{project:Project}>()
 type Space={id:string;name:string;description:string;created_by:string;permission:string;object_count:number;members:{user_id:string;permission:string}[]}
 type Message={id:string;author:string;text:string;createdAt:string}
@@ -25,14 +22,15 @@ type Cursor={id:string;user_id:string;name:string;x:number;y:number;updated_at:s
 const accountQueries=useAccountQueries(),auth=useAuthStore(),supabase=useNuxtApp().$supabase
 const base=`/api/projects/${props.project.id}/spaces`,space=ref(''),spaces=ref<Space[]>([]),objects=ref<Item[]>([]),cursors=ref<Cursor[]>([])
 const cursorStatus=ref('Подключение курсоров…')
-const error=ref(''),connected=ref(false),busy=ref(false),title=ref(''),selected=ref(''),tool=ref('select'),editing=ref(''),draft=ref(''),active=ref<ProjectDocument|null>(null)
+const error=ref(''),connected=ref(false),busy=ref(false),title=ref(''),selected=ref(''),tool=ref('select'),editing=ref(''),draft=ref('')
 const currentSpace=computed(()=>spaces.value.find(s=>s.id===space.value))
 const canCreate=computed(()=>['owner','editor'].includes(props.project.permission))
 const editable=computed(()=>['owner','editor'].includes(currentSpace.value?.permission||props.project.permission))
 const canManage=computed(()=>currentSpace.value?.created_by===auth.user?.id)
 const docs=useProjectDocuments(()=>props.project.id),images=ref<Record<string,string>>({}),fileInput=ref<HTMLInputElement>(),canvas=ref<HTMLElement>()
 const root=ref<HTMLElement>(),fullscreen=ref(false),headerOpen=ref(false)
-const native=ref(false)
+const serviceTabs = useServiceTabsStore(), office = useOffice(), route = useRoute()
+const workspaceTabId = serviceTabs.activeId
 let headerArmed=false
 function focusBoard(){const active=document.activeElement;if(active instanceof HTMLElement&&root.value?.contains(active))active.blur();void nextTick(()=>canvas.value?.focus({preventScroll:true}))}
 function hideFullscreenHeader(){headerOpen.value=false;headerArmed=false;focusBoard()}
@@ -106,14 +104,29 @@ function edit(item:Item){if(item.data.kind==='space'){if(spaces.value.some(s=>s.
 async function saveEdit(item:Item){const text=item.data.kind==='todo'?draftTodos.value.map(row=>(row.done?'[x] ':'[ ] ')+row.text).join('\n'):draft.value;editing.value='';await put(item,{...item.data,text})}
 function file(item:Item){return item.data.assetId?assets.value.find(f=>f.id===item.data.assetId):docs.query.data.value?.find(f=>f.id===item.data.fileId)}
 async function fileContent(f:ProjectDocument){return assets.value.some(a=>a.id===f.id)?sharedRequest<Blob>(`${base}/${space.value}/files/${f.id}`,{responseType:'blob'}):docs.content(f)}
-async function open(item:Item,download=false){const f=file(item);if(!f)return;await run(async()=>{if(!download&&documentEditor(f.name)){resumeFullscreen=fullscreen.value;if(document.fullscreenElement===root.value)await document.exitFullscreen();fullscreen.value=resumeFullscreen;activeAdapter.value=item.data.assetId?{load:()=>fileContent(f),save:async()=>{throw new Error('Скачайте файл, чтобы сохранить копию')}}:undefined;active.value=f;}else await saveFile(await fileContent(f),f.name)})}
+async function open(item: Item, download = false) {
+  const fileToOpen = file(item)
+  if (!fileToOpen) return
+  await run(async () => {
+    if (download || !documentEditor(fileToOpen.name)) {
+      await saveFile(await fileContent(fileToOpen), fileToOpen.name)
+      return
+    }
+    if (document.fullscreenElement === root.value) await document.exitFullscreen()
+    if (item.data.assetId) {
+      await office.openAttachment({ kind: 'space', projectId: props.project.id, spaceId: space.value, fileId: fileToOpen.id })
+    } else {
+      await office.openSource({ kind: 'document', projectId: props.project.id, fileId: fileToOpen.id })
+    }
+  })
+}
 function isImage(item:Item){const f=file(item);return item.data.kind==='image'||!!f&&(/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(f.name)||f.type.startsWith('image/'))}
 async function loadImages(){for(const item of objects.value.filter(i=>isImage(i))){const f=file(item);if(f&&!images.value[f.id]){try{images.value[f.id]=URL.createObjectURL(await fileContent(f))}catch{}}}}
 watch(docs.query.data,()=>void loadImages())
 async function upload(e:Event){pendingFile.value=(e.target as HTMLInputElement).files?.[0]||null;(e.target as HTMLInputElement).value=''; }
 const attaching=ref(false)
 
-const assets=ref<ProjectDocument[]>([]),activeAdapter=shallowRef<OfficeEditorAdapter>(),passwords=ref<ProjectPassword[]>([]),passwordChoices=ref<ProjectPasswordChoice[]>([]),chats=ref<ProjectChat[]>([]),taskResources=ref<Record<string,{title:string;completed:boolean;projectId?:string;vaultId?:string}>>({}),revealed=reactive<Record<string,boolean>>({})
+const assets=ref<ProjectDocument[]>([]),passwords=ref<ProjectPassword[]>([]),passwordChoices=ref<ProjectPasswordChoice[]>([]),chats=ref<ProjectChat[]>([]),taskResources=ref<Record<string,{title:string;completed:boolean;projectId?:string;vaultId?:string}>>({}),revealed=reactive<Record<string,boolean>>({})
 const resourcePanel=ref<'password'|'chat'|'person'|'shape'|'subscription'|null>(null),resourceSearch=ref(''),newPassword=ref(false),passwordForm=reactive({title:'',url:'',username:'',password:'',notes:''}),personRole=ref(''),personDuty=ref(''),taskPicker=ref(false)
 const pendingFile=shallowRef<File|null>(null),saveToDocuments=ref(false),folderDestination=ref(''),taskResume=ref(false)
 async function loadResources(){const id=space.value;if(!id){assets.value=[];return}const results=await Promise.allSettled([sharedRequest<ProjectDocument[]>(`${base}/${id}/files`),sharedRequest<Record<string,any>>(`${base}/resources?space=${id}`),sharedRequest<ProjectPassword[]>(`/api/projects/${props.project.id}/passwords`),sharedRequest<ProjectChat[]>(`/api/projects/${props.project.id}/chats`)]);if(id!==space.value||disposed)return;assets.value=results[0]!.status==='fulfilled'?results[0]!.value:[];taskResources.value=results[1]!.status==='fulfilled'?results[1]!.value:{};passwords.value=results[2]!.status==='fulfilled'?results[2]!.value:[];chats.value=results[3]!.status==='fulfilled'?results[3]!.value:[]}
@@ -129,8 +142,6 @@ function folderPath(id:string):string{const names:string[]=[],seen=new Set<strin
 async function confirmUpload(){const f=pendingFile.value;if(!f)return;await run(async()=>{const body=new FormData();body.append('file',f);if(saveToDocuments.value&&folderDestination.value)body.append('folderId',folderDestination.value);const result=await sharedRequest<{id:string}>(saveToDocuments.value?docs.base.value:`${base}/${space.value}/files`,{method:'POST',body});if(saveToDocuments.value)await docs.refresh();await send('put',crypto.randomUUID(),{kind:f.type.startsWith('image/')?'image':'document',x:200,y:150,...(saveToDocuments.value?{fileId:result.id}:{assetId:result.id})});pendingFile.value=null})}
 
 
-let resumeFullscreen=false
-function closePreview(){active.value=null;if(resumeFullscreen){fullscreen.value=true;void root.value?.requestFullscreen?.().catch(()=>{fullscreen.value=true})}resumeFullscreen=false}
 const settingsOpen=ref(false),deleteConfirm=ref(false),spaceName=ref(''),spaceDescription=ref(''),portalOpen=ref(false),replyDrafts=reactive<Record<string,string>>({}),markdownInput=ref<HTMLInputElement>()
 function settings(){spaceName.value=currentSpace.value?.name||'';spaceDescription.value=currentSpace.value?.description||'';settingsOpen.value=true;deleteConfirm.value=false}
 async function saveSettings(){await run(()=>send('rename',session,{name:spaceName.value,description:spaceDescription.value}));if(!error.value)settingsOpen.value=false}
@@ -189,8 +200,8 @@ function resetKeys(){spaceHeld.value=false}
 function keyUp(e:KeyboardEvent){if(e.code==='Space')spaceHeld.value=false}
 function keyboard(e:KeyboardEvent){
  if(e.defaultPrevented)return
- if(e.code==='Tab'&&fullscreen.value&&!active.value&&!settingsOpen.value&&!groupDialog.value){headerArmed=true;headerOpen.value=true}
- if(groupDialog.value||active.value||taskPicker.value||resourcePanel.value||calendarEditing.value||pendingFile.value||settingsOpen.value)return
+ if(e.code==='Tab'&&fullscreen.value&&!settingsOpen.value&&!groupDialog.value){headerArmed=true;headerOpen.value=true}
+ if(groupDialog.value||taskPicker.value||resourcePanel.value||calendarEditing.value||pendingFile.value||settingsOpen.value)return
  if(space.value&&(e.ctrlKey||e.metaKey)&&e.code==='KeyF'){e.preventDefault();layerPanel.value?.focusSearch();return}
  if(typingTarget(e.target))return
  if(e.code==='Space'&&e.target instanceof Element&&e.target.closest('.layer-visibility:focus-visible'))return
@@ -445,9 +456,13 @@ async function finishLayerDrag(item: Item, children: string[]) {
   await saveLayers(changes, positionChanges)
 }
 onMounted(async()=>{
- native.value=isNativeShell()
  document.addEventListener('fullscreenchange',fullscreenChanged);document.addEventListener('keydown',keyboard);document.addEventListener('keyup',keyUp);window.addEventListener('blur',resetKeys)
- const initial=useRoute().query.space;if(typeof initial==='string'&&/^[0-9a-f-]{36}$/i.test(initial))space.value=initial;await load();const {data}=await supabase.auth.getSession();if(disposed||!data.session)return
+ const initial = route.query.space
+ const saved = serviceTabs.readView<{ project: string; space: string; x: number; y: number; zoom: number; history: typeof history.value }>(workspaceTabId)
+ if (saved?.project === props.project.id && (typeof initial !== 'string' || initial === saved.space)) {
+   space.value = saved.space; offset.x = saved.x; offset.y = saved.y; zoom.value = saved.zoom; history.value = saved.history
+ } else if (typeof initial === 'string' && /^[0-9a-f-]{36}$/i.test(initial)) space.value = initial
+ await load();const {data}=await supabase.auth.getSession();if(disposed||!data.session)return
  await supabase.realtime.setAuth(data.session.access_token);if(disposed)return;realtimeReady=true
  stopCursorWatch=watch(space,id=>void openCursors(id),{immediate:true})
  channel=supabase.channel(`spaces-${session}`)
@@ -456,10 +471,10 @@ onMounted(async()=>{
  .subscribe(status=>{connected.value=status==='SUBSCRIBED';if(connected.value)queue()})
  let ticks=0;timer=setInterval(()=>{now.value=Date.now();heartbeat();cursors.value=cursors.value.filter(c=>now.value-new Date(c.updated_at).getTime()<15000);if(++ticks%3===0&&!connected.value&&!drag&&!editing.value&&document.visibilityState==='visible')queue()},5000)
 })
-onBeforeUnmount(()=>{stopCameraTransition();disposed=true;epoch++;cursorEpoch++;stopCursorWatch?.();clearInterval(timer);clearTimeout(refreshTimer);clearTimeout(cursorTimer);document.removeEventListener('fullscreenchange',fullscreenChanged);document.removeEventListener('keydown',keyboard);document.removeEventListener('keyup',keyUp);window.removeEventListener('blur',resetKeys);clearTimeout(commentHide);clearTimeout(nudgeTimer);if(cursorChannel){void cursorChannel.send({type:'broadcast',event:'leave',payload:{id:session}});void supabase.removeChannel(cursorChannel)}if(channel)void supabase.removeChannel(channel);Object.values(images.value).forEach(URL.revokeObjectURL)})
+onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.project.id, space: space.value, x: offset.x, y: offset.y, zoom: zoom.value, history: [...history.value] });stopCameraTransition();disposed=true;epoch++;cursorEpoch++;stopCursorWatch?.();clearInterval(timer);clearTimeout(refreshTimer);clearTimeout(cursorTimer);document.removeEventListener('fullscreenchange',fullscreenChanged);document.removeEventListener('keydown',keyboard);document.removeEventListener('keyup',keyUp);window.removeEventListener('blur',resetKeys);clearTimeout(commentHide);clearTimeout(nudgeTimer);if(cursorChannel){void cursorChannel.send({type:'broadcast',event:'leave',payload:{id:session}});void supabase.removeChannel(cursorChannel)}if(channel)void supabase.removeChannel(channel);Object.values(images.value).forEach(URL.revokeObjectURL)})
 </script>
 <template>
-<section ref="root" class="spaces" :class="{'is-fullscreen':fullscreen,'header-open':headerOpen,previewing:!!active||taskPicker}" @pointermove="headerPointer" @pointerleave="headerOpen=false">
+<section ref="root" class="spaces" :class="{'is-fullscreen':fullscreen,'header-open':headerOpen,previewing:taskPicker}" @pointermove="headerPointer" @pointerleave="headerOpen=false">
  <div v-if="fullscreen" class="header-reveal" aria-hidden="true"></div>
  <header class="space-header"><div class="space-title"><button v-if="space" title="Все пространства" aria-label="Все пространства" @click="choose('')"><UIcon name="i-lucide-arrow-left"/></button><button v-if="history.length" class="back-space" @click="goBack"><UIcon name="i-lucide-undo-2"/>Вернуться в «{{spaces.find(s=>s.id===history[history.length-1]?.id)?.name||'предыдущее пространство'}}»</button><UIcon name="i-lucide-orbit"/><div><h1>{{currentSpace?.name||'Пространства проекта'}}</h1><p>{{currentSpace?.description||'Идеи, документы и решения в одном месте'}}</p></div></div><div class="space-header-actions"><input ref="transferInput" type="file" accept=".zip" hidden @change="importSpace"><button v-if="space?editable:canCreate" @click="transferInput?.click()">Импорт</button><button v-if="space" @click="exportSpace">Экспорт</button><span class="live-status" :class="{online:connected}">{{connected?'Онлайн':'Подключение…'}}</span><button v-if="space && canManage" @click="settings"><UIcon name="i-lucide-settings-2"/>Настройки</button><button :title="fullscreen?'Выйти из полного экрана':'На весь экран'" @click="toggleFullscreen"><UIcon :name="fullscreen?'i-lucide-minimize':'i-lucide-maximize'"/></button></div></header>
  <UAlert v-if="error" color="error" :description="error"/>
@@ -507,9 +522,9 @@ onBeforeUnmount(()=>{stopCameraTransition();disposed=true;epoch++;cursorEpoch++;
     :board="taskPlanning.data.value" :loading="taskPlanning.isPending.value" :failed="!!taskPlanning.error.value" />
   <p v-else>Задачи проекта недоступны.</p>
  </template>
- <div v-else-if="item.data.kind==='task'" class="resource-card"><UIcon name="i-lucide-columns-3"/><small>КАБАН</small><h3>{{taskResources[item.id]?.title||'Задача недоступна'}}</h3><p v-if="taskResources[item.id]">{{taskResources[item.id]?.completed?'Завершена':'В работе'}}</p><NuxtLink v-if="taskResources[item.id]" :to="taskUrl(item)" :target="native ? undefined : '_blank'" @pointerdown.stop>Открыть задачу<span v-if="!native"> ↗</span></NuxtLink></div>
+ <div v-else-if="item.data.kind==='task'" class="resource-card"><UIcon name="i-lucide-columns-3"/><small>КАБАН</small><h3>{{taskResources[item.id]?.title||'Задача недоступна'}}</h3><p v-if="taskResources[item.id]">{{taskResources[item.id]?.completed?'Завершена':'В работе'}}</p><LayoutServiceTabLink v-if="taskResources[item.id]" :to="taskUrl(item)" :tab-label="taskResources[item.id]?.title" @pointerdown.stop>Открыть задачу ↗</LayoutServiceTabLink></div>
  <div v-else-if="item.data.kind==='password'" class="resource-card"><UIcon name="i-lucide-key-round"/><small>ПАРОЛЬ</small><h3>{{passwordFor(item)?.entry.title||'Пароль недоступен'}}</h3><template v-if="passwordFor(item)"><p>{{passwordFor(item)?.entry.username}}</p><code>{{revealed[item.id]?passwordFor(item)?.entry.password:'••••••••'}}</code><button @pointerdown.stop @click="revealed[item.id]=!revealed[item.id]">{{revealed[item.id]?'Скрыть':'Показать пароль'}}</button></template></div>
- <div v-else-if="item.data.kind==='chat'" class="resource-card"><UIcon name="i-lucide-messages-square"/><small>ЧАТ ПРОЕКТА</small><h3>{{chatFor(item)?.name||'Чат недоступен'}}</h3><p v-if="chatFor(item)">{{chatFor(item)?.members.length}} участников</p><NuxtLink v-if="chatFor(item)" :to="`/projects/${project.id}/chats?chat=${item.data.chatId}`" :target="native ? undefined : '_blank'" @pointerdown.stop>Открыть чат<span v-if="!native"> ↗</span></NuxtLink></div>
+ <div v-else-if="item.data.kind==='chat'" class="resource-card"><UIcon name="i-lucide-messages-square"/><small>ЧАТ ПРОЕКТА</small><h3>{{chatFor(item)?.name||'Чат недоступен'}}</h3><p v-if="chatFor(item)">{{chatFor(item)?.members.length}} участников</p><LayoutServiceTabLink v-if="chatFor(item)" :to="`/projects/${project.id}/chats?chat=${item.data.chatId}`" :tab-label="chatFor(item)?.name" @pointerdown.stop>Открыть чат ↗</LayoutServiceTabLink></div>
  <div v-else-if="item.data.kind==='person'" class="resource-card person-card"><span class="person-avatar">{{author(item.data.personId!).slice(0,1)}}</span><h3>{{author(item.data.personId!)}}</h3><p class="person-role">{{item.data.role||'Участник проекта'}}</p><p>{{item.data.duty||'Обязанности пока не указаны'}}</p></div>
  <div v-else-if="item.data.kind==='space'" class="portal-card"><UIcon name="i-lucide-orbit"/><h3>{{spaces.find(s=>s.id===item.data.targetSpace)?.name||'Пространство удалено'}}</h3><p>{{spaces.find(s=>s.id===item.data.targetSpace)?.description||'Связанное пространство проекта'}}</p><button :disabled="!spaces.some(s=>s.id===item.data.targetSpace)" @pointerdown.stop @click.stop="choose(item.data.targetSpace!,true)">Открыть пространство <UIcon name="i-lucide-arrow-up-right"/></button></div>
  <div v-else-if="item.data.kind==='table'" class="board-table"><div class="object-caption"><UIcon name="i-lucide-table-2"/>Таблица</div><table><tbody><tr v-for="(row,r) in item.data.rows" :key="r"><td v-for="(value,c) in row" :key="c"><input :value="value" :readonly="!editable" maxlength="2000" @pointerdown.stop @input="cell(item,r,c,($event.target as HTMLInputElement).value)"></td></tr></tbody></table><div v-if="editable" class="table-actions" @pointerdown.stop><button :disabled="busy" @click="resizeTable(item,'row')">+ Строка</button><button :disabled="busy" @click="resizeTable(item,'column')">+ Столбец</button><button :disabled="busy" @click="resizeTable(item,'row',true)">− Строка</button><button :disabled="busy" @click="resizeTable(item,'column',true)">− Столбец</button></div></div>
@@ -543,7 +558,6 @@ onBeforeUnmount(()=>{stopCameraTransition();disposed=true;epoch++;cursorEpoch++;
  <ChatTaskPicker v-if="taskPicker" :project-id="project.id" attachment-hint="Задача сохранится в Кабане и будет прикреплена к пространству." @choose="attachTask" @close="closeTaskPicker"/>
  <div v-if="calendarEditing" class="settings-overlay"><section class="space-settings calendar-editor" role="dialog" aria-modal="true" aria-label="События календаря"><header><h3>События и интервалы</h3><button @click="calendarEditing=null">Отмена</button></header><form ref="calendarEventForm" @submit.prevent="addEvent"><input v-model="eventForm.title" maxlength="200" placeholder="Название события" required><SharedDateTimePicker v-model="eventForm.start" label="Начало" required/><SharedDateTimePicker v-model="eventForm.end" label="Конец" required/><select v-model="eventForm.type"><option value="event">Событие</option><option value="range">Выделенный интервал</option></select><input v-model="eventForm.color" type="color"><button>Добавить в календарь</button></form><p v-if="calendarError">{{calendarError}}</p><div v-for="(event,index) in calendarDraft" :key="event.id" class="calendar-event-row"><span :style="{background:event.color}"></span><div><strong>{{event.title}}</strong><p>{{new Date(event.start).toLocaleString('ru-RU')}} — {{new Date(event.end).toLocaleString('ru-RU')}}</p></div><button @click="calendarDraft.splice(index,1)">Удалить</button></div><button class="primary" :disabled="busy" @click="applyCalendar">Применить</button></section></div>
  <div v-if="groupDialog" class="settings-overlay" @click.self="groupDialog=null"><section class="space-settings" role="dialog" aria-modal="true"><header><h3>{{groupDialog==='copy'?'Копировать':'Перенести'}} {{selection.size}} объектов</h3><button @click="groupDialog=null">Отмена</button></header><label>Пространство назначения<select v-model="groupTarget"><option value="">Выберите пространство</option><option v-for="target in spaces.filter(s=>s.id!==space&&['owner','editor'].includes(s.permission))" :key="target.id" :value="target.id">{{target.name}}</option></select></label><p>Вложения и связи между выбранными объектами сохранятся.</p><button class="primary" :disabled="!groupTarget||busy" @click="groupAction(groupDialog!)">{{groupDialog==='copy'?'Копировать':'Перенести'}}</button><p v-if="error">{{error}}</p></section></div>
- <ProjectDocumentEditor v-if="active" :key="active.id" :project-id="project.id" :file="active" :adapter="activeAdapter" :can-upload="editable&&!activeAdapter" @saved="docs.refresh" @close="closePreview"/>
 </section>
 </template>
 <style scoped>

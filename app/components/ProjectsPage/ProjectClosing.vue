@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const office = useOffice()
-async function outputFile(blob: Blob, name: string, open: boolean) { if (open) office.openBlob(blob, name); else await saveFile(blob, name) }
+async function outputFile(blob: Blob, name: string, open: boolean) { if (open) await office.openBlob(blob, name); else await saveFile(blob, name) }
 import { canEditProjectSection } from '~~/shared/utils/project-permissions'
 import { useQuery,useQueryClient } from '@tanstack/vue-query'
 import ExecutionVariables from './ExecutionVariables.vue'

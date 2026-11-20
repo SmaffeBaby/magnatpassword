@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const office = useOffice()
-async function outputFile(blob: Blob, name: string, open: boolean) { if (open) office.openBlob(blob, name); else await saveFile(blob, name) }
+async function outputFile(blob: Blob, name: string, open: boolean) { if (open) await office.openBlob(blob, name); else await saveFile(blob, name) }
 import type { DirectoryCompany } from '~~/shared/types/project-companies'
 import ProjectCompanyFields from './ProjectCompanyFields.vue'
 import { companyInputSchema, newCompanyDraft } from '~~/shared/utils/project-companies'

@@ -226,7 +226,7 @@ watch(selectedId, () => { closeSelection(); deletingBatch.value = null })
 const forwarding=ref<{projectId:string|null;chatId:string;messageIds:string[]}|null>(null),taskPicker=ref(false)
 function startForward(ids:string[]){forwarding.value={projectId:props.personal?null:props.project.id,chatId:selectedId.value,messageIds:ids}}
 function addTask(task:{taskId:string;boardId:string;title:string}){if(!draft.value.tasks.some(item=>item.taskId===task.taskId))draft.value.tasks.push(task);taskPicker.value=false}
-function openTask(task:ProjectChatMessage['tasks'][number]) { if(!task.available)return;useChatHubStore().opened=false;void navigateTo({path:task.projectId?`/projects/${task.projectId}/tasks`:'/kaban',query:{task:task.taskId,...(!task.projectId?{vault:task.vaultId||'personal'}:{})}}) }
+function openTask(task:ProjectChatMessage['tasks'][number]) { if(!task.available)return;useChatHubStore().opened=false;void useServiceTabsStore().open({path:task.projectId?`/projects/${task.projectId}/tasks`:'/kaban',query:{task:task.taskId,...(!task.projectId?{vault:task.vaultId||'personal'}:{})}}) }
 const panel = ref<'info' | 'pins' | 'search' | null>(null), messageSearch = ref(''), searchTerm = ref('')
 const conversationVisible = computed(() => panel.value !== 'pins' && panel.value !== 'info')
 const infoTrigger = ref<HTMLButtonElement | null>(null)
@@ -476,7 +476,7 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
                     <button v-for="task in message.tasks" :key="task.taskId" class="chat-task-card" :disabled="!task.available" @click="openTask(task)"><UIcon name="i-lucide-columns-3"/><span><strong>{{task.title}}</strong><small>{{!task.available?'Нет доступа к задаче':task.completed?'Кабан · Завершена':'Кабан · Открыть задачу'}}</small></span></button>
                     <button v-for="(password,i) in message.passwordCopies" :key="`${password.id}:${i}`" class="chat-password" @click="inlinePassword=password"><UIcon name="i-lucide-key-round"/><span><strong>{{password.title}}</strong><small>Пересланный пароль · открыть</small></span></button>
                     <ProjectChatActivities :message="message" :user-id="auth.user?.id" :busy="actionBusy" @interact="body=>interact(message,body)"/>
-                    <ProjectChatAttachment v-for="file in message.files" :key="file.id" :project-id="project.id" :chat-id="current.id" :file="file" @saved="refresh"/>
+                    <ProjectChatAttachment v-for="file in message.files" :key="file.id" :project-id="project.id" :chat-id="current.id" :file="file"/>
                     <button v-for="id in message.passwordIds" :key="id" class="chat-password" :disabled="!passwords.data.value?.some(row=>row.id===id)" @click="activePasswordId=id"><UIcon name="i-lucide-key-round"/><span><strong>{{passwordTitle(id)}}</strong><small>Пароль проекта · нажмите, чтобы открыть</small></span></button>
                   <footer :data-seq="message.seq"><UIcon v-if="message.pinned" name="i-lucide-pin" aria-label="Закреплено"/><small v-if="message.editedAt&&!message.deletedAt" class="chat-edited" :title="`Изменено ${time(message.editedAt)}`">ред.</small><time :datetime="message.createdAt">{{time(message.createdAt)}}</time><UIcon v-if="message.authorId===auth.user?.id&&!message.deletedAt" name="i-lucide-check-check" class="chat-read-check" :class="{'is-read':readers(message).length>0}" :aria-label="readTitle(message)" :title="readTitle(message)"/></footer>
                 </div>

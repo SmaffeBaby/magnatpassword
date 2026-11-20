@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const office = useOffice()
-async function outputFile(blob: Blob, name: string, open: boolean) { if (open) office.openBlob(blob, name); else await saveFile(blob, name) }
+async function outputFile(blob: Blob, name: string, open: boolean) { if (open) await office.openBlob(blob, name); else await saveFile(blob, name) }
 import type { Project } from '~~/shared/types/projects'
 import type { ProcessDocument,ProcessPhase } from '~~/shared/types/project-process'
 import type { EstimateField } from '~~/shared/types/estimate'

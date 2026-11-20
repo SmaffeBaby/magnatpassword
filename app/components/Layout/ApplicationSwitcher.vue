@@ -1,61 +1,296 @@
 <script setup lang="ts">
-import ApplicationsCard from '~/components/Editors/ApplicationsCard.vue'
-import ContractRegisterCard from '~/components/ProjectsPage/ContractRegisterCard.vue'
-import PasswordCard from '~/components/PasswordPage/PasswordCard.vue'
-import FinanceCard from '~/components/Finances/FinanceCard.vue'
-import RelationshipsCard from '~/components/Relationships/RelationshipsCard.vue'
-import SpacesCard from '~/components/ProjectsPage/SpacesCard.vue'
-import ProjectsCard from '~/components/ProjectsPage/ProjectsCard.vue'
-import TeamCard from '~/components/AccountPage/TeamCard.vue'
-import KabanCard from '~/components/Kaban/KabanCard.vue'
-const home=useHomeLayoutStore(),auth=useAuthStore(),route=useRoute()
-const open=ref(false)
-const { application } = useAccountBrand()
-const currentServiceName = computed(() => application.value?.name || 'Все сервисы')
-const components={ applications: ApplicationsCard,contracts:ContractRegisterCard,passwords:PasswordCard,finances:FinanceCard,relationships:RelationshipsCard,projects:ProjectsCard,spaces:SpacesCard,team:TeamCard,kaban:KabanCard}
-const rows=computed(()=>home.display.rows.map(row=>({...row,cards:row.cards})).filter(row=>row.cards.length))
-watch(()=>route.path,()=>{open.value=false})
-watch(()=>auth.user?.id,()=>{open.value=false})
-watch(open,value=>{if(value&&!home.ready&&!home.loading)void home.load()})
-</script>
-<template>
- <nav class="workspace-apps services-switcher" aria-label="Приложения">
-  <UPopover v-model:open="open" :content="{side:'bottom',align:'center',sideOffset:12,collisionPadding:16}" :ui="{content:'services-popover rounded-[22px] shadow-xl'}">
-   <button type="button" class="password-glass services-trigger" :class="{'is-open':open}" :aria-label="currentServiceName" :aria-expanded="open"><UIcon name="i-lucide-layout-grid"/><span>{{ currentServiceName }}</span><UIcon name="i-lucide-chevron-down" class="services-chevron"/></button>
-   <template #content>
-    <section class="services-panel" aria-label="Все сервисы">
-     <header><div><strong>Все сервисы</strong></div><UButton to="/" icon="i-lucide-house" color="neutral" variant="ghost" aria-label="На главную" @click="open=false"/></header>
-     <p v-if="home.loading" class="services-status" role="status">Загружаем сервисы…</p>
-     <UAlert v-else-if="home.error&&!home.ready" color="error" title="Не удалось загрузить сервисы" :description="home.error" :actions="[{label:'Повторить',onClick:()=>home.load()}]"/>
-     <template v-else-if="home.ready">
-      <div v-for="(row,index) in rows" :key="index" class="services-row" :class="`align-${row.align}`" :aria-label="`Ряд ${index+1}`"><component v-for="id in row.cards" :key="id" :is="components[id]" @click="id!=='applications'&&(open=false)"/></div>
-      <div v-if="!rows.length" class="services-empty"><UIcon name="i-lucide-layout-dashboard"/><p>Все сервисы скрыты в настройках главной страницы.</p><UButton to="/" label="Открыть главную" color="neutral" variant="outline" @click="open=false"/></div>
-     </template>
-    </section>
-   </template>
-  </UPopover>
- </nav>
-</template>
-<style scoped>
-.services-switcher{overflow:visible;width:auto;justify-self:center}
-.workspace-apps .services-trigger{display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:10px;padding:11px 18px;font-size:14px;border:1px solid #e2e8f0;cursor:pointer;transition:box-shadow .2s,border-color .2s,background .2s}
-.services-trigger:hover,.services-trigger.is-open{border-color:#cbd5e1;box-shadow:0 5px 20px #0f172a0c;background:#fff}
-.services-trigger:focus-visible{outline:2px solid var(--ui-primary);outline-offset:4px}
-.services-trigger>.iconify{width:20px;height:20px;flex-shrink:0}
-.services-trigger>.services-chevron{width:15px;height:15px;color:#8291a6;transition:transform .2s}
-.services-trigger.is-open>.services-chevron{transform:rotate(180deg)}
-.services-panel{width:min(680px,calc(100vw - 32px));max-height:min(680px,calc(100dvh - 150px));overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:18px;background:linear-gradient(145deg,#fff,#f8fafc);border-radius:22px}
-.services-panel>header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:14px;border-bottom:1px solid #e7edf3}
-.services-panel>header strong{font-size:17px;font-weight:650;color:#334155}
-.services-row{display:flex;flex-wrap:wrap;gap:12px;min-width:0}.align-left{justify-content:flex-start}.align-center{justify-content:center}.align-right{justify-content:flex-end}
-.services-row :deep(.password-glass){display:flex;flex-direction:row;align-items:center;justify-content:flex-start;width:calc((100% - 24px)/3);min-width:0;gap:10px;padding:17px 14px;border-radius:16px;font-size:14px;white-space:normal;transition:transform .18s,box-shadow .18s;background:#fff;box-shadow:0 4px 18px #0f172a06;border:1px solid #e7edf3}
-.services-row :deep(.password-glass:hover){transform:translateY(-2px);box-shadow:0 8px 24px #0f172a0c}
-.services-row :deep(.password-glass:focus-visible){outline:2px solid var(--ui-primary);outline-offset:2px}
-.services-row :deep(.password-glass.router-link-active){border-color:var(--ui-primary);box-shadow:0 0 0 1px var(--ui-primary)}
-.services-row :deep(.password-glass img),.services-row :deep(.finance-app-icon),.services-row :deep(.projects-app-icon){width:26px;height:26px;flex-shrink:0}
-.services-empty{text-align:center;padding:16px;color:#8291a6}.services-empty>.iconify{width:32px;height:32px}.services-empty p{font-size:13px;line-height:1.7;margin:12px 0 16px}.services-status{font-size:13px;color:#8291a6;padding:20px 0;text-align:center}
-@media(max-width:600px){.workspace-apps .services-trigger{padding:8px 14px;font-size:13px;gap:8px}.services-panel{padding:18px;gap:14px;max-height:calc(100dvh - 170px)}.services-row{gap:10px}.services-row :deep(.password-glass){width:calc((100% - 10px)/2);padding:16px 10px;font-size:12px;gap:8px}.services-row :deep(.password-glass img),.services-row :deep(.finance-app-icon),.services-row :deep(.projects-app-icon){width:22px;height:22px}}
-@media(prefers-reduced-motion:reduce){.services-trigger,.services-trigger>.services-chevron,.services-row :deep(.password-glass){transition:none}}
+import { servicePageTitle } from '~/stores/serviceTabs'
+import ServicePicker from './ServicePicker.vue'
 
-.services-row{align-items:stretch}.services-row :deep(.password-glass){box-sizing:border-box;flex:0 0 calc((100% - 24px)/3);height:64px;min-height:64px;max-height:64px;padding:10px 14px;font-size:14px;line-height:1.25;overflow:hidden}.services-row :deep(.password-glass>img),.services-row :deep(.password-glass>.iconify),.services-row :deep(.password-glass>.finance-app-icon),.services-row :deep(.password-glass>.projects-app-icon){box-sizing:border-box;width:28px;height:28px;min-width:28px;max-width:28px;flex:0 0 28px;padding:0;margin:0;font-size:28px}.services-row :deep(.projects-app-icon>.iconify){width:28px;height:28px;font-size:28px}.services-row :deep(.password-glass>span:last-child:not(.iconify)){min-width:0;flex:1;font-size:inherit!important;line-height:1.25;white-space:normal!important;overflow-wrap:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}@media(max-width:600px){.services-row :deep(.password-glass){flex-basis:calc((100% - 10px)/2);width:calc((100% - 10px)/2);height:64px;min-height:64px;max-height:64px;font-size:12px;padding:10px;gap:8px}.services-row :deep(.password-glass>img),.services-row :deep(.password-glass>.iconify),.services-row :deep(.password-glass>.finance-app-icon),.services-row :deep(.password-glass>.projects-app-icon){width:24px;height:24px;min-width:24px;max-width:24px;flex-basis:24px;font-size:24px}.services-row :deep(.projects-app-icon>.iconify){width:24px;height:24px;font-size:24px}}
+const route = useRoute(), tabs = useServiceTabsStore()
+const switcher = ref<HTMLElement | null>(null)
+const strip = ref<HTMLElement | null>(null)
+const addButton = ref<HTMLButtonElement | null>(null)
+const overflowing = ref(false)
+const displayedTabs = computed(() => tabs.tabs.length ? tabs.tabs : [{ id: '', path: route.fullPath, label: undefined, editor: undefined }])
+const tabName = (tab: typeof displayedTabs.value[number]) => tab.label || servicePageTitle(tab.path)
+const listOpen = ref(false), tabSearch = ref('')
+const listedTabs = computed(() => {
+  const query = tabSearch.value.trim().toLocaleLowerCase('ru')
+  return displayedTabs.value.filter(tab => tabName(tab).toLocaleLowerCase('ru').includes(query))
+})
+watch(listOpen, open => { if (!open) tabSearch.value = '' })
+
+function selectFromList(id: string) {
+  listOpen.value = false
+  if (id === tabs.activeId) showTab(id)
+  else void tabs.select(id)
+}
+const dragging = ref(''), sliding = ref(false), dropIndex = ref(-1), announcement = ref('')
+const dropMarker = computed(() => {
+  if (!dragging.value || dropIndex.value < 0 || dropIndex.value === tabs.tabs.findIndex(tab => tab.id === dragging.value)) return
+  const remaining = tabs.tabs.filter(tab => tab.id !== dragging.value)
+  return remaining[dropIndex.value]?.id ?? 'end'
+})
+let pointer: { id: number; tab: string | undefined; start: number; x: number; y: number; scrollLeft: number } | undefined
+let scrollFrame = 0, clickTimer: ReturnType<typeof setTimeout> | undefined, suppressClick = false
+
+function tabElements() {
+  return [...(strip.value?.querySelectorAll<HTMLElement>('[data-tab-id]') ?? [])]
+}
+
+function measureOverflow() {
+  const bar = switcher.value, list = strip.value, add = addButton.value
+  if (!bar || !list || !add || dragging.value) return
+  const style = window.getComputedStyle(bar)
+  // Measure against the width without the overview button so it can disappear as soon as the tabs fit.
+  const available = bar.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+    - parseFloat(style.columnGap) - add.getBoundingClientRect().width
+  overflowing.value = list.scrollWidth > available + 0.5
+  if (!overflowing.value) listOpen.value = false
+}
+
+function showTab(id: string) {
+  const list = strip.value
+  const item = tabElements().find(element => element.dataset.tabId === id)
+  if (!list || !item) return
+  const bounds = list.getBoundingClientRect(), tab = item.getBoundingClientRect()
+  if (tab.left < bounds.left) list.scrollLeft += tab.left - bounds.left
+  else if (tab.right > bounds.right) list.scrollLeft += tab.right - bounds.right
+}
+
+function moveTab(id: string, index: number) {
+  if (!tabs.move(id, index)) return
+  const position = tabs.tabs.findIndex(tab => tab.id === id)
+  const item = tabs.tabs[position]
+  if (item) announcement.value = `${tabName(item)}, позиция ${position + 1} из ${tabs.tabs.length}`
+}
+
+function moveByKey(id: string, direction: number) {
+  moveTab(id, tabs.tabs.findIndex(tab => tab.id === id) + direction)
+  void nextTick(() => {
+    tabElements().find(element => element.dataset.tabId === id)?.querySelector<HTMLElement>('.service-tab-main')?.focus({ preventScroll: true })
+    showTab(id)
+  })
+}
+
+function beginDrag(event: PointerEvent) {
+  const list = strip.value, target = event.target
+  if (pointer || !list || event.button !== 0 || !(target instanceof Element) || target.closest('.service-close')) return
+  const tab = target.closest('[data-tab-grip]')?.closest<HTMLElement>('[data-tab-id]')?.dataset.tabId
+  if (tab ? tabs.tabs.length < 2 : (event.pointerType === 'touch' || list.scrollWidth <= list.clientWidth)) return
+  pointer = { id: event.pointerId, tab, start: event.clientX, x: event.clientX, y: event.clientY, scrollLeft: list.scrollLeft }
+  window.addEventListener('pointermove', dragMove)
+  window.addEventListener('pointerup', finishDrag)
+  window.addEventListener('pointercancel', cancelDrag)
+  window.addEventListener('blur', stopDrag)
+}
+
+function dragMove(event: PointerEvent) {
+  if (!pointer || pointer.id !== event.pointerId) return
+  pointer.x = event.clientX
+  pointer.y = event.clientY
+  const delta = pointer.x - pointer.start
+  if (!dragging.value && !sliding.value && Math.abs(delta) >= 6) {
+    if (pointer.tab) {
+      dragging.value = pointer.tab
+      updateDrop()
+    } else sliding.value = true
+  }
+  if (sliding.value && strip.value) strip.value.scrollLeft = pointer.scrollLeft - delta
+  if (dragging.value || sliding.value) event.preventDefault()
+}
+
+function dropPosition(x: number, y: number, bounds: DOMRect) {
+  if (y < bounds.top - 18 || y > bounds.bottom + 18 || x < bounds.left - 18 || x > bounds.right + 18) return -1
+  return tabElements().filter(element => {
+    if (element.dataset.tabId === dragging.value) return false
+    const rect = element.getBoundingClientRect()
+    return x > rect.left + rect.width / 2
+  }).length
+}
+
+function updateDrop() {
+  const list = strip.value
+  if (!pointer || !list || !dragging.value) return
+  const bounds = list.getBoundingClientRect()
+  const { x, y } = pointer
+  dropIndex.value = dropPosition(x, y, bounds)
+  if (dropIndex.value >= 0) {
+    const leftGap = x - bounds.left, rightGap = bounds.right - x
+    if (leftGap < 24) list.scrollLeft -= Math.min(12, 24 - leftGap)
+    else if (rightGap < 24) list.scrollLeft += Math.min(12, 24 - rightGap)
+  }
+  scrollFrame = requestAnimationFrame(updateDrop)
+}
+
+function stopDrag() {
+  pointer = undefined
+  dragging.value = ''
+  sliding.value = false
+  dropIndex.value = -1
+  cancelAnimationFrame(scrollFrame)
+  window.removeEventListener('pointermove', dragMove)
+  window.removeEventListener('pointerup', finishDrag)
+  window.removeEventListener('pointercancel', cancelDrag)
+  window.removeEventListener('blur', stopDrag)
+}
+
+function cancelDrag(event: PointerEvent) {
+  if (event.pointerId === pointer?.id) stopDrag()
+}
+
+function finishDrag(event: PointerEvent) {
+  if (event.pointerId !== pointer?.id) return
+  if (dragging.value) {
+    const bounds = strip.value?.getBoundingClientRect()
+    const index = bounds ? dropPosition(event.clientX, event.clientY, bounds) : -1
+    if (index >= 0) moveTab(dragging.value, index)
+  }
+  if (dragging.value || sliding.value) {
+    suppressClick = true
+    clearTimeout(clickTimer)
+    clickTimer = setTimeout(() => { suppressClick = false }, 0)
+  }
+  stopDrag()
+}
+
+function guardClick(event: MouseEvent) {
+  if (suppressClick) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+}
+
+watch(() => displayedTabs.value.length, measureOverflow, { flush: 'post' })
+watch([() => tabs.activeId, overflowing], ([id]) => showTab(id), { flush: 'post' })
+watch([switcher, strip, addButton], ([bar, list, add], _, onCleanup) => {
+  if (!bar || !list || !add) return
+  measureOverflow()
+  const observer = new ResizeObserver(measureOverflow)
+  for (const element of [bar, list, add]) observer.observe(element)
+  window.addEventListener('resize', measureOverflow)
+  onCleanup(() => {
+    observer.disconnect()
+    window.removeEventListener('resize', measureOverflow)
+  })
+}, { flush: 'post' })
+onBeforeUnmount(() => { stopDrag(); clearTimeout(clickTimer) })
+</script>
+
+<template>
+  <nav ref="switcher" class="workspace-apps services-switcher" aria-label="Сервисы и вкладки">
+    <UPopover
+      v-if="overflowing"
+      v-model:open="listOpen"
+      :content="{ side: 'bottom', align: 'start', sideOffset: 10, collisionPadding: 12 }"
+      :ui="{ content: 'overflow-hidden rounded-[18px] shadow-xl' }"
+    >
+      <button type="button" class="service-icon-button" aria-label="Показать все вкладки" title="Все вкладки">
+        <UIcon name="i-lucide-list"/>
+      </button>
+      <template #content>
+        <section class="tab-overview" aria-label="Все вкладки">
+          <header><h2>Все вкладки</h2><span>{{ displayedTabs.length }}</span></header>
+          <UInput v-model="tabSearch" class="w-full" icon="i-lucide-search" placeholder="Найти вкладку" aria-label="Найти вкладку"/>
+          <ul v-if="listedTabs.length" class="tab-overview-list">
+            <li v-for="tab in listedTabs" :key="tab.id">
+              <button type="button" :aria-current="tab.id === tabs.activeId ? 'page' : undefined" @click="selectFromList(tab.id)">
+                <UIcon :name="tab.editor ? 'i-lucide-file-text' : 'i-lucide-app-window'"/>
+                <span>{{ tabName(tab) }}</span>
+                <UIcon v-if="tab.id === tabs.activeId" name="i-lucide-check"/>
+              </button>
+            </li>
+          </ul>
+          <p v-else role="status">Вкладки не найдены</p>
+        </section>
+      </template>
+    </UPopover>
+    <ul ref="strip" class="service-tabs" :class="{ 'is-grabbing': dragging || sliding }" aria-label="Открытые вкладки" @pointerdown="beginDrag" @click.capture="guardClick" @dragstart.prevent>
+      <li
+        v-for="tab in displayedTabs"
+        :key="tab.id"
+        :data-tab-id="tab.id"
+        :class="{ 'is-active': tab.id === tabs.activeId, 'is-dragging': dragging && dragging === tab.id, 'drop-before': dropMarker === tab.id }"
+      >
+        <ServicePicker v-if="tab.id === tabs.activeId" mode="replace" :dragging="!!dragging || sliding" @choose="tabs.replace">
+          <button
+            type="button"
+            class="service-tab-main"
+            :title="tabName(tab)"
+            :aria-label="`Сменить сервис во вкладке ${tabName(tab)}`"
+            aria-current="page"
+            aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
+            @keydown.alt.left.prevent="moveByKey(tab.id, -1)"
+            @keydown.alt.right.prevent="moveByKey(tab.id, 1)"
+          >
+            <span class="service-grip" data-tab-grip aria-hidden="true"><UIcon name="i-lucide-grip-vertical"/></span>
+            <span class="service-tab-label">{{ tabName(tab) }}</span>
+            <UIcon class="service-chevron" name="i-lucide-chevron-down"/>
+          </button>
+        </ServicePicker>
+        <button
+          v-else
+          type="button"
+          class="service-tab-main"
+          :title="tabName(tab)"
+          aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
+          @click="tabs.select(tab.id)"
+          @keydown.alt.left.prevent="moveByKey(tab.id, -1)"
+          @keydown.alt.right.prevent="moveByKey(tab.id, 1)"
+        >
+          <span class="service-grip" data-tab-grip aria-hidden="true"><UIcon name="i-lucide-grip-vertical"/></span>
+          <span class="service-tab-label">{{ tabName(tab) }}</span>
+        </button>
+        <button v-if="displayedTabs.length > 1" type="button" class="service-close" :aria-label="`Закрыть вкладку ${tabName(tab)}`" @click="tabs.close(tab.id)">
+          <UIcon name="i-lucide-x"/>
+        </button>
+      </li>
+      <li v-if="dropMarker === 'end'" class="drop-end" aria-hidden="true"/>
+    </ul>
+    <ServicePicker mode="new" :dragging="!!dragging || sliding" @choose="path => tabs.open(path)">
+      <button ref="addButton" type="button" class="service-icon-button" aria-label="Открыть сервис в новой вкладке" title="Открыть сервис в новой вкладке">
+        <UIcon name="i-lucide-plus"/>
+      </button>
+    </ServicePicker>
+    <span class="sr-only" role="status">{{ announcement }}</span>
+  </nav>
+</template>
+
+<style scoped>
+.workspace-apps.services-switcher { display:flex; flex:1 1 0%; align-items:center; justify-content:center; gap:6px; min-width:0; width:100%; max-width:none; overflow:visible; }
+.service-tabs { min-width:0; width:max-content; flex:0 1 auto; display:flex; align-items:center; gap:6px; overflow-x:auto; padding:3px 4px; scrollbar-width:thin; }
+.service-tabs li[data-tab-id], .service-icon-button {
+  display:flex; flex:none; align-items:center; height:36px; border:1px solid #dce5ef; border-radius:10px; background:#fff; color:#334155;
+}
+.service-tabs li[data-tab-id] { position:relative; width:clamp(136px, 15vw, 168px); user-select:none; }
+.service-tabs li.is-active {
+  background:var(--color-magnat-100); border-color:var(--color-magnat-200); color:var(--color-magnat-700);
+}
+.service-tabs li.is-active::after {
+  position:absolute; inset:auto 12px 0; height:2px; border-radius:2px; background:var(--color-magnat-600); content:""; pointer-events:none;
+}
+.service-tab-main { display:flex; align-items:center; gap:4px; flex:1; min-width:0; height:100%; padding:0 6px; border-radius:9px; text-align:left; font-size:12px; font-weight:600; }
+.service-tab-label { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.service-grip { display:grid; place-items:center; flex:0 0 14px; min-height:28px; color:#687c93; cursor:grab; touch-action:none; }
+.service-chevron,.service-close .iconify,.service-grip .iconify { width:14px; height:14px; flex-shrink:0; }
+.service-icon-button { justify-content:center; width:36px; }
+.service-icon-button .iconify { width:18px; height:18px; }
+.service-close { display:grid; place-items:center; flex:0 0 24px; height:28px; margin-right:2px; border-radius:8px; }
+.service-close:hover,.service-tab-main:hover,.service-icon-button:hover { background:#eaf2fa; }
+.service-tabs li.is-active button:hover { background:var(--color-magnat-200); }
+.service-tabs button:focus-visible,.service-icon-button:focus-visible,.tab-overview-list button:focus-visible { outline:2px solid #356c9e; outline-offset:-2px; }
+.service-tabs.is-grabbing, .service-tabs.is-grabbing .service-tab-main, .service-tabs.is-grabbing .service-grip { cursor:grabbing; }
+.service-tabs li.is-dragging { opacity:.55; }
+.service-tabs li.drop-before::before {
+  position:absolute; inset:3px auto 3px -5px; width:2px; border-radius:1px; background:#356c9e; content:"";
+}
+.service-tabs li.drop-end { flex:0 0 2px; height:28px; border-radius:1px; background:#356c9e; }
+.tab-overview { display:grid; gap:10px; width:min(340px,calc(100vw - 28px)); padding:12px; background:#f8fbfe; color:#334155; }
+.tab-overview header { display:flex; align-items:center; justify-content:space-between; padding:2px 4px; }
+.tab-overview h2 { font-size:14px; font-weight:650; }
+.tab-overview header span { color:var(--color-magnat-700); background:var(--color-magnat-100); border-radius:999px; padding:2px 8px; font-size:11px; font-weight:600; }
+.tab-overview-list { display:grid; gap:3px; max-height:min(350px,55dvh); overflow-y:auto; overscroll-behavior:contain; }
+.tab-overview-list button { display:flex; align-items:center; gap:9px; width:100%; padding:8px 9px; border-radius:9px; text-align:left; font-size:13px; }
+.tab-overview-list button span:not(.iconify) { flex:1; min-width:0; overflow-wrap:anywhere; }
+.tab-overview-list button .iconify { width:16px; height:16px; flex-shrink:0; }
+.tab-overview-list button:hover { background:#eaf2fa; }
+.tab-overview-list button[aria-current="page"] { background:var(--color-magnat-100); color:var(--color-magnat-700); font-weight:600; }
+.tab-overview p { padding:10px 4px; color:#526781; font-size:12px; }
+@media(max-width:600px) { .service-tabs li[data-tab-id] { width:132px; } }
 </style>

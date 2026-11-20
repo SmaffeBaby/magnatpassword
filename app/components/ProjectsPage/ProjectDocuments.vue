@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import FileUpload from '~/components/Shared/FileUpload.vue'
-import ProjectDocumentEditor from './ProjectDocumentEditor.vue'
 import type { Project } from '~~/shared/types/projects'
 import type { ProjectDocument, ProjectDocumentChange, ProjectDocumentFolder } from '~~/shared/types/project-documents'
 import { canEditProjectSection } from '~~/shared/utils/project-permissions'
@@ -8,9 +7,10 @@ import { documentEditor, documentEditors, documentExtension, documentSize, docum
 import { saveFile } from '~/utils/file-download'
 const props = defineProps<{ project: Project }>()
 const auth = useAuthStore(), route = useRoute(), router = useRouter(), { query, folders, base, refresh, content } = useProjectDocuments(() => props.project.id)
+const office = useOffice()
 const canUpload = computed(() => canEditProjectSection(props.project, 'documents'))
 const search = ref(''), kind = ref('all'), accessFilter = ref('all'), sort = ref('updated'), direction = ref<'asc'|'desc'>('desc')
-const busy = ref(false), error = ref(''), uploadStatus = ref(''), active = ref<ProjectDocument | null>(null)
+const busy = ref(false), error = ref(''), uploadStatus = ref('')
 const editing = ref<ProjectDocument | null>(null), deleting = ref<ProjectDocument | null>(null), accessFile = ref<ProjectDocument | null>(null), replacing = ref<ProjectDocument | null>(null)
 const form = reactive({ name: '', description: '', tags: '' })
 const access = reactive({ defaultPermission: 'inherit', members: {} as Record<string,string> })
@@ -86,7 +86,7 @@ async function showHistory(file: ProjectDocument) {
 function closeHistory() { historyRequest++; historyFile.value = null; history.value = [] }
 function actions(file: ProjectDocument) {
   return [
-    ...(documentEditor(file.name) ? [{ label: 'Открыть', icon: 'i-lucide-external-link', onSelect: () => { active.value = { ...file } } }] : []),
+    ...(documentEditor(file.name) ? [{ label: 'Открыть', icon: 'i-lucide-external-link', onSelect: () => openDocument(file) }] : []),
     ...(canUpload.value ? [{ label: 'Копировать в папку', icon: 'i-lucide-copy', onSelect: () => showOperation('copy', file) }] : []),
     ...(editable(file) ? [{ label: 'Переместить', icon: 'i-lucide-folder-input', onSelect: () => showOperation('move', file) }] : []),
     ...(canUpload.value && documentExtension(file.name) === 'zip' ? [{ label: 'Распаковать ZIP', icon: 'i-lucide-archive-restore', onSelect: () => showOperation('extract', file) }] : []),
@@ -97,7 +97,7 @@ function actions(file: ProjectDocument) {
     ...(editable(file) ? [{ label: 'Удалить', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => { deleting.value = file; error.value = '' } }] : [])
   ]
 }
-watch(() => [auth.user?.id, props.project.id], () => { closeHistory(); operation.value = null; active.value = null; editing.value = null; accessFile.value = null; deleting.value = null; replacing.value = null })
+watch(() => [auth.user?.id, props.project.id], () => { closeHistory(); operation.value = null; editing.value = null; accessFile.value = null; deleting.value = null; replacing.value = null })
 
 const folderId = computed(() => typeof route.query.folder === 'string' ? route.query.folder : null)
 const view = ref<'list'|'tiles'>('list')
@@ -152,9 +152,14 @@ watch(breadcrumbs, path => {
   expandedFolders.value = new Set([...expandedFolders.value, ...path.map(folder => folder.id)])
 }, { immediate: true })
 watch(() => props.project.id, () => { expandedFolders.value = new Set() })
+async function openDocument(file: ProjectDocument) {
+  error.value = ''
+  try { await office.openSource({ kind: 'document', projectId: props.project.id, fileId: file.id }) }
+  catch (failure: any) { error.value = failure?.data?.message || failure?.message || 'Не удалось открыть документ' }
+}
 function openTreeFile(file: ProjectDocument) {
   navigateFolder(file.folderId)
-  if (documentEditor(file.name)) active.value = { ...file }
+  if (documentEditor(file.name)) void openDocument(file)
   else void download(file)
 }
 function navigateFolder(id: string | null) { void router.push({ query: { ...route.query, folder: id || undefined } }) }
@@ -182,7 +187,7 @@ async function submitOperation() {
       await sharedRequest(`${base.value}/folders`, { method: 'POST', body: { action: action === 'folder' ? 'create' : 'rename', ...(folder ? { id: folder.id, revision: folder.revision } : {}), name: operationName.value.trim(), parentId: action === 'folder' ? target : folder?.parentId ?? null } })
     } else if (action === 'create') {
       const result = await sharedRequest<{ id: string }>(`${base.value}/create`, { method: 'POST', body: { name: operationName.value.trim(), kind: newKind.value, folderId: target } })
-      await refresh(); const file = query.data.value?.find(f => f.id === result.id); if (file) active.value = { ...file }
+      await office.openSource({ kind: 'document', projectId: props.project.id, fileId: result.id })
     } else if (action === 'import') {
       if (!archive.value) throw new Error('Выберите ZIP-архив')
       const body = new FormData(); body.append('file', archive.value); if (target) body.append('folderId', target)
@@ -311,7 +316,7 @@ watch(files, visible => { selectedIds.value = selectedIds.value.filter(id => vis
         <article v-for="folder in childFolders" :key="folder.id" class="document-row document-folder" :class="{'document-selected':selectedFolderIds.includes(folder.id)}"><UCheckbox class="document-select" :model-value="selectedFolderIds.includes(folder.id)" :disabled="busy||!canUpload" :aria-label="`Выбрать папку: ${folder.name}`" @update:model-value="value=>selectFolder(folder,value===true)"/><button class="document-main" @click="navigateFolder(folder.id)"><UIcon name="i-lucide-folder"/><span><strong>{{folder.name}}</strong><small>Папка</small></span></button><UDropdownMenu v-if="canUpload" :items="[{label:'Переименовать',icon:'i-lucide-pencil',onSelect:()=>showOperation('rename-folder',undefined,folder)},{label:'Удалить папку',icon:'i-lucide-trash-2',onSelect:()=>showOperation('delete-folder',undefined,folder)}]"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :disabled="busy" :aria-label="`Действия с папкой: ${folder.name}`"/></UDropdownMenu></article>
         <article v-for="file in files" :key="file.id" class="document-row" :class="{'document-selected':selectedIds.includes(file.id)}">
           <UCheckbox class="document-select" :model-value="selectedIds.includes(file.id)" :disabled="busy||!editable(file)" :aria-label="`Выбрать файл: ${file.name}`" @update:model-value="value=>selectFile(file,value===true)"/>
-          <button class="document-main" :disabled="busy" @click="documentEditor(file.name)?active={...file}:download(file)"><UIcon :name="icon(file)"/><span><strong>{{file.name}}</strong><small v-if="file.description">{{file.description}}</small><span v-if="file.tags.length" class="document-tags"><UBadge v-for="tag in file.tags" :key="tag" color="neutral" variant="soft" size="sm">{{tag}}</UBadge></span></span></button>
+          <button class="document-main" :disabled="busy" @click="documentEditor(file.name)?openDocument(file):download(file)"><UIcon :name="icon(file)"/><span><strong>{{file.name}}</strong><small v-if="file.description">{{file.description}}</small><span v-if="file.tags.length" class="document-tags"><UBadge v-for="tag in file.tags" :key="tag" color="neutral" variant="soft" size="sm">{{tag}}</UBadge></span></span></button>
           <div class="document-meta"><span>{{documentSize(file.size)}}</span><small>{{date(file.updatedAt)}}</small><small>{{editable(file)?'Редактирование':'Просмотр'}} · версия {{file.revision}} · {{ file.lastChangedBy || 'Автор версии неизвестен' }}</small></div>
           <UDropdownMenu :items="actions(file)"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="`Действия: ${file.name}`" :disabled="busy"/></UDropdownMenu>
         </article>
@@ -352,7 +357,6 @@ watch(files, visible => { selectedIds.value = selectedIds.value.filter(id => vis
         </template>
       </template>
     </UModal>
-    <ProjectDocumentEditor v-if="active" :key="active.id" :project-id="project.id" :file="active" :can-upload="canUpload" @saved="refresh" @close="active=null"/>
   </div>
 </template>
 <style scoped>

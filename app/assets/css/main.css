@@ -166,7 +166,7 @@
 .team-hidden-badge{display:inline-block;margin-left:7px;padding:2px 6px;border-radius:5px;background:#f1f5f9;color:#94a3b8;font-size:9px;font-weight:500}.admin-visibility{display:flex;align-items:center;gap:12px}.admin-visibility>span{font-size:11px;color:#10a17e}.admin-visibility>span.is-hidden{color:#94a3b8}
 
 /* Password product shell: balanced glass title and account controls. */
-.password-topbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:20px;min-height:82px;background:rgba(248,250,253,.82)}
+.password-topbar{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:20px;min-height:82px;background:rgba(248,250,253,.82)}
 .password-header-context{display:flex;align-items:center;min-width:0}
 .password-header-context .breadcrumb{overflow:hidden;white-space:nowrap;font-size:10px;gap:8px}
 .password-header-context .breadcrumb strong{overflow:hidden;text-overflow:ellipsis}

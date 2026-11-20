@@ -10,6 +10,17 @@ import BrandIcon from '~/components/Brand/BrandIcon.vue'
 import type { AppNotification } from '~~/shared/types/subscriptions'
 
 const route = useRoute()
+const serviceTabs = useServiceTabsStore()
+const topbar = ref<HTMLElement | null>(null)
+const isOffice = computed(() => route.path.startsWith('/office/'))
+watch([topbar, isOffice], ([element, office], _, onCleanup) => {
+  if (!element || !office) return
+  const measure = () => { serviceTabs.headerBottom = element.getBoundingClientRect().bottom }
+  measure()
+  const observer = new ResizeObserver(measure)
+  observer.observe(element)
+  onCleanup(() => observer.disconnect())
+}, { flush: 'post' })
 const { brand } = useAccountBrand()
 const isProjects = computed(() => route.path === '/projects' || route.path.startsWith('/projects/'))
 const fillWorkspace = computed(() => route.meta.fillWorkspace === true)
@@ -35,14 +46,14 @@ function openNotification(notification: AppNotification) {
     <div class="home-shell" :class="{ 'projects-shell': hasSidebar, 'registry-shell': isRegistry, 'workspace-fill': fillWorkspace }">
       <aside v-if="hasSidebar" class="projects-sidebar" :aria-label="isRegistry?'Навигация реестра договоров':'Навигация проектов'"><KabanNavigation v-if="isKaban"/><ProjectNavigation v-else :registry="isRegistry"/></aside>
       <USlideover v-if="hasSidebar" v-model:open="projectMenuOpen" side="left" :title="isRegistry?'Реестр договоров':'Проекты'" description="Разделы сервиса." :ui="{ content: 'max-w-xs', body: 'p-0 sm:p-0' }"><template #body><KabanNavigation v-if="isKaban" @navigate="projectMenuOpen=false"/><ProjectNavigation v-else :registry="isRegistry" @navigate="projectMenuOpen = false"/></template></USlideover>
-      <header class="home-topbar" :class="{'projects-topbar':hasSidebar,'team-topbar':isTeam||isAccountPage,'is-hidden':hasSidebar && !fillWorkspace && topbarHidden && !projectMenuOpen}">
+      <header ref="topbar" class="home-topbar" :class="{'projects-topbar':hasSidebar,'team-topbar':isTeam||isAccountPage,'is-hidden':hasSidebar && !fillWorkspace && topbarHidden && !projectMenuOpen}">
         <NuxtLink v-if="isHome" to="/" class="home-brand" aria-label="Главная">
           <BrandIcon :brand="brand" class="home-brand-icon" :class="{ 'home-brand-compact': brand === 'light' }" />
           <span v-if="brand === 'light'" class="home-brand-desktop home-brand-light" aria-hidden="true"><BrandWordmark brand="light" /></span>
           <span v-else class="home-brand-desktop home-brand-magnat" aria-hidden="true"><BrandWordmark brand="magnat" /><span class="home-brand-subtitle">professional</span></span>
         </NuxtLink>
         <div v-else class="home-navigation-context"><UButton v-if="hasSidebar" icon="i-lucide-panel-left" color="neutral" variant="ghost" class="project-menu-trigger" :aria-label="isRegistry?'Открыть меню реестра договоров':'Открыть меню проектов'" :aria-expanded="projectMenuOpen" @click="projectMenuOpen = true"/><NuxtLink :to="isRegistry?'/':isProjects ? '/projects' : '/'" class="projects-back" :aria-label="isRegistry?'На главную':undefined" :title="isRegistry?'На главную':undefined"><UIcon :name="isRegistry?'i-lucide-house':isProjects ? 'i-lucide-folder-kanban' : 'i-lucide-arrow-left'" />{{ isRegistry?'':isProjects ? 'Проекты' : 'Главная' }}</NuxtLink></div>
-        <ApplicationSwitcher v-if="isProjects || isTeam || isAccountPage || isRegistry || isKaban" />
+        <ApplicationSwitcher v-if="!isHome" />
         <div v-if="isHome" class="home-personal-controls"><HomeCustomization/><AccountControls class="home-account" @open-entry="openNotification"/></div>
         <AccountControls v-else class="home-account" @open-entry="openNotification" />
       </header>
@@ -53,18 +64,28 @@ function openNotification(notification: AppNotification) {
 
 <style scoped>
 .home-personal-controls{display:flex;align-items:center;gap:24px;min-width:0}@media(max-width:767px){.home-personal-controls{gap:8px}.home-personal-controls :deep(.home-customize-trigger){font-size:0;gap:0}.home-personal-controls :deep(.home-customize-trigger .iconify){width:20px;height:20px}}
-.projects-shell{padding-left:256px}.projects-sidebar{position:fixed;inset:0 auto 0 0;width:256px;z-index:35;overflow-y:auto;overscroll-behavior:contain;background:#ffffffd9;border-right:1px solid #e7edf3;backdrop-filter:blur(18px)}.projects-shell>.home-section{max-width:1560px;padding:40px clamp(24px,3vw,56px) 64px}.home-navigation-context{display:flex;align-items:center;gap:10px;min-width:0}.project-menu-trigger{display:none}.projects-shell>.projects-topbar{min-height:82px;grid-template-columns:auto minmax(0,1fr) auto;padding-inline:28px;gap:24px}.projects-topbar :deep(.workspace-apps){justify-self:center}.projects-shell :deep(.project-page-heading){gap:24px;align-items:flex-start}.projects-shell :deep(.project-page-heading h1){font-size:30px}
+.projects-shell{padding-left:256px}.projects-sidebar{position:fixed;inset:0 auto 0 0;width:256px;z-index:35;overflow-y:auto;overscroll-behavior:contain;background:#ffffffd9;border-right:1px solid #e7edf3;backdrop-filter:blur(18px)}.projects-shell>.home-section{max-width:1560px;padding:40px clamp(24px,3vw,56px) 64px}.home-navigation-context{display:flex;align-items:center;gap:10px;min-width:0}.project-menu-trigger{display:none}.projects-shell>.projects-topbar{min-height:82px;grid-template-columns:auto minmax(0,1fr) auto;padding-inline:28px;gap:24px}.projects-topbar :deep(.workspace-apps){justify-self:stretch}.projects-shell :deep(.project-page-heading){gap:24px;align-items:flex-start}.projects-shell :deep(.project-page-heading h1){font-size:30px}
 @media(max-width:1200px){.projects-shell>.projects-topbar{gap:14px;padding-inline:24px}.projects-shell .home-navigation-context .projects-back{font-size:12px}.projects-topbar :deep(.workspace-apps .password-glass){font-size:12px;padding:8px;gap:6px}.projects-topbar :deep(.workspace-apps .password-glass img),.projects-topbar :deep(.workspace-apps .finance-app-icon),.projects-topbar :deep(.workspace-apps .projects-app-icon){width:20px;height:20px;font-size:18px}.projects-shell :deep(.project-page-heading){flex-wrap:wrap}}
 @media(max-width:1023px){.projects-shell{padding-left:0}.projects-sidebar{display:none}.project-menu-trigger{display:inline-flex}.projects-shell>.home-section{padding:30px 24px 48px}}
 @media(max-width:767px){.projects-shell>.projects-topbar{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:44px auto;gap:8px;padding:6px 16px 10px}.home-navigation-context{grid-column:1;grid-row:1}.projects-shell>.projects-topbar>.home-account{grid-column:2;grid-row:1}.projects-topbar :deep(.workspace-apps){grid-column:1/-1;grid-row:2;width:100%}.projects-shell>.home-section{padding:28px 18px 40px}.projects-shell :deep(.project-page-heading h1){font-size:26px}}
-.home-topbar.team-topbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:20px}.team-topbar>.home-account{justify-self:end}
+.home-topbar.team-topbar{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:20px}.team-topbar>.home-account{justify-self:end}
 @media(max-width:767px){.home-topbar.team-topbar{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:44px auto;gap:8px;padding:6px 16px 10px}.team-topbar>.home-navigation-context{grid-column:1;grid-row:1}.team-topbar>.home-account{grid-column:2;grid-row:1}.team-topbar :deep(.workspace-apps){grid-column:1/-1;grid-row:2}}
 .registry-shell>.home-section{width:100%;max-width:none;min-width:0;padding-inline:24px}.registry-shell .home-navigation-context{min-width:0}@media(max-width:767px){.registry-shell>.home-section{padding-inline:16px}}
+
+.home-topbar > .home-brand,.home-topbar > .home-navigation-context,.home-topbar > .home-personal-controls,.home-topbar > .home-account{flex-shrink:0}
 
 .home-shell.workspace-fill{height:100dvh;min-height:0;overflow:hidden}
 .workspace-fill>.home-topbar{flex-shrink:0}
 .projects-shell.workspace-fill>.home-section{
   display:flex;flex-direction:column;min-height:0;min-width:0;max-width:none;
   margin:0;padding:0;overflow:auto
+}
+</style>
+
+<style scoped>
+@media(max-width:767px) {
+  .home-shell > .home-topbar { display:grid; grid-template-columns:minmax(0,1fr) auto; row-gap:3px; }
+  .home-topbar > :deep(.services-switcher) { grid-area:2 / 1 / 3 / -1; justify-self:stretch; max-width:100%; }
+  .home-topbar > .home-personal-controls,.home-topbar > :deep(.home-account) { grid-area:1 / 2; }
 }
 </style>

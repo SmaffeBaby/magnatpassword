@@ -59,7 +59,7 @@ function categoryContains(id: string, ids: string[]) {
   return ids.includes(id) || categories.value.some(category => category.parentId === id && ids.includes(category.id))
 }
 function openTask(task: KabanTask, edit = false) {
-  void navigateTo({ path: path.value, query: { view: 'gantt', task: task.id, ...(edit ? { editTask: '1' } : {}) } })
+  void useServiceTabsStore().open({ path: path.value, query: { view: 'gantt', task: task.id, ...(edit ? { editTask: '1' } : {}) } })
 }
 function canReschedule(task: KabanTask) {
   return task.canEdit && !task.archived && kabanCanEditPlanning(auth.user?.id, task)
@@ -84,7 +84,7 @@ async function reschedule(task: KabanTask, startOn: string, dueOn: string) {
     <div class="plan-title">
       <UIcon :name="mode === 'calendar' ? 'i-lucide-calendar-days' : 'i-lucide-chart-gantt'" />
       <h3>{{ mode === 'calendar' ? 'Календарь задач' : 'Диаграмма Ганта' }}</h3>
-      <NuxtLink :to="{ path, query: { view: mode } }" @pointerdown.stop>Открыть <UIcon name="i-lucide-arrow-up-right" /></NuxtLink>
+      <LayoutServiceTabLink :to="{ path, query: { view: mode } }" @pointerdown.stop>Открыть <UIcon name="i-lucide-arrow-up-right" /></LayoutServiceTabLink>
     </div>
     <p v-if="loading && !board" class="plan-empty">Загружаем задачи…</p>
     <p v-else-if="failed && !board" class="plan-empty">Не удалось загрузить задачи проекта.</p>
@@ -106,9 +106,9 @@ async function reschedule(task: KabanTask, startOn: string, dueOn: string) {
         <div v-for="label in ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']" :key="label" class="plan-day-label">{{ label }}</div>
         <div v-for="cell in calendar" :key="cell.day" class="plan-cell" :class="{ muted: !cell.day.startsWith(anchor.slice(0, 7)), today: cell.day === today }">
           <time :datetime="cell.day">{{ Number(cell.day.slice(-2)) }}</time>
-          <NuxtLink v-for="{ task, color } in cell.items.slice(0, 2)" :key="task.id" :to="{ path, query: { task: task.id } }"
-            class="plan-task" :style="{ '--task-color': color }" :title="task.title" @pointerdown.stop>{{ task.title }}</NuxtLink>
-          <NuxtLink v-if="cell.items.length > 2" :to="{ path, query: { view: mode } }" class="plan-more" @pointerdown.stop>Ещё {{ cell.items.length - 2 }}</NuxtLink>
+          <LayoutServiceTabLink v-for="{ task, color } in cell.items.slice(0, 2)" :key="task.id" :to="{ path, query: { task: task.id } }"
+            class="plan-task" :style="{ '--task-color': color }" :title="task.title" @pointerdown.stop>{{ task.title }}</LayoutServiceTabLink>
+          <LayoutServiceTabLink v-if="cell.items.length > 2" :to="{ path, query: { view: mode } }" class="plan-more" @pointerdown.stop>Ещё {{ cell.items.length - 2 }}</LayoutServiceTabLink>
         </div>
       </div>
     </template>

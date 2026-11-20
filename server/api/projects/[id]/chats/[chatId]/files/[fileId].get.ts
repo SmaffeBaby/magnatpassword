@@ -4,6 +4,7 @@ export default defineEventHandler(async event => {
   const revision=getQuery(event).revision
   if(revision!==undefined&&Number(revision)!==row.revision)throw createError({statusCode:409,message:'Файл изменился. Обновите беседу и откройте его заново.'})
   const file = decodeChatFile(event, project, chat, row, context.user.id)
+  if (getQuery(event).meta === '1') return file
   const { data, error } = await context.client.storage.from(projectDocumentBucket).download(row.path)
   if (error || !data) throw createError({ statusCode: 404, message: 'Вложение недоступно' })
   setHeader(event, 'Content-Type', 'application/octet-stream')

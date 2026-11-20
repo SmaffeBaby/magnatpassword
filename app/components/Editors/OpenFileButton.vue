@@ -8,7 +8,7 @@ async function open() {
   const actor = auth.user?.id; busy.value = true
   try {
     if (props.source) await office.openSource(props.source)
-    else if (props.url?.startsWith('/api/')) { const blob = await sharedRequest<Blob>(props.url,{responseType:'blob'}); if(auth.user?.id===actor)office.openBlob(blob,props.name) }
+    else if (props.url?.startsWith('/api/')) { const blob = await sharedRequest<Blob>(props.url,{responseType:'blob'}); if(auth.user?.id===actor) await office.openBlob(blob,props.name) }
   } catch (failure: any) { toast.add({ title: 'Не удалось открыть файл', description: failure?.data?.message || failure.message, color:'error' }) }
   finally { busy.value = false }
 }

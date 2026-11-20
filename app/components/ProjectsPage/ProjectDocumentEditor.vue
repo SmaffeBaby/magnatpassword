@@ -4,8 +4,9 @@ import type { ProjectDocument } from '~~/shared/types/project-documents'
 import { saveFile, downloadFilename } from '~/utils/file-download'
 import { photoPsdToPng } from '~/utils/photo-psd'
 import type { OfficeEditorAdapter } from '~/composables/office/useOffice'
-const props = defineProps<{ projectId?: string; file: ProjectDocument; canUpload: boolean; adapter?: OfficeEditorAdapter; allowChooseDestination?: boolean }>()
-const emit = defineEmits<{ saved: []; close: [] }>()
+import { UModal } from '#components'
+const props = defineProps<{ projectId?: string; file: ProjectDocument; canUpload: boolean; adapter?: OfficeEditorAdapter; allowChooseDestination?: boolean; embedded?: boolean; selected?: boolean }>()
+const emit = defineEmits<{ saved: []; close: []; cancelClose: [] }>()
 const router = useRouter()
 const auth = useAuthStore(), actor = auth.user?.id
 const target = ref<ProjectDocument>({ ...props.file }), frame = ref<HTMLIFrameElement | null>(null)
@@ -145,16 +146,31 @@ async function saveOutput(action: SaveAction) {
     error.value = failure?.data?.message || failure?.message || 'Не удалось сохранить файл. Ваша копия остаётся в редакторе.'
   } finally { saving.value = false }
 }
-function close() { if (unsaved.value) confirmClose.value = true; else emit('close') }
+function close() {
+  if (saving.value) return false
+  if (unsaved.value) confirmClose.value = true
+  else emit('close')
+  return true
+}
+watch(confirmClose, open => { if (!open) emit('cancelClose') })
+defineExpose({ close })
 function unload(event: BeforeUnloadEvent) { if (unsaved.value) { event.preventDefault(); event.returnValue = '' } }
-function key(event: KeyboardEvent) { if (event.key === 'Escape' && !saving.value && !confirmClose.value && !pending.value) { event.preventDefault(); close() } }
-watch(() => auth.user?.id, id => { if (id !== actor) emit('close') })
-const removeRouteGuard = router.beforeEach(() => !unsaved.value || window.confirm('Есть несохранённые изменения. Покинуть редактор?'))
+function key(event: KeyboardEvent) { if ((!props.embedded || props.selected) && event.key === 'Escape' && !saving.value && !confirmClose.value && !pending.value) { event.preventDefault(); close() } }
+watch(() => auth.user?.id, id => { if (id !== actor && !props.embedded) emit('close') })
+const removeRouteGuard = props.embedded ? undefined : router.beforeEach(() => !unsaved.value || window.confirm('Есть несохранённые изменения. Покинуть редактор?'))
+const EditorSurface = defineComponent({
+  setup(_, { slots }) {
+    return () => props.embedded ? slots.default?.() : h(UModal, {
+      open: true, fullscreen: true, dismissible: false, close: false, title: `${editor.value?.label}: ${target.value.name}`,
+      ui: { overlay: 'z-[100]', content: 'z-[101] rounded-none', header: 'sr-only', body: 'p-0 sm:p-0 flex min-h-0 flex-1' }
+    }, { body: slots.default })
+  }
+})
 onMounted(() => { window.addEventListener('message', receive); window.addEventListener('beforeunload', unload); window.addEventListener('keydown', key); void load() })
-onBeforeUnmount(() => { removeRouteGuard(); detachActivity(); clearTimeout(timeout); window.removeEventListener('message', receive); window.removeEventListener('beforeunload', unload); window.removeEventListener('keydown', key) })
+onBeforeUnmount(() => { removeRouteGuard?.(); detachActivity(); clearTimeout(timeout); window.removeEventListener('message', receive); window.removeEventListener('beforeunload', unload); window.removeEventListener('keydown', key) })
 </script>
 <template>
-  <UModal :open="true" fullscreen :dismissible="false" :close="false" :title="`${editor?.label}: ${target.name}`" :ui="{overlay:'z-[100]',content:'z-[101] rounded-none',header:'sr-only',body:'p-0 sm:p-0 flex min-h-0 flex-1'}"><template #body><section class="document-editor" data-state="open" :aria-label="`${editor?.label}: ${target.name}`">
+  <EditorSurface><section class="document-editor" :class="{ 'is-embedded': embedded }" data-state="open" :aria-label="`${editor?.label}: ${target.name}`">
     <header><div><strong>{{ target.name }}</strong><span>{{ editor?.label }} · {{ editable ? 'Редактирование' : 'Просмотр · сохранение копии только на устройство' }}</span></div><select v-if="adapter" aria-label="При сохранении в редакторе" class="editor-destination" @change="destination(($event.target as HTMLSelectElement).value)"><option value="source">{{editable?'Сохранить изменения':'Скачать копию'}}</option><option v-if="allowChooseDestination!==false" value="choose">Сохранить в другой раздел…</option><option value="download">Скачать на устройство</option></select><span v-if="saving" role="status">Сохраняем…</span><span v-else-if="dirty||pending" class="editor-unsaved">Есть изменения</span><UButton label="Закрыть" icon="i-lucide-x" color="neutral" variant="outline" :disabled="saving" @click="close"/></header>
     <UAlert v-if="error" color="error" :description="error" class="editor-message"/>
     <UAlert v-if="status" color="success" :description="status" class="editor-message"/>
@@ -175,9 +191,10 @@ onBeforeUnmount(() => { removeRouteGuard(); detachActivity(); clearTimeout(timeo
     <iframe v-if="bytes&&source" ref="frame" :src="source" @load="bindFrameActivity" :title="`${editor?.label} — ${target.name}`" allow="clipboard-read; clipboard-write; fullscreen"/>
     <p v-if="!loading&&!bytes" class="editor-loading">Закройте редактор и откройте файл заново.</p>
     <UModal v-model:open="confirmClose" :ui="{ overlay: 'z-[110]', content: 'z-[111]' }" title="Закрыть без сохранения?" description="Несохранённые изменения будут потеряны. Вернитесь в редактор и сохраните файл либо скачайте вашу копию."><template #footer><UButton label="Вернуться" color="neutral" variant="outline" @click="confirmClose=false"/><UButton label="Закрыть без сохранения" color="error" @click="emit('close')"/></template></UModal>
-  </section></template></UModal>
+  </section></EditorSurface>
 </template>
 <style scoped>
 .document-editor{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;background:#f1f5f9}.document-editor>header{display:flex;align-items:center;gap:16px;padding:12px 20px;background:#fff;border-bottom:1px solid #e2e8f0;flex-shrink:0}.document-editor>header>div{min-width:0;flex:1}.document-editor strong{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.document-editor header span{font-size:12px;color:#64748b}.document-editor iframe{width:100%;flex:1;border:0;min-height:0;background:#e6e6e6}.editor-message{margin:8px 16px;flex-shrink:0}.editor-loading{padding:18px;display:flex;gap:10px;font-size:13px;color:#64748b}.editor-recovery{display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap;background:white;border-bottom:1px solid #e2e8f0}.editor-output-heading{width:100%;min-width:0}.editor-output-name{min-width:180px;max-width:360px;flex:1}.document-editor header .editor-unsaved{color:#b45309}@media(max-width:600px){.document-editor>header{padding:10px;gap:8px}.document-editor header>span{display:none}}
 .editor-destination{max-width:220px;border:1px solid #cbd5e1;border-radius:8px;padding:7px;background:white;font-size:12px;color:#475569}
+.document-editor.is-embedded { position:absolute; z-index:auto; }
 </style>

@@ -1,17 +1,14 @@
 <script setup lang="ts">
 import type { ProjectChatFile } from '~~/shared/types/project-chats'
 import { documentSize, documentEditor } from '~~/shared/utils/project-documents'
-import type { ProjectDocument } from '~~/shared/types/project-documents'
-import type { OfficeEditorAdapter } from '~/composables/office/useOffice'
-import ProjectDocumentEditor from './ProjectDocumentEditor.vue'
 import { saveFile } from '~/utils/file-download'
 const props = defineProps<{ projectId: string; chatId: string; file: ProjectChatFile; previewMode?: 'thumbnail' | 'pinned' }>()
-const emit=defineEmits<{saved:[]}>()
-const currentFile=ref<ProjectChatFile>({...props.file}),editorFile=ref<ProjectDocument|null>(null),saveMode=ref('source')
+const currentFile=ref<ProjectChatFile>({...props.file})
+const office = useOffice()
 const host = ref<HTMLElement | null>(null), preview = ref(''), opened = ref(false), busy = ref(false), error = ref('')
 const image = computed(() => ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(currentFile.value.type))
 let observer: IntersectionObserver | undefined, stopped = false
-async function content() { return sharedRequest<Blob>(`/api/projects/${props.projectId}/chats/${props.chatId}/files/${currentFile.value.id}?revision=${editorFile.value?.revision??currentFile.value.revision??1}`, { responseType: 'blob' }) }
+async function content() { return sharedRequest<Blob>(`/api/projects/${props.projectId}/chats/${props.chatId}/files/${currentFile.value.id}?revision=${currentFile.value.revision??1}`, { responseType: 'blob' }) }
 async function loadImage() {
   if (busy.value || preview.value || stopped) return
   busy.value = true; error.value = ''
@@ -26,13 +23,15 @@ async function download() {
   catch { error.value = 'Не удалось скачать вложение' }
   finally { busy.value = false }
 }
-function openEditor(){if(!documentEditor(currentFile.value.name))return;opened.value=false;saveMode.value='source';editorFile.value={...currentFile.value,folderId:null,permission:currentFile.value.canEdit?'editor':'viewer',canManage:false,createdBy:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}}
-const adapter:OfficeEditorAdapter={load:content,setDestination:value=>{saveMode.value=value},async save(blob,name,copy){
- const target=editorFile.value!;
- if(!currentFile.value.canEdit||copy||saveMode.value==='download'){await saveFile(blob,name);return target}
- const body=new FormData();body.append('file',blob,name);body.append('revision',String(target.revision));const updated=await sharedRequest<ProjectChatFile>(`/api/projects/${props.projectId}/chats/${props.chatId}/files/${target.id}`,{method:'PUT',body});currentFile.value=updated;editorFile.value={...target,...updated};emit('saved');return editorFile.value
-}}
-async function openOriginal(){try{await useOffice().openSource({kind:'document',projectId:props.projectId,fileId:currentFile.value.documentId!})}catch(failure:any){error.value=failure?.data?.message||'Документ недоступен'}}
+async function openEditor() {
+  if (busy.value || !documentEditor(currentFile.value.name)) return
+  busy.value = true; error.value = ''; opened.value = false
+  try {
+    await office.openAttachment({ kind: 'chat', projectId: props.projectId, chatId: props.chatId, fileId: currentFile.value.id })
+  } catch (failure: any) { error.value = failure?.data?.message || failure?.message || 'Не удалось открыть вложение' }
+  finally { busy.value = false }
+}
+async function openOriginal(){try{await office.openSource({kind:'document',projectId:props.projectId,fileId:currentFile.value.documentId!})}catch(failure:any){error.value=failure?.data?.message||'Документ недоступен'}}
 watch(()=>props.file,file=>{const changed=file.revision!==currentFile.value.revision;currentFile.value={...file};if(changed&&preview.value){URL.revokeObjectURL(preview.value);preview.value='';if(image.value)void loadImage()}},{deep:true})
 onMounted(() => { if (image.value && host.value) { observer = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) { observer?.disconnect(); void loadImage() } }); observer.observe(host.value) } })
 onBeforeUnmount(() => { stopped = true; observer?.disconnect(); discardPreview() })
@@ -53,7 +52,6 @@ function discardPreview() {
     <div class="chat-file-actions"><UButton v-if="documentEditor(currentFile.name)" size="xs" color="neutral" variant="ghost" :label="currentFile.canEdit?'Открыть / изменить':'Предпросмотр'" icon="i-lucide-external-link" @click="openEditor"/><UButton size="xs" icon="i-lucide-download" :aria-label="`Скачать: ${currentFile.name}`" color="neutral" variant="ghost" :disabled="busy" @click="download"/><UButton v-if="currentFile.documentId&&projectId!=='personal'" size="xs" label="Оригинал в документах" color="neutral" variant="ghost" @click="openOriginal"/></div>
     <p v-if="error" class="chat-file-error" role="alert">{{error}}</p>
     <UModal v-model:open="opened" :title="currentFile.name" :ui="{content:'sm:max-w-3xl'}"><template #body><img v-if="preview" :src="preview" :alt="currentFile.name" class="chat-image-full"/></template><template #footer><UButton label="Скачать" icon="i-lucide-download" :loading="busy" @click="download"/></template></UModal>
-    <ProjectDocumentEditor v-if="editorFile" :key="editorFile.id" :file="editorFile" :can-upload="false" :adapter="adapter" :allow-choose-destination="false" @close="editorFile=null"/>
   </div>
 </template>
 <style scoped>
