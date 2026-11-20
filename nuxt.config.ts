@@ -1,14 +1,53 @@
 import tailwindcss from '@tailwindcss/vite'
+import { copyFile, mkdir } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const webBuildId = process.env.MAGNAT_WEB_BUILD_ID || Date.now().toString(36)
 const native = process.env.MAGNAT_NATIVE === '1'
 const nativeBuildRoot = process.env.MAGNAT_NATIVE_BUILD_ROOT
 const webBuildRoot = !native && process.env.MAGNAT_WEB_BUILD_ROOT
+const swaggerAssetsURL = '/docs/assets'
+
+async function copySwaggerAssets(dir: string) {
+  const source = fileURLToPath(new URL('./node_modules/swagger-ui-dist/', import.meta.url))
+  await mkdir(dir, { recursive: true })
+  await Promise.all(['swagger-ui.css', 'swagger-ui-bundle.js'].map(file =>
+    copyFile(resolve(source, file), resolve(dir, file)),
+  ))
+}
 
 export default defineNuxtConfig({
   ...(webBuildRoot ? { buildDir: `${webBuildRoot}/.nuxt` } : {}),
   ...(native ? { ssr: false, buildDir: nativeBuildRoot ? `${nativeBuildRoot}/.nuxt-native` : '.nuxt-native' } : {}),
-  nitro: { ...(webBuildRoot ? {output:{dir:`${webBuildRoot}/.output`}} : {}), ...(native ? {output:{dir:nativeBuildRoot?`${nativeBuildRoot}/.output-native`:'.output-native'},prerender:{crawlLinks:false,routes:['/']}} : {}), experimental:{websocket:true} },
+  nitro: {
+    ...(webBuildRoot ? { output: { dir: `${webBuildRoot}/.output` } } : {}),
+    ...(native ? {
+      output: { dir: nativeBuildRoot ? `${nativeBuildRoot}/.output-native` : '.output-native' },
+      prerender: { crawlLinks: false, routes: ['/'] },
+    } : {
+      openAPI: {
+        route: '/docs/openapi.json',
+        production: 'runtime',
+        meta: { title: 'Magnat API', version: '1.0.0' },
+        ui: { scalar: false, swagger: false },
+      },
+    }),
+    experimental: { websocket: true, openAPI: !native },
+  },
+  hooks: {
+    async 'nitro:config'(nitroConfig) {
+      if (native || !nitroConfig.dev) return
+
+      const dir = resolve(nitroConfig.buildDir ?? '.nuxt', 'swagger-ui')
+      await copySwaggerAssets(dir)
+      nitroConfig.publicAssets ??= []
+      nitroConfig.publicAssets.push({ dir, baseURL: swaggerAssetsURL, maxAge: 0 })
+    },
+    async 'nitro:build:public-assets'(nitro) {
+      if (!native) await copySwaggerAssets(resolve(nitro.options.output.publicDir, `.${swaggerAssetsURL}`))
+    },
+  },
   compatibilityDate: '2026-10-15',
   srcDir: 'app/', serverDir: 'server/',
   imports: { dirs: ['composables/**'] },

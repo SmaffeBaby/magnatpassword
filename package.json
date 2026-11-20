@@ -52,6 +52,7 @@
     "ofetch": "^1.5.1",
     "pinia": "4.1.0",
     "qrcode": "^1.5.4",
+    "swagger-ui-dist": "5.35.1",
     "vue": "3.5.44",
     "vue-router": "5.4.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
