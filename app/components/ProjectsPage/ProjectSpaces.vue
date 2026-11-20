@@ -5,19 +5,21 @@ import type { ProjectPassword,ProjectPasswordChoice } from '~~/shared/types/proj
 import type { ProjectChat } from '~~/shared/types/project-chats'
 import { resizeFrame, inkDistance } from '~~/shared/utils/space-geometry.mjs'
 import type { Project } from '~~/shared/types/projects'
-import type { ProjectDocument } from '~~/shared/types/project-documents'
+import type { ProjectDocument, SpaceFileThumbnail, SpaceSpreadsheetPreview } from '~~/shared/types/project-documents'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import SpaceLayers from './SpaceLayers.vue'
 import SpaceTaskPlanning from './SpaceTaskPlanning.vue'
+import ProjectImageViewer from './ProjectImageViewer.vue'
 import { canViewProjectSection } from '~~/shared/utils/project-permissions'
 import type { KabanWorkspace } from '~~/shared/types/kaban'
 import { groupSpaceLayers, moveSpaceLayer, moveSpaceLayers, spaceHiddenLayers, spaceLayers, spaceSearchText, ungroupSpaceLayers, type SpaceLayerChange, type SpaceLayerPosition } from '~~/shared/utils/space-layers'
-import { documentEditor } from '~~/shared/utils/project-documents'
+import { documentEditor, spaceSpreadsheetPreviewDefaults, spaceSpreadsheetPreviewLimits } from '~~/shared/utils/project-documents'
 import { saveFile } from '~/utils/file-download'
+import { canPreviewProjectImage, projectImagePreview } from '~/utils/project-image-preview'
 const props=defineProps<{project:Project}>()
 type Space={id:string;name:string;description:string;created_by:string;permission:string;object_count:number;members:{user_id:string;permission:string}[]}
 type Message={id:string;author:string;text:string;createdAt:string}
-type Item={id:string;revision:number;data:{kind:string;layerHidden?:boolean;layerGroup?:true;parentId?:string;layerOrder?:number;fontSize?:number;fontFamily?:'system'|'serif'|'mono';fontWeight?:'normal'|'bold';titlePosition?:string;titleColor?:string;showContent?:boolean;subscriptionSource?:any;calendarEvents?:{id:string;title:string;start:string;end:string;color:string;type:'event'|'range'}[];contours?:number;shape?:string;taskId?:string;boardId?:string;passwordId?:string;chatId?:string;personId?:string;role?:string;duty?:string;assetId?:string;points?:[number,number][];strokeWidth?:number;opacity?:number;description?:string;targetSpace?:string;borderColor?:string;borderWidth?:number;width?:number;height?:number;rows?:string[][];resolved?:boolean;messages?:Message[];name?:string;text?:string;x:number;y:number;fileId?:string;from?:string;to?:string;color?:string;textColor?:string;lineStyle?:'straight'|'dashed'|'wavy';arrow?:'none'|'forward'|'backward'|'both'}}
+type Item={id:string;revision:number;data:{kind:string;layerHidden?:boolean;layerGroup?:true;parentId?:string;layerOrder?:number;fontSize?:number;fontFamily?:'system'|'serif'|'mono';fontWeight?:'normal'|'bold';titlePosition?:string;titleColor?:string;showContent?:boolean;imageOnly?:boolean;contentOnly?:boolean;spreadsheetPreview?:SpaceSpreadsheetPreview;subscriptionSource?:any;calendarEvents?:{id:string;title:string;start:string;end:string;color:string;type:'event'|'range'}[];contours?:number;shape?:string;taskId?:string;boardId?:string;passwordId?:string;chatId?:string;personId?:string;role?:string;duty?:string;assetId?:string;points?:[number,number][];strokeWidth?:number;opacity?:number;description?:string;targetSpace?:string;borderColor?:string;borderWidth?:number;width?:number;height?:number;rows?:string[][];resolved?:boolean;messages?:Message[];name?:string;text?:string;x:number;y:number;fileId?:string;from?:string;to?:string;color?:string;textColor?:string;lineStyle?:'straight'|'dashed'|'wavy';arrow?:'none'|'forward'|'backward'|'both'}}
 type Cursor={id:string;user_id:string;name:string;x:number;y:number;updated_at:string}
 const accountQueries=useAccountQueries(),auth=useAuthStore(),supabase=useNuxtApp().$supabase
 const base=`/api/projects/${props.project.id}/spaces`,space=ref(''),spaces=ref<Space[]>([]),objects=ref<Item[]>([]),cursors=ref<Cursor[]>([])
@@ -29,6 +31,13 @@ const editable=computed(()=>['owner','editor'].includes(currentSpace.value?.perm
 const canManage=computed(()=>currentSpace.value?.created_by===auth.user?.id)
 const docs=useProjectDocuments(()=>props.project.id),images=ref<Record<string,string>>({}),fileInput=ref<HTMLInputElement>(),canvas=ref<HTMLElement>()
 const root=ref<HTMLElement>(),fullscreen=ref(false),headerOpen=ref(false)
+const imagePreview = ref<{ file: ProjectDocument; item: Item } | null>(null)
+const officePreview = ref<{ file: ProjectDocument; item: Item } | null>(null)
+const officePreviewContent = ref<SpaceFileThumbnail | null>(null)
+watch(() => [auth.user?.id, props.project.id, space.value], () => {
+  imagePreview.value = null
+  officePreview.value = null
+})
 const serviceTabs = useServiceTabsStore(), office = useOffice(), route = useRoute()
 const workspaceTabId = serviceTabs.activeId
 let headerArmed=false
@@ -51,34 +60,137 @@ const selectedRows=computed(()=>objects.value.filter(i=>selection.value.has(i.id
 function replaceSelection(ids:string[]){selection.value=new Set(ids);selected.value=ids[ids.length-1]||''}
 watch(selected,id=>{if(!id)selection.value=new Set();else if(!selection.value.has(id))selection.value=new Set([id])})
 function clickSelect(item:Item,shift=false){if(shift){const ids=new Set(selection.value);if(ids.has(item.id))ids.delete(item.id);else ids.add(item.id);replaceSelection([...ids]);return}if(!selection.value.has(item.id))replaceSelection([item.id]);else selected.value=item.id}
-async function groupAction(mode:'copy'|'move'|'delete'){const objectsToProcess=new Set(selectedRows.value.flatMap(item=>item.data.layerGroup?[item,...layerDescendants(item.id)]:[item]));const items=[...objectsToProcess].map(({id,revision})=>({id,revision}));if(!items.length)return;await run(async()=>{await sharedRequest(`${base}/group?space=${space.value}`,{method:'POST',body:{mode,items,...(mode==='delete'?{}:{target:groupTarget.value})}});groupDialog.value=null;if(mode!=='copy')replaceSelection([])})}
+async function groupAction(mode:'copy'|'move'|'delete'){const objectsToProcess=new Set(selectedRows.value.flatMap(item=>item.data.layerGroup?[item,...layerDescendants(item.id)]:[item]));const items=[...objectsToProcess].map(({id,revision})=>({id,revision}));if(!items.length)return;await run(async()=>{await sharedRequest(`${base}/group?space=${space.value}`,{method:'POST',body:{mode,items,...(mode==='delete'?{}:{target:groupTarget.value})}});groupDialog.value=null;if(mode!=='copy'){stopUndoHistory();replaceSelection([])}})}
 function boxStyle(){const box=boxSelection.value;if(!box)return {};return {left:(Math.min(box.x,box.endX)*zoom.value+offset.x)+'px',top:(Math.min(box.y,box.endY)*zoom.value+offset.y)+'px',width:(Math.abs(box.endX-box.x)*zoom.value)+'px',height:(Math.abs(box.endY-box.y)*zoom.value)+'px'}}
 function updateBox(){const box=boxSelection.value;if(!box)return;const ids=box.add?[...box.base]:[],left=Math.min(box.x,box.endX),right=Math.max(box.x,box.endX),top=Math.min(box.y,box.endY),bottom=Math.max(box.y,box.endY);for(const item of visibleObjects.value){const el=canvas.value?.querySelector<HTMLElement>(`[data-object-id="${item.id}"]`);let x=item.data.x,y=item.data.y,w=el?.offsetWidth||item.data.width||220,h=el?.offsetHeight||item.data.height||110;if(item.data.kind==='stroke'&&item.data.points?.length){const xs=item.data.points.map(p=>p[0]),ys=item.data.points.map(p=>p[1]);x+=Math.min(...xs);y+=Math.min(...ys);w=Math.max(...xs)-Math.min(...xs);h=Math.max(...ys)-Math.min(...ys)}else if(item.data.kind==='link'){const e=ends(item);if(!e)continue;x=Math.min(e.x1,e.x2);y=Math.min(e.y1,e.y2);w=Math.abs(e.x2-e.x1);h=Math.abs(e.y2-e.y1)}if(x>=left&&y>=top&&x+w<=right&&y+h<=bottom)ids.push(item.id)}replaceSelection([...new Set(ids)])}
 const selectedItem=computed(()=>objects.value.find(item=>item.id===selected.value))
 const lineDefaults=reactive({lineStyle:'straight' as 'straight'|'dashed'|'wavy',arrow:'forward' as 'none'|'forward'|'backward'|'both',color:'#64748b'})
 const originalStyles=new Map<string,Item['data']>()
+type UndoTarget = { id: string; beforeRevision: number; expectedRevision: number }
+type UndoStep =
+  | { kind: 'update'; targets: [UndoTarget]; before: Item['data'] }
+  | { kind: 'create'; targets: [UndoTarget] }
+  | { kind: 'layers'; targets: UndoTarget[]; before: SpaceLayerChange[] }
+
+const undoSteps: UndoStep[] = []
+let undoLimitReached = false
+const undoScope = computed(() => [auth.user?.id, props.project.id, space.value].join(':'))
+watch(undoScope, () => {
+  undoLimitReached = false
+  undoSteps.length = 0
+}, { flush: 'sync' })
+function stopUndoHistory() {
+  undoLimitReached = true
+  undoSteps.length = 0
+}
+
+function rememberUndo(step: UndoStep, scope: string) {
+  if (scope !== undoScope.value || disposed) return
+  undoSteps.push(step)
+  if (undoSteps.length > 60) undoSteps.shift()
+}
+function changedTarget(id: string, revision: number): UndoTarget {
+  return { id, beforeRevision: revision, expectedRevision: revision + 1 }
+}
+
+async function undoBoardChange() {
+  if (!editable.value || busy.value || drag || resizing || inkDraft.value || erasing.value) return
+  const staged = selectedItem.value
+  if (staged && originalStyles.has(staged.id) && !nudgePositions.size) {
+    cancelSelected()
+    return
+  }
+  const scope = undoScope.value
+  if (nudgePositions.size) await flushNudge()
+  if (scope !== undoScope.value) return
+  const step = undoSteps.at(-1)
+  if (!step) {
+    if (undoLimitReached) error.value = 'Предыдущее действие нельзя отменить.'
+    return
+  }
+  const target = step.targets[0]!
+  if (step.kind === 'create' && objects.value.some(({ data }) =>
+    data.parentId === target.id || data.from === target.id || data.to === target.id)) {
+    undoSteps.pop()
+    error.value = 'С этим объектом уже связаны другие элементы. Отменить его создание нельзя.'
+    return
+  }
+  const matches = step.targets.every(({ id, expectedRevision }) =>
+    objects.value.some(item => item.id === id && item.revision === expectedRevision) && !originalStyles.has(id))
+  if (!matches) {
+    undoSteps.pop()
+    error.value = 'Объекты уже изменились. Это действие больше нельзя отменить.'
+    return
+  }
+  const done = await run(async () => {
+    if (step.kind === 'update') await send('put', target.id, step.before, target.expectedRevision)
+    else if (step.kind === 'create') await send('delete', target.id, {}, target.expectedRevision)
+    else await writeLayers(step.before.map((change, index) => ({
+      ...change, revision: step.targets[index]!.expectedRevision
+    })))
+  })
+  if (!done || scope !== undoScope.value) return
+  undoSteps.pop()
+  for (const target of step.targets) {
+    const earlier = undoSteps.findLast(entry => entry.targets.some(candidate => candidate.id === target.id))
+      ?.targets.find(candidate => candidate.id === target.id)
+    if (earlier?.expectedRevision === target.beforeRevision) earlier.expectedRevision = target.expectedRevision + 1
+  }
+}
 function stage(item:Item,patch:Partial<Item['data']>){selected.value=item.id;if(!originalStyles.has(item.id))originalStyles.set(item.id,structuredClone(toRaw(item.data)));Object.assign(item.data,patch)}
 function styleSelected(patch:Partial<Item['data']>){const item=selectedItem.value;if(item&&!busy.value)stage(item,patch)}
 async function applySelected(){const item=selectedItem.value;if(!item)return;await put(item,{...item.data});if(!error.value){originalStyles.delete(item.id);await load()}}
 function cancelSelected(){const item=selectedItem.value,original=item&&originalStyles.get(item.id);if(item&&original){item.data=original;originalStyles.delete(item.id)}}
-async function toggleFullscreen(){try{if(document.fullscreenElement===root.value)await document.exitFullscreen();else if(root.value?.requestFullscreen)await root.value.requestFullscreen();else fullscreen.value=!fullscreen.value}catch{fullscreen.value=!fullscreen.value}}
+let fullscreenPending = false
+async function toggleFullscreen() {
+  if (!root.value || fullscreenPending) return
+  if (fullscreen.value && document.fullscreenElement !== root.value) {
+    fullscreen.value = false
+    return
+  }
+  fullscreenPending = true
+  try {
+    if (document.fullscreenElement === root.value) await document.exitFullscreen()
+    else if (root.value.requestFullscreen) await root.value.requestFullscreen()
+    else fullscreen.value = true
+  } catch {
+    fullscreen.value = document.fullscreenElement === root.value || !fullscreen.value
+  } finally {
+    fullscreenPending = false
+  }
+}
 function fullscreenChanged(){fullscreen.value=document.fullscreenElement===root.value}
 function escapeFullscreen(e:KeyboardEvent){if(e.key==='Escape'&&!document.fullscreenElement)fullscreen.value=false}
 const offset=reactive({x:150,y:100}),zoom=ref(1),session=crypto.randomUUID(),now=ref(Date.now())
 function color(id:string){const ids=[...new Set([...props.project.members.map(m=>m.userId),props.project.ownerId,...cursors.value.map(c=>c.user_id)])].sort();return `hsl(${(Math.max(0,ids.indexOf(id))*137.508)%360} 72% 43%)`}
 const visibleCursors=computed(()=>cursors.value.filter(c=>c.id!==session&&now.value-new Date(c.updated_at).getTime()<15000))
 let channel:RealtimeChannel|null=null,timer:ReturnType<typeof setInterval>,refreshTimer:ReturnType<typeof setTimeout>|undefined,disposed=false,epoch=0
-async function load(){const current=space.value,version=++epoch;try{const result=await sharedRequest<{spaces:typeof spaces.value;objects:Item[];cursors:Cursor[]}>(`${base}${current?`?space=${current}`:''}`);if(disposed||version!==epoch||current!==space.value)return;spaces.value=result.spaces;if(current&&!result.spaces.some(s=>s.id===current)){space.value='';objects.value=[];return}objects.value=result.objects.map(item=>(drag?.id===item.id||drag?.children?.some(child=>child.id===item.id)||resizing?.id===item.id||nudgeItem?.id===item.id||originalStyles.has(item.id))?objects.value.find(old=>old.id===item.id)||item:item);if([...selection.value].some(id=>!objects.value.some(i=>i.id===id)))replaceSelection([...selection.value].filter(id=>objects.value.some(i=>i.id===id)));await loadResources();if(objects.value.some(i=>i.data.kind==='subscription'))await loadSubscriptions();await loadImages();void loadThumbnails()}catch(e:any){error.value=e.data?.message||'Не удалось загрузить пространство'}}
+async function load(){const current=space.value,version=++epoch;try{const result=await sharedRequest<{spaces:typeof spaces.value;objects:Item[];cursors:Cursor[]}>(`${base}${current?`?space=${current}`:''}`);if(disposed||version!==epoch||current!==space.value)return;spaces.value=result.spaces;if(current&&!result.spaces.some(s=>s.id===current)){space.value='';objects.value=[];return}objects.value=result.objects.map(item=>(drag?.id===item.id||drag?.children?.some(child=>child.id===item.id)||resizing?.id===item.id||nudgePositions.has(item.id)||originalStyles.has(item.id))?objects.value.find(old=>old.id===item.id)||item:item);if([...selection.value].some(id=>!objects.value.some(i=>i.id===id)))replaceSelection([...selection.value].filter(id=>objects.value.some(i=>i.id===id)));await loadResources();if(objects.value.some(i=>i.data.kind==='subscription'))await loadSubscriptions();await loadImages();void loadThumbnails()}catch(e:any){error.value=e.data?.message||'Не удалось загрузить пространство'}}
 function queue(){if(!refreshTimer)refreshTimer=setTimeout(()=>{refreshTimer=undefined;void load()},250)}
 async function send(action:string,id:string=session,data:Record<string,unknown>={},revision=0){return sharedRequest(base,{method:'POST',body:{space:space.value,id,action,revision,data:Object.fromEntries(Object.entries(data).filter(([key])=>key!=='messages'))}})}
-async function run(fn:()=>Promise<unknown>){error.value='';busy.value=true;try{await fn();await load()}catch(e:any){error.value=e.data?.message||'Не удалось сохранить изменения';await load()}finally{busy.value=false}}
+async function run(fn:()=>Promise<unknown>){error.value='';busy.value=true;try{await fn();await load();return true}catch(e:any){error.value=e.data?.message||'Не удалось сохранить изменения';await load();return false}finally{busy.value=false}}
 async function create(){if(!title.value.trim())return;const id=crypto.randomUUID();await run(async()=>{await sharedRequest(base,{method:'POST',body:{space:id,id,action:'create',data:{name:title.value.trim()}}});await choose(id);title.value=''})}
 async function choose(id:string,remember=false,view?:{x:number;y:number;zoom:number}){if(id===space.value)return;await flushNudge();if(remember&&space.value)history.value.push({id:space.value,x:offset.x,y:offset.y,zoom:zoom.value});else if(!remember&&!view)history.value=[];objects.value=[];space.value=id;cursorPoint=null;replaceSelection([]);editing.value='';pinnedComment.value='';hoveredComment.value='';offset.x=view?.x??150;offset.y=view?.y??100;zoom.value=view?.zoom??1;await load()}
 async function goBack(){let previous=history.value.pop();while(previous&&!spaces.value.some(s=>s.id===previous!.id))previous=history.value.pop();if(previous)await choose(previous.id,false,previous)}
 function point(e:PointerEvent|WheelEvent){const r=canvas.value!.getBoundingClientRect();return{x:(e.clientX-r.left-offset.x)/zoom.value,y:(e.clientY-r.top-offset.y)/zoom.value}}
-async function add(kind:string,fileId?:string,extra:Partial<Item['data']>={}){const id=crypto.randomUUID();await run(()=>send('put',id,{kind,x:(350-offset.x)/zoom.value,y:(220-offset.y)/zoom.value,text:kind==='todo'?'[ ] Первая задача':kind==='spec'?'# Без названия\n\nНачните описывать требования…':kind==='comment'?'Комментарий':kind==='text'?'Текст':kind==='frame'?'Контурный блок':kind==='shape'?'Новый блок':'Новая заметка',...(kind==='table'?{rows:[['Столбец 1','Столбец 2','Столбец 3'],['','',''],['','','']],width:440}:{}),...(kind==='spec'?{width:520,height:420}:{}),...(kind==='frame'?{borderColor:'#7c3aed',borderWidth:2,width:320,height:200}:{}),...(fileId?{fileId}:{}),...(kind==='calendar'?{calendarEvents:[],width:560,height:430}:{}),...(kind==='task-calendar'?{width:620,height:410}:kind==='task-gantt'?{width:1040,height:420}:{}),...extra}));if(objects.value.some(i=>i.id===id)){selected.value=id;return id}}
-async function put(item:Item,data:Item['data']){originalStyles.delete(item.id);await run(()=>send('put',item.id,data,item.revision))}
-function select(item:Item){if(tool.value==='link'&&(item.data.layerGroup||selectedItem.value?.data.layerGroup)){replaceSelection([]);return}if(tool.value==='link'&&selected.value&&selected.value!==item.id){const from=selected.value;void run(()=>send('put',crypto.randomUUID(),{kind:'link',x:0,y:0,from,to:item.id,...lineDefaults}));tool.value='select'}selected.value=item.id}
+async function add(kind:string,fileId?:string,extra:Partial<Item['data']>={}){const id=crypto.randomUUID();await createBoardItem(id,{kind,x:(350-offset.x)/zoom.value,y:(220-offset.y)/zoom.value,text:kind==='todo'?'[ ] Первая задача':kind==='spec'?'# Без названия\n\nНачните описывать требования…':kind==='comment'?'Комментарий':kind==='text'?'Текст':kind==='frame'?'Контурный блок':kind==='shape'?'Новый блок':'Новая заметка',...(kind==='table'?{rows:[['Столбец 1','Столбец 2','Столбец 3'],['','',''],['','','']],width:440}:{}),...(kind==='spec'?{width:520,height:420}:{}),...(kind==='frame'?{borderColor:'#7c3aed',borderWidth:2,width:320,height:200}:{}),...(fileId?{fileId}:{}),...(kind==='calendar'?{calendarEvents:[],width:560,height:430}:{}),...(kind==='task-calendar'?{width:620,height:410}:kind==='task-gantt'?{width:1040,height:420}:{}),...extra});if(objects.value.some(i=>i.id===id)){selected.value=id;return id}}
+async function createBoardItem(id: string, data: Record<string, unknown>) {
+  const scope = undoScope.value
+  if (await run(() => send('put', id, data))) {
+    rememberUndo({ kind: 'create', targets: [changedTarget(id, 0)] }, scope)
+  }
+}
+async function put(item: Item, data: Item['data'], previous = item.data) {
+  const scope = undoScope.value
+  const before = structuredClone(toRaw(originalStyles.get(item.id) ?? previous))
+  const target = changedTarget(item.id, item.revision)
+  originalStyles.delete(item.id)
+  if (JSON.stringify(before) === JSON.stringify(data)) return
+  if (await run(() => send('put', item.id, data, target.beforeRevision))) {
+    rememberUndo({ kind: 'update', targets: [target], before }, scope)
+  }
+}
+function select(item:Item){if(tool.value==='link'&&(item.data.layerGroup||selectedItem.value?.data.layerGroup)){replaceSelection([]);return}if(tool.value==='link'&&selected.value&&selected.value!==item.id){const from=selected.value;void createBoardItem(crypto.randomUUID(),{kind:'link',x:0,y:0,from,to:item.id,...lineDefaults});tool.value='select'}selected.value=item.id}
 let cursorPoint:{x:number;y:number}|null=null
 let cursorChannel:RealtimeChannel|null=null,cursorEpoch=0,realtimeReady=false,stopCursorWatch:(()=>void)|undefined
 async function openCursors(id:string){
@@ -95,18 +207,30 @@ async function openCursors(id:string){
 }
 function heartbeat(){if(!space.value||!cursorPoint||document.visibilityState!=='visible'||cursorChannel?.state!=='joined')return;const name=props.project.members.find(m=>m.userId===auth.user?.id)?.fullName||auth.user?.email||'Участник';void cursorChannel.send({type:'broadcast',event:'cursor',payload:{...cursorPoint,id:session,user_id:auth.user?.id,name}})}
 let drag:{id:string;x:number;y:number;ox:number;oy:number;moved:boolean;children?:{id:string;x:number;y:number}[]}|null=null,lastCursor=0,cursorTimer:ReturnType<typeof setTimeout>|undefined
-function down(e:PointerEvent,item?:Item){stopCameraTransition();if(!typingTarget(e.target)){e.preventDefault();window.getSelection()?.removeAllRanges()}if(item&&tool.value==='select'&&!e.altKey)item=outerLayerGroup(item);if(e.button!==0&&e.button!==1)return;if(!spaceHeld.value&&['pen','highlighter','eraser'].includes(tool.value)){startInk(e);return}if(!spaceHeld.value&&e.button===0&&editable.value&&['comment','text'].includes(tool.value)){const kind=tool.value,p=point(e);tool.value='select';void add(kind,undefined,p).then(id=>{if(!id)return;if(kind==='comment')pinnedComment.value=id;else{editing.value=id;draft.value='Текст'}});return}if(!item){pinnedComment.value='';hoveredComment.value=''};if(!item&&tool.value==='select'&&!spaceHeld.value&&e.button===0){const p=point(e);boxSelection.value={x:p.x,y:p.y,endX:p.x,endY:p.y,add:e.shiftKey,base:e.shiftKey?[...selection.value]:[]};if(!e.shiftKey)replaceSelection([]);(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);return}if(item&&tool.value!=='hand'&&!spaceHeld.value&&e.button!==1){if(tool.value==='select'){clickSelect(item,e.shiftKey);if(e.shiftKey)return}else select(item);if(!editable.value||tool.value==='hand'||editing.value===item.id||tool.value==='link')return}else if(!spaceHeld.value&&tool.value!=='hand'&&e.button!==1)selected.value='';drag={id:tool.value==='hand'||spaceHeld.value||e.button===1?'':item?.id||'',x:e.clientX,y:e.clientY,ox:tool.value==='hand'||spaceHeld.value||e.button===1?offset.x:item?.data.x??offset.x,oy:tool.value==='hand'||spaceHeld.value||e.button===1?offset.y:item?.data.y??offset.y,moved:false};if(item?.data.kind==='frame'&&drag.id)drag.children=layerDescendants(item.id).map(child=>({id:child.id,x:child.data.x,y:child.data.y}));(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)}
+function down(e:PointerEvent,item?:Item){stopCameraTransition();if(!typingTarget(e.target)){e.preventDefault();window.getSelection()?.removeAllRanges()}if(item&&tool.value==='select'&&!e.altKey)item=outerLayerGroup(item);if(e.button!==0&&e.button!==1)return;if(!spaceHeld.value&&['pen','highlighter','eraser'].includes(tool.value)){startInk(e);return}if(!spaceHeld.value&&e.button===0&&editable.value&&['comment','text'].includes(tool.value)){const kind=tool.value,p=point(e);tool.value='select';void add(kind,undefined,p).then(id=>{if(!id)return;if(kind==='comment')pinnedComment.value=id;else{editing.value=id;draft.value='Текст'}});return}if(!item){pinnedComment.value='';hoveredComment.value=''};if(!item&&tool.value==='select'&&!spaceHeld.value&&e.button===0){const p=point(e);boxSelection.value={x:p.x,y:p.y,endX:p.x,endY:p.y,add:e.shiftKey,base:e.shiftKey?[...selection.value]:[]};if(!e.shiftKey)replaceSelection([]);(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);return}if(item&&tool.value!=='hand'&&!spaceHeld.value&&e.button!==1){if(tool.value==='select'){clickSelect(item,e.shiftKey);if(e.shiftKey)return}else select(item);if(!editable.value||busy.value||tool.value==='hand'||editing.value===item.id||tool.value==='link')return;if(nudgePositions.size){void flushNudge();return}}else if(!spaceHeld.value&&tool.value!=='hand'&&e.button!==1)selected.value='';drag={id:tool.value==='hand'||spaceHeld.value||e.button===1?'':item?.id||'',x:e.clientX,y:e.clientY,ox:tool.value==='hand'||spaceHeld.value||e.button===1?offset.x:item?.data.x??offset.x,oy:tool.value==='hand'||spaceHeld.value||e.button===1?offset.y:item?.data.y??offset.y,moved:false};if(item?.data.kind==='frame'&&drag.id)drag.children=layerDescendants(item.id).map(child=>({id:child.id,x:child.data.x,y:child.data.y}));(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)}
 function move(e:PointerEvent){if(!space.value)return;const p=point(e);cursorPoint=p;if(Date.now()-lastCursor>60){lastCursor=Date.now();heartbeat()}else if(!cursorTimer){cursorTimer=setTimeout(()=>{cursorTimer=undefined;lastCursor=Date.now();heartbeat()},60)}if(boxSelection.value){boxSelection.value.endX=p.x;boxSelection.value.endY=p.y;updateBox();return}if(inkDraft.value){const data=inkDraft.value,points=data.points!,last=points[points.length-1]!,next:[number,number]=[p.x-data.x,p.y-data.y];if(points.length<3000&&Math.hypot(next[0]-last[0],next[1]-last[1])>1/zoom.value)points.push(next);return}if(erasing.value){eraseAt(p);return}if(resizing){resizeMove(e);return}if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.moved ||= Math.abs(dx)+Math.abs(dy)>3;if(drag.id){const item=objects.value.find(i=>i.id===drag!.id);if(item){item.data.x=drag.ox+dx/zoom.value;item.data.y=drag.oy+dy/zoom.value;for(const start of drag.children||[]){const child=layers.value.byId.get(start.id);if(child){child.data.x=start.x+dx/zoom.value;child.data.y=start.y+dy/zoom.value}}}}else{offset.x=drag.ox+dx;offset.y=drag.oy+dy}}
-function up(){if(boxSelection.value){updateBox();boxSelection.value=null;return}if(inkDraft.value||erasing.value){void finishInk();return}if(resizing){const r=resizing;resizing=null;const item=objects.value.find(i=>i.id===r.id);if(item&&r.moved)void put(item,{...item.data});return}const d=drag;drag=null;if(d?.moved)lastDragEnd=Date.now();if(d?.id&&d.moved){const item=objects.value.find(i=>i.id===d.id);if(item)void finishLayerDrag(item,d.children?.map(child=>child.id)??[])}}
+function up(){if(boxSelection.value){updateBox();boxSelection.value=null;return}if(inkDraft.value||erasing.value){void finishInk();return}if(resizing){const r=resizing;resizing=null;const item=objects.value.find(i=>i.id===r.id);if(item&&r.moved)void put(item,{...item.data},r.before);return}const d=drag;drag=null;if(d?.moved)lastDragEnd=Date.now();if(d?.id&&d.moved){const item=objects.value.find(i=>i.id===d.id);if(item)void finishLayerDrag(item, [{id:item.id,x:d.ox,y:d.oy}, ...(d.children||[])])}}
 function wheel(e:WheelEvent){stopCameraTransition();const p=point(e),r=canvas.value!.getBoundingClientRect();zoom.value=Math.max(.15,Math.min(3,zoom.value*Math.exp(-e.deltaY*.001)));offset.x=e.clientX-r.left-p.x*zoom.value;offset.y=e.clientY-r.top-p.y*zoom.value}
 const draftTodos=ref<{text:string;done:boolean}[]>([])
 function edit(item:Item){if(item.data.kind==='space'){if(spaces.value.some(s=>s.id===item.data.targetSpace))void choose(item.data.targetSpace!,true);return}if(!editable.value||['image','document','table','comment','task','password','chat','person','stroke','subscription','calendar','task-calendar','task-gantt'].includes(item.data.kind))return;editing.value=item.id;draft.value=item.data.text||'';if(item.data.kind==='todo')draftTodos.value=(item.data.text||'').split('\n').map(line=>({text:line.replace(/^\[[ x]\]\s*/,''),done:line.startsWith('[x]')}))}
 async function saveEdit(item:Item){const text=item.data.kind==='todo'?draftTodos.value.map(row=>(row.done?'[x] ':'[ ] ')+row.text).join('\n'):draft.value;editing.value='';await put(item,{...item.data,text})}
 function file(item:Item){return item.data.assetId?assets.value.find(f=>f.id===item.data.assetId):docs.query.data.value?.find(f=>f.id===item.data.fileId)}
 async function fileContent(f:ProjectDocument){return assets.value.some(a=>a.id===f.id)?sharedRequest<Blob>(`${base}/${space.value}/files/${f.id}`,{responseType:'blob'}):docs.content(f)}
-async function open(item: Item, download = false) {
+async function open(item: Item, download = false, inEditor = false) {
   const fileToOpen = file(item)
   if (!fileToOpen) return
+  if (!download && !inEditor && isImage(item)) {
+    resetKeys()
+    imagePreview.value = { file: fileToOpen, item }
+    return
+  }
+  if (!download && !inEditor && isPreviewDocument(item)) {
+    resetKeys()
+    officePreview.value = { file: fileToOpen, item }
+    return
+  }
+  imagePreview.value = null
+  officePreview.value = null
   await run(async () => {
     if (download || !documentEditor(fileToOpen.name)) {
       await saveFile(await fileContent(fileToOpen), fileToOpen.name)
@@ -120,8 +244,57 @@ async function open(item: Item, download = false) {
     }
   })
 }
-function isImage(item:Item){const f=file(item);return item.data.kind==='image'||!!f&&(/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(f.name)||f.type.startsWith('image/'))}
-async function loadImages(){for(const item of objects.value.filter(i=>isImage(i))){const f=file(item);if(f&&!images.value[f.id]){try{images.value[f.id]=URL.createObjectURL(await fileContent(f))}catch{}}}}
+function isImage(item: Item) {
+  const attachment = file(item)
+  return item.data.kind === 'image' || !!attachment && (canPreviewProjectImage(attachment.name) || attachment.type.startsWith('image/'))
+}
+function imageSource(item: Item) {
+  if (!isImage(item) || item.data.showContent === false) return undefined
+  return images.value[file(item)?.id || '']
+}
+function hideFailedImage(item: Item, event: Event) {
+  const attachment = file(item)
+  const source = (event.currentTarget as HTMLImageElement).src
+  if (!attachment || images.value[attachment.id] !== source) return
+  URL.revokeObjectURL(source)
+  images.value[attachment.id] = ''
+}
+function isPreviewDocument(item: Item) {
+  const attachment = file(item)
+  const editor = attachment && documentEditor(attachment.name)?.key
+  return editor === 'gridcraft' || editor === 'wordcraft' || editor === 'pdfcraft'
+}
+function hasFileDisplayOptions(item: Item) {
+  return isImage(item) || isPreviewDocument(item)
+}
+function fileContentOnly(item: Item) {
+  return item.data.showContent !== false && (item.data.contentOnly ?? item.data.imageOnly === true)
+}
+function fileDisplay(item: Item) {
+  if (item.data.showContent === false) return 'filename'
+  return fileContentOnly(item) ? 'content' : 'card'
+}
+function setFileDisplay(mode: string) {
+  styleSelected({ showContent: mode !== 'filename', contentOnly: mode === 'content' })
+  if (mode !== 'filename') void loadThumbnails()
+}
+const loadingImages = new Set<string>()
+async function loadImages() {
+  for (const item of objects.value.filter(isImage)) {
+    const attachment = file(item)
+    if (!attachment || Object.hasOwn(images.value, attachment.id) || loadingImages.has(attachment.id)) continue
+    loadingImages.add(attachment.id)
+    try {
+      const blob = await fileContent(attachment)
+      const preview = await projectImagePreview(blob, attachment.name, attachment.type)
+      if (!disposed) images.value[attachment.id] = URL.createObjectURL(preview)
+    } catch {
+      // Keep the filename and file actions available when the preview cannot be decoded.
+    } finally {
+      loadingImages.delete(attachment.id)
+    }
+  }
+}
 watch(docs.query.data,()=>void loadImages())
 async function upload(e:Event){pendingFile.value=(e.target as HTMLInputElement).files?.[0]||null;(e.target as HTMLInputElement).value=''; }
 const attaching=ref(false)
@@ -156,7 +329,7 @@ const inkColor=ref('#334155'),inkWidth=ref(3),inkDraft=ref<Item['data']|null>(nu
 function inkPath(data:Item['data']){return (data.points||[]).map((point,index)=>`${index?'L':'M'}${point[0]},${point[1]}`).join(' ')}
 function startInk(e:PointerEvent){if(!editable.value||busy.value||e.button!==0)return;const p=point(e);if(tool.value==='eraser'){erasing.value=true;eraseAt(p)}else inkDraft.value={kind:'stroke',x:p.x,y:p.y,points:[[0,0],[.01,.01]],color:inkColor.value,strokeWidth:tool.value==='highlighter'?Math.max(12,inkWidth.value*4):inkWidth.value,opacity:tool.value==='highlighter'?.3:1};canvas.value?.setPointerCapture(e.pointerId)}
 function eraseAt(p:{x:number;y:number}){for(const item of visibleObjects.value.filter(i=>i.data.kind==='stroke'&&!erased.value.has(i.id))){if(erased.value.size>=100)break;const points=item.data.points||[],local:[number,number]=[p.x-item.data.x,p.y-item.data.y],radius=12/zoom.value+(item.data.strokeWidth||3)/2;if(points.some((a,index)=>inkDistance(local,a,points[index+1]||a)<=radius))erased.value.add(item.id)}}
-async function finishInk(){const data=inkDraft.value;inkDraft.value=null;if(data){await run(()=>send('put',crypto.randomUUID(),data));return}if(erasing.value){erasing.value=false;const ids=[...erased.value];if(ids.length)await run(()=>sharedRequest(`${base}/erase?space=${space.value}`,{method:'POST',body:{ids}}));erased.value=new Set()}}
+async function finishInk(){const data=inkDraft.value;inkDraft.value=null;if(data){await createBoardItem(crypto.randomUUID(),data);return}if(erasing.value){erasing.value=false;const ids=[...erased.value];if(ids.length && await run(()=>sharedRequest(`${base}/erase?space=${space.value}`,{method:'POST',body:{ids}})))stopUndoHistory();erased.value=new Set()}}
 type CalendarEvent={id:string;title:string;start:string;end:string;color:string;type:'event'|'range'}
 const subscriptions=ref<{source:any;title:string;sourceName:string;subscription:any}[]>([]),subCreating=ref(false),subForm=reactive({title:'',price:0,currency:'RUB',periodCount:1,periodUnit:'month',startsOn:new Date().toISOString().slice(0,10),paidUntil:new Date(Date.now()+30*86400000).toISOString().slice(0,10)})
 async function loadSubscriptions(){try{subscriptions.value=await sharedRequest(`${base}/subscriptions?space=${space.value}`)}catch{subscriptions.value=[]}}
@@ -172,38 +345,186 @@ function openCalendar(item:Item,day?:string){if(!editable.value)return;calendarE
 const calendarEventForm=ref<HTMLFormElement>()
 function addEvent(){if(!eventForm.title.trim()||!eventForm.start||!eventForm.end||eventForm.end<eventForm.start){calendarError.value='Укажите название и корректный интервал';return}calendarDraft.value.push({id:crypto.randomUUID(),title:eventForm.title.trim(),start:new Date(eventForm.start).toISOString(),end:new Date(eventForm.end).toISOString(),color:eventForm.color,type:eventForm.type});eventForm.title='';calendarError.value=''}
 async function applyCalendar(){const item=calendarEditing.value;if(!item)return;if(eventForm.title.trim()){if(!calendarEventForm.value?.reportValidity())return;addEvent();if(calendarError.value)return}await put(item,{...item.data,calendarEvents:calendarDraft.value});if(!error.value)calendarEditing.value=null}
-type Thumbnail={kind:string;src?:string;rows?:string[][]}
-const thumbnails=ref<Record<string,Thumbnail>>({}),thumbnailLoading=new Set<string>(),transferInput=ref<HTMLInputElement>()
-let thumbnailsBusy=false
-async function loadThumbnails(){if(thumbnailsBusy)return;thumbnailsBusy=true;try{for(const item of objects.value.filter(i=>i.data.kind==='document'&&!isImage(i)&&i.data.showContent!==false)){const f=file(item);if(!f||thumbnails.value[f.id]||thumbnailLoading.has(f.id))continue;thumbnailLoading.add(f.id);try{thumbnails.value[f.id]=await sharedRequest<Thumbnail>(`${base}/thumbnail?space=${space.value}&file=${f.id}&asset=${!!item.data.assetId}`)}catch{thumbnails.value[f.id]={kind:'unavailable'}}finally{thumbnailLoading.delete(f.id)}}}finally{thumbnailsBusy=false}}
-function retryThumbnail(item:Item){const f=file(item);if(f){delete thumbnails.value[f.id];void loadThumbnails()}}
+const thumbnails = ref<Record<string, SpaceFileThumbnail>>({})
+const thumbnailLoading = reactive(new Set<string>())
+const spreadsheetSheets = ref<Record<string, string[]>>({})
+const transferInput = ref<HTMLInputElement>()
+
+function spreadsheetOptions(item: Item, attachment = file(item)): SpaceSpreadsheetPreview | undefined {
+  if (attachment && documentEditor(attachment.name)?.key === 'gridcraft') {
+    return item.data.spreadsheetPreview ?? spaceSpreadsheetPreviewDefaults
+  }
+}
+function spreadsheetFileKey(attachment: ProjectDocument) {
+  return `${attachment.id}:${attachment.revision}`
+}
+function sheetNames(item: Item) {
+  const attachment = file(item)
+  return attachment ? spreadsheetSheets.value[spreadsheetFileKey(attachment)] : undefined
+}
+function selectedSheet(item: Item) {
+  const sheet = spreadsheetOptions(item)?.sheet
+  const names = sheetNames(item)
+  return names?.find(name => name === sheet) ?? names?.[0] ?? ''
+}
+function setSpreadsheetSheet(item: Item, sheet: string) {
+  if (sheetNames(item)?.includes(sheet)) {
+    styleSelected({ spreadsheetPreview: { ...spreadsheetOptions(item)!, sheet } })
+  }
+}
+function setSpreadsheetSize(item: Item, dimension: 'rows' | 'columns', event: Event) {
+  const input = event.currentTarget as HTMLInputElement
+  const options = spreadsheetOptions(item)!
+  const value = input.valueAsNumber
+  if (!Number.isInteger(value) || !input.validity.valid) {
+    input.value = String(options[dimension])
+    return
+  }
+  styleSelected({ spreadsheetPreview: { ...options, [dimension]: value } })
+}
+function thumbnailKey(item: Item, attachment = file(item)) {
+  if (!attachment) return
+  const options = spreadsheetOptions(item, attachment)
+  const fileKey = spreadsheetFileKey(attachment)
+  return options ? JSON.stringify([fileKey, options.sheet ?? '', options.rows, options.columns]) : fileKey
+}
+function fileThumbnail(item: Item) {
+  if (item.data.kind !== 'document' || isImage(item) || item.data.showContent === false) return
+  return thumbnails.value[thumbnailKey(item) ?? '']
+}
+function hasBoardFileContent(item: Item) {
+  const thumbnail = fileThumbnail(item)
+  return !!imageSource(item) || thumbnail?.kind === 'image' || thumbnail?.kind === 'cells'
+}
+function fetchThumbnail(item: Item, attachment: ProjectDocument, detail = false, signal?: AbortSignal) {
+  const params = new URLSearchParams({ space: space.value, file: attachment.id, asset: String(!!item.data.assetId) })
+  if (detail) params.set('detail', 'true')
+  const options = spreadsheetOptions(item, attachment)
+  if (options) {
+    if (options.sheet) params.set('sheet', options.sheet)
+    params.set('rows', String(options.rows))
+    params.set('columns', String(options.columns))
+  }
+  return sharedRequest<SpaceFileThumbnail>(`${base}/thumbnail?${params}`, { signal })
+}
+let thumbnailsBusy = false
+let thumbnailsQueued = false
+async function loadThumbnails() {
+  if (!space.value || disposed) return
+  if (thumbnailsBusy) {
+    thumbnailsQueued = true
+    return
+  }
+  thumbnailsBusy = true
+  thumbnailsQueued = false
+  const scope = undoScope.value
+  const activeKeys = new Set<string>()
+  try {
+    for (const item of objects.value) {
+      if (scope !== undoScope.value || disposed) break
+      if (item.data.kind !== 'document' || isImage(item)) continue
+      const attachment = file(item)
+      const key = thumbnailKey(item, attachment)
+      if (!attachment || !key) continue
+      if (item.data.showContent === false && !(selected.value === item.id && spreadsheetOptions(item, attachment))) continue
+      activeKeys.add(key)
+      if (thumbnails.value[key]) continue
+
+      thumbnailLoading.add(key)
+      try {
+        const thumbnail = await fetchThumbnail(item, attachment)
+        if (scope !== undoScope.value || disposed) break
+        thumbnails.value[key] = thumbnail
+        if (thumbnail.kind === 'cells') spreadsheetSheets.value[spreadsheetFileKey(attachment)] = thumbnail.sheets
+      } catch {
+        if (scope === undoScope.value && !disposed) thumbnails.value[key] = { kind: 'unavailable' }
+      } finally {
+        thumbnailLoading.delete(key)
+      }
+    }
+    if (scope === undoScope.value && !thumbnailsQueued) {
+      for (const key of Object.keys(thumbnails.value)) if (!activeKeys.has(key)) delete thumbnails.value[key]
+    }
+  } finally {
+    thumbnailsBusy = false
+    if (thumbnailsQueued || scope !== undoScope.value) void loadThumbnails()
+  }
+}
+function retryThumbnail(item: Item) {
+  const key = thumbnailKey(item)
+  if (!key) return
+  delete thumbnails.value[key]
+  void loadThumbnails()
+}
+watch(docs.query.data, () => void loadThumbnails())
+watch(undoScope, () => {
+  thumbnails.value = {}
+  spreadsheetSheets.value = {}
+}, { flush: 'sync' })
+watch(() => {
+  const item = selectedItem.value
+  return item && spreadsheetOptions(item) ? JSON.stringify([item.id, thumbnailKey(item)]) : null
+}, () => void loadThumbnails())
+watch(officePreview, async (preview, _, onCleanup) => {
+  officePreviewContent.value = null
+  if (!preview) return
+  const controller = new AbortController()
+  onCleanup(() => controller.abort())
+  try {
+    const thumbnail = await fetchThumbnail(preview.item, preview.file, true, controller.signal)
+    if (!controller.signal.aborted) officePreviewContent.value = thumbnail
+  } catch (error: any) {
+    if (!controller.signal.aborted) {
+      const cached = error?.statusCode === 503 ? thumbnails.value[thumbnailKey(preview.item, preview.file) ?? ''] : undefined
+      officePreviewContent.value = cached ?? { kind: 'unavailable' }
+    }
+  }
+})
 async function exportSpace(){await run(async()=>{const blob=await sharedRequest<Blob>(`${base}/export?space=${space.value}`,{responseType:'blob'});await saveFile(blob,`${currentSpace.value?.name||'space'}.zip`)})}
 async function importSpace(e:Event){const f=(e.target as HTMLInputElement).files?.[0];if(!f)return;await run(async()=>{const body=new FormData();body.append('file',f);const result=await sharedRequest<{id:string}>(`${base}/import${space.value?'?space='+space.value:''}`,{method:'POST',body});if(result.id!==space.value)await choose(result.id);else await load()});(e.target as HTMLInputElement).value=''}
 const tooltip=ref<{text:string;left:number;bottom:number}|null>(null)
 function hudHover(e:Event){const button=(e.target as HTMLElement).closest<HTMLButtonElement>('button[data-tip]');if(!button||button.disabled){tooltip.value=null;return}const rect=button.getBoundingClientRect(),shell=canvas.value?.parentElement?.getBoundingClientRect();if(shell)tooltip.value={text:button.dataset.tip||'',left:Math.max(80,Math.min(rect.left-shell.left+rect.width/2,shell.width-80)),bottom:shell.bottom-rect.top+12}}
-let resizing:{id:string;corner:string;pointerX:number;pointerY:number;x:number;y:number;width:number;height:number;moved:boolean}|null=null
-function resizeStart(e:PointerEvent,item:Item,corner:string){if(!editable.value||busy.value||e.button!==0)return;if(spaceHeld.value){down(e);return}selected.value=item.id;drag=null;resizing={id:item.id,corner,pointerX:e.clientX,pointerY:e.clientY,x:item.data.x,y:item.data.y,width:item.data.width||(e.currentTarget as HTMLElement).closest('article')?.offsetWidth||220,height:item.data.height||(e.currentTarget as HTMLElement).closest('article')?.offsetHeight||110,moved:false};(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)}
+let resizing:{id:string;corner:string;pointerX:number;pointerY:number;x:number;y:number;width:number;height:number;moved:boolean;before:Item['data']}|null=null
+function resizeStart(e:PointerEvent,item:Item,corner:string){if(!editable.value||busy.value||e.button!==0)return;if(spaceHeld.value){down(e);return}selected.value=item.id;drag=null;resizing={id:item.id,corner,pointerX:e.clientX,pointerY:e.clientY,x:item.data.x,y:item.data.y,width:item.data.width||(e.currentTarget as HTMLElement).closest('article')?.offsetWidth||220,height:item.data.height||(e.currentTarget as HTMLElement).closest('article')?.offsetHeight||110,moved:false,before:structuredClone(toRaw(item.data))};(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)}
 function resizeMove(e:PointerEvent){const r=resizing,item=objects.value.find(i=>i.id===r?.id);if(!r||!item)return;const dx=(e.clientX-r.pointerX)/zoom.value,dy=(e.clientY-r.pointerY)/zoom.value;r.moved ||= Math.abs(dx)+Math.abs(dy)>1;Object.assign(item.data,resizeFrame(r,r.corner,dx,dy,item.data.kind==='frame'?Infinity:2000))}
-let nudgeItem:Item|undefined,nudgeTimer:ReturnType<typeof setTimeout>|undefined
-async function flushNudge(){
+type BoardPosition = { id: string; x: number; y: number }
+const nudgePositions = new Map<string, BoardPosition>()
+let nudgeTimer: ReturnType<typeof setTimeout> | undefined
+async function flushNudge() {
   clearTimeout(nudgeTimer)
-  const item=nudgeItem
-  nudgeItem=undefined
-  if(!item)return
-  const children=item.data.kind==='frame'?layerDescendants(item.id):[]
-  if(!children.length){await put(item,{...item.data});return}
-  await saveLayers([], [item,...children].filter(child=>child.data.kind!=='link')
-    .map(({id,revision,data:{x,y}})=>({id,revision,x,y})))
+  if (!nudgePositions.size) return
+  const before = new Map(nudgePositions)
+  nudgePositions.clear()
+  const moved = objects.value.filter(({ id, data }) => {
+    const position = before.get(id)
+    return position && (position.x !== data.x || position.y !== data.y)
+  }).map(({ id, revision, data: { x, y } }) => ({ id, revision, x, y }))
+  await saveLayers([], moved, before)
 }
 function typingTarget(target:EventTarget|null){return target instanceof HTMLElement&&!!target.closest('input,textarea,select,[contenteditable=true],[role=textbox]')}
 function resetKeys(){spaceHeld.value=false}
 function keyUp(e:KeyboardEvent){if(e.code==='Space')spaceHeld.value=false}
 function keyboard(e:KeyboardEvent){
- if(e.defaultPrevented)return
+ if(e.defaultPrevented||imagePreview.value||officePreview.value)return
  if(e.code==='Tab'&&fullscreen.value&&!settingsOpen.value&&!groupDialog.value){headerArmed=true;headerOpen.value=true}
  if(groupDialog.value||taskPicker.value||resourcePanel.value||calendarEditing.value||pendingFile.value||settingsOpen.value)return
  if(space.value&&(e.ctrlKey||e.metaKey)&&e.code==='KeyF'){e.preventDefault();layerPanel.value?.focusSearch();return}
  if(typingTarget(e.target))return
+ if (space.value && e.code === 'KeyZ' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey
+   && serviceTabs.activeId === workspaceTabId
+   && !(e.target instanceof Element && e.target.closest('[role="dialog"]'))) {
+   if (!editable.value) return
+   e.preventDefault()
+   if (!e.repeat) void undoBoardChange()
+   return
+ }
+ if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey
+   && serviceTabs.activeId === workspaceTabId && root.value?.getClientRects().length
+   && !(e.target instanceof Element && e.target.closest('[role="dialog"]'))) {
+   e.preventDefault()
+   if (!e.repeat) void toggleFullscreen()
+   return
+ }
  if(e.code==='Space'&&e.target instanceof Element&&e.target.closest('.layer-visibility:focus-visible'))return
  if(space.value&&e.code==='Space'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){
    e.preventDefault()
@@ -226,11 +547,11 @@ function keyboard(e:KeyboardEvent){
  if(e.code==='KeyV'){tool.value='select';return}if(e.code==='KeyH'){tool.value='hand';return}
  if(!editable.value||busy.value||drag||resizing)return
  if(e.code==='Delete'||e.code==='Backspace'){if(selectedRows.value.length){e.preventDefault();void groupAction('delete');pinnedComment.value=''}return}
- if(e.code.startsWith('Arrow')&&selectedItem.value){e.preventDefault();const item=selectedItem.value,step=e.shiftKey?10:1;const dx=e.code==='ArrowRight'?step:e.code==='ArrowLeft'?-step:0,dy=e.code==='ArrowDown'?step:e.code==='ArrowUp'?-step:0;for(const child of [item,...layerDescendants(item.id)]){child.data.x+=dx;child.data.y+=dy}nudgeItem=item;clearTimeout(nudgeTimer);nudgeTimer=setTimeout(()=>void flushNudge(),350);return}
+ if(e.code.startsWith('Arrow')&&selectedItem.value){e.preventDefault();const item=selectedItem.value,step=e.shiftKey?10:1;const dx=e.code==='ArrowRight'?step:e.code==='ArrowLeft'?-step:0,dy=e.code==='ArrowDown'?step:e.code==='ArrowUp'?-step:0;for(const child of [item,...layerDescendants(item.id)]){if(child.data.kind==='link')continue;if(!nudgePositions.has(child.id))nudgePositions.set(child.id,{id:child.id,x:child.data.x,y:child.data.y});child.data.x+=dx;child.data.y+=dy}clearTimeout(nudgeTimer);nudgeTimer=setTimeout(()=>void flushNudge(),350);return}
  if(e.repeat)return
  if(e.code==='KeyT')tool.value='text';else if(e.code==='KeyC')tool.value='comment';else if(e.code==='KeyN')void add('note');else if(e.code==='KeyR')void add('frame');else if(e.code==='KeyL')tool.value='link';else if(e.code==='KeyB')tool.value='pen';else if(e.code==='KeyM')tool.value='highlighter';else if(e.code==='KeyE')tool.value='eraser';else if(e.code==='Enter'&&selectedItem.value){e.preventDefault();edit(selectedItem.value)}
 }
-function nodeStyle(item:Item){return{zIndex:layers.value.z.get(item.id),left:item.data.x+'px',top:item.data.y+'px',width:(item.data.width||(['table','spec'].includes(item.data.kind)?440:220))+'px',minHeight:(item.data.height||110)+'px',fontSize:(item.data.fontSize||14)+'px',fontFamily:item.data.fontFamily==='serif'?'Georgia,serif':item.data.fontFamily==='mono'?'monospace':'inherit',fontWeight:item.data.fontWeight||'normal',color:item.data.textColor||'#334155',background:item.data.kind==='frame'?'transparent':item.data.color||(item.data.kind==='shape'&&['diamond','triangle','hexagon'].includes(item.data.shape||'')?'#dbeafe':item.data.kind==='note'?'#fff3ae':'white'),...(item.data.kind==='frame'?{borderColor:item.data.borderColor||'#7c3aed',borderWidth:(item.data.borderWidth||2)+'px',boxShadow:'none',height:(item.data.height||200)+'px',padding:0}:{}),...(item.data.kind==='text'?{background:'transparent',border:0,boxShadow:'none',padding:'4px',minHeight:'32px'}:{}),...(item.data.kind==='comment'?{width:'32px',height:'32px',minHeight:'32px',border:0,background:'transparent',padding:0,boxShadow:'none'}:{})}}
+function nodeStyle(item:Item){return{zIndex:layers.value.z.get(item.id),left:item.data.x+'px',top:item.data.y+'px',width:(item.data.width||(['table','spec'].includes(item.data.kind)?440:220))+'px',minHeight:(item.data.height||110)+'px','--board-card-height':item.data.height ? item.data.height+'px' : undefined,fontSize:(item.data.fontSize||14)+'px',fontFamily:item.data.fontFamily==='serif'?'Georgia,serif':item.data.fontFamily==='mono'?'monospace':'inherit',fontWeight:item.data.fontWeight||'normal',color:item.data.textColor||'#334155',background:item.data.kind==='frame'?'transparent':item.data.color||(item.data.kind==='shape'&&['diamond','triangle','hexagon'].includes(item.data.shape||'')?'#dbeafe':item.data.kind==='note'?'#fff3ae':'white'),...(item.data.kind==='frame'?{borderColor:item.data.borderColor||'#7c3aed',borderWidth:(item.data.borderWidth||2)+'px',boxShadow:'none',height:(item.data.height||200)+'px',padding:0}:{}),...(item.data.kind==='text'?{background:'transparent',border:0,boxShadow:'none',padding:'4px',minHeight:'32px'}:{}),...(item.data.kind==='comment'?{width:'32px',height:'32px',minHeight:'32px',border:0,background:'transparent',padding:0,boxShadow:'none'}:{})}}
 
 function ends(item:Item){
  const a=objects.value.find(i=>i.id===item.data.from),b=objects.value.find(i=>i.id===item.data.to);if(!a||!b)return null
@@ -366,11 +687,52 @@ function frameContains(frame: Item, x: number, y: number) {
   const bounds = itemBounds(frame)
   return x >= bounds.x && y >= bounds.y && x <= bounds.x + bounds.width && y <= bounds.y + bounds.height
 }
-async function saveLayers(changes: SpaceLayerChange[], movedItems: SpaceLayerChange[] = []) {
+function writeLayers(changes: SpaceLayerChange[]) {
+  return sharedRequest(`${base}/layers?space=${space.value}`, { method: 'POST', body: { changes } })
+}
+async function saveLayers(
+  changes: SpaceLayerChange[],
+  movedItems: SpaceLayerChange[] = [],
+  previousPositions = new Map<string, BoardPosition>()
+) {
   const patch = new Map(changes.map(change => [change.id, change]))
   for (const moved of movedItems) patch.set(moved.id, { ...patch.get(moved.id), ...moved })
   if (!patch.size) return
-  await run(() => sharedRequest(`${base}/layers?space=${space.value}`, { method: 'POST', body: { changes: [...patch.values()] } }))
+
+  const scope = undoScope.value
+  const before: SpaceLayerChange[] = []
+  const targets: UndoTarget[] = []
+  for (const change of patch.values()) {
+    const item = layers.value.byId.get(change.id)
+    if (!item) continue
+    const position = previousPositions.get(change.id) ?? item.data
+    before.push({
+      id: change.id,
+      revision: change.revision,
+      ...(change.x !== undefined ? { x: position.x } : {}),
+      ...(change.y !== undefined ? { y: position.y } : {}),
+      ...(change.parentId !== undefined ? { parentId: item.data.parentId ?? null } : {}),
+      ...(change.layerOrder !== undefined ? { layerOrder: item.data.layerOrder ?? 1 } : {}),
+      ...(change.layerHidden !== undefined ? { layerHidden: item.data.layerHidden ?? false } : {})
+    })
+    targets.push(changedTarget(change.id, change.revision))
+  }
+  const written = await run(async () => {
+    await writeLayers([...patch.values()])
+    if (scope !== undoScope.value) return
+    for (const { id, revision, parentId, ...values } of patch.values()) {
+      const original = originalStyles.get(id)
+      const item = layers.value.byId.get(id)
+      if (!original || !item || item.revision !== revision) continue
+      for (const data of [original, item.data]) {
+        Object.assign(data, values)
+        if (parentId === null) delete data.parentId
+        else if (parentId !== undefined) data.parentId = parentId
+      }
+      item.revision = revision + 1
+    }
+  })
+  if (written && targets.length === patch.size) rememberUndo({ kind: 'layers', targets, before }, scope)
 }
 async function toggleLayerVisibility(id: string) {
   if (!editable.value || busy.value) return
@@ -436,24 +798,24 @@ async function changeLayerGroup(ungroup: boolean) {
   }
   await run(async () => {
     await sharedRequest(`${base}/layers?space=${space.value}`, { method: 'POST', body: { changes, ...operation } })
+    stopUndoHistory()
     replaceSelection(nextSelection)
   })
 }
-async function finishLayerDrag(item: Item, children: string[]) {
+async function finishLayerDrag(item: Item, previous: BoardPosition[]) {
   const bounds = itemBounds(item)
-  const excluded = new Set([item.id, ...children])
+  const excluded = new Set(previous.map(position => position.id))
   const currentParent = layers.value.parents.get(item.id) ?? null
   const candidates = layers.value.rows.filter(({ item: frame }) => frame.data.kind === 'frame' && !frame.data.layerGroup && !hiddenLayers.value.has(frame.id)
     && !excluded.has(frame.id) && frameContains(frame, bounds.x + bounds.width / 2, bounds.y + bounds.height / 2))
   const geometricParent = candidates.sort((a, b) => (layers.value.z.get(b.item.id) ?? 0) - (layers.value.z.get(a.item.id) ?? 0))[0]?.item.id ?? null
   const parent = currentParent && layers.value.byId.get(currentParent)?.data.layerGroup ? currentParent : geometricParent
   const changed = parent !== currentParent
-  if (!children.length && !changed) return put(item, { ...item.data })
   const changes = changed ? moveSpaceLayer(layers.value, item.id, parent, parent ? 'inside' : 'root') : []
-  const positionChanges = [item, ...children.flatMap(id => layers.value.byId.get(id) ?? [])]
+  const positionChanges = previous.flatMap(({ id }) => layers.value.byId.get(id) ?? [])
     .filter(current => current.data.kind !== 'link')
     .map(current => ({ id: current.id, revision: current.revision, x: current.data.x, y: current.data.y }))
-  await saveLayers(changes, positionChanges)
+  await saveLayers(changes, positionChanges, new Map(previous.map(position => [position.id, position])))
 }
 onMounted(async()=>{
  document.addEventListener('fullscreenchange',fullscreenChanged);document.addEventListener('keydown',keyboard);document.addEventListener('keyup',keyUp);window.addEventListener('blur',resetKeys)
@@ -471,12 +833,12 @@ onMounted(async()=>{
  .subscribe(status=>{connected.value=status==='SUBSCRIBED';if(connected.value)queue()})
  let ticks=0;timer=setInterval(()=>{now.value=Date.now();heartbeat();cursors.value=cursors.value.filter(c=>now.value-new Date(c.updated_at).getTime()<15000);if(++ticks%3===0&&!connected.value&&!drag&&!editing.value&&document.visibilityState==='visible')queue()},5000)
 })
-onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.project.id, space: space.value, x: offset.x, y: offset.y, zoom: zoom.value, history: [...history.value] });stopCameraTransition();disposed=true;epoch++;cursorEpoch++;stopCursorWatch?.();clearInterval(timer);clearTimeout(refreshTimer);clearTimeout(cursorTimer);document.removeEventListener('fullscreenchange',fullscreenChanged);document.removeEventListener('keydown',keyboard);document.removeEventListener('keyup',keyUp);window.removeEventListener('blur',resetKeys);clearTimeout(commentHide);clearTimeout(nudgeTimer);if(cursorChannel){void cursorChannel.send({type:'broadcast',event:'leave',payload:{id:session}});void supabase.removeChannel(cursorChannel)}if(channel)void supabase.removeChannel(channel);Object.values(images.value).forEach(URL.revokeObjectURL)})
+onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.project.id, space: space.value, x: offset.x, y: offset.y, zoom: zoom.value, history: [...history.value] });stopCameraTransition();disposed=true;epoch++;cursorEpoch++;stopCursorWatch?.();clearInterval(timer);clearTimeout(refreshTimer);clearTimeout(cursorTimer);document.removeEventListener('fullscreenchange',fullscreenChanged);document.removeEventListener('keydown',keyboard);document.removeEventListener('keyup',keyUp);window.removeEventListener('blur',resetKeys);clearTimeout(commentHide);clearTimeout(nudgeTimer);if(cursorChannel){void cursorChannel.send({type:'broadcast',event:'leave',payload:{id:session}});void supabase.removeChannel(cursorChannel)}if(channel)void supabase.removeChannel(channel);Object.values(images.value).filter(Boolean).forEach(URL.revokeObjectURL)})
 </script>
 <template>
 <section ref="root" class="spaces" :class="{'is-fullscreen':fullscreen,'header-open':headerOpen,previewing:taskPicker}" @pointermove="headerPointer" @pointerleave="headerOpen=false">
  <div v-if="fullscreen" class="header-reveal" aria-hidden="true"></div>
- <header class="space-header"><div class="space-title"><button v-if="space" title="Все пространства" aria-label="Все пространства" @click="choose('')"><UIcon name="i-lucide-arrow-left"/></button><button v-if="history.length" class="back-space" @click="goBack"><UIcon name="i-lucide-undo-2"/>Вернуться в «{{spaces.find(s=>s.id===history[history.length-1]?.id)?.name||'предыдущее пространство'}}»</button><UIcon name="i-lucide-orbit"/><div><h1>{{currentSpace?.name||'Пространства проекта'}}</h1><p>{{currentSpace?.description||'Идеи, документы и решения в одном месте'}}</p></div></div><div class="space-header-actions"><input ref="transferInput" type="file" accept=".zip" hidden @change="importSpace"><button v-if="space?editable:canCreate" @click="transferInput?.click()">Импорт</button><button v-if="space" @click="exportSpace">Экспорт</button><span class="live-status" :class="{online:connected}">{{connected?'Онлайн':'Подключение…'}}</span><button v-if="space && canManage" @click="settings"><UIcon name="i-lucide-settings-2"/>Настройки</button><button :title="fullscreen?'Выйти из полного экрана':'На весь экран'" @click="toggleFullscreen"><UIcon :name="fullscreen?'i-lucide-minimize':'i-lucide-maximize'"/></button></div></header>
+ <header class="space-header"><div class="space-title"><button v-if="space" title="Все пространства" aria-label="Все пространства" @click="choose('')"><UIcon name="i-lucide-arrow-left"/></button><button v-if="history.length" class="back-space" @click="goBack"><UIcon name="i-lucide-undo-2"/>Вернуться в «{{spaces.find(s=>s.id===history[history.length-1]?.id)?.name||'предыдущее пространство'}}»</button><UIcon name="i-lucide-orbit"/><div><h1>{{currentSpace?.name||'Пространства проекта'}}</h1><p>{{currentSpace?.description||'Идеи, документы и решения в одном месте'}}</p></div></div><div class="space-header-actions"><input ref="transferInput" type="file" accept=".zip" hidden @change="importSpace"><button v-if="space?editable:canCreate" @click="transferInput?.click()">Импорт</button><button v-if="space" @click="exportSpace">Экспорт</button><span class="live-status" :class="{online:connected}">{{connected?'Онлайн':'Подключение…'}}</span><button v-if="space && canManage" @click="settings"><UIcon name="i-lucide-settings-2"/>Настройки</button><button :title="fullscreen?'Выйти из полного экрана (F)':'На весь экран (F)'" :aria-label="fullscreen?'Выйти из полного экрана':'На весь экран'" aria-keyshortcuts="F" @click="toggleFullscreen"><UIcon :name="fullscreen?'i-lucide-minimize':'i-lucide-maximize'"/></button></div></header>
  <UAlert v-if="error" color="error" :description="error"/>
  <div v-if="!space" class="space-catalog"><div class="catalog-heading"><div><span class="eyebrow">РАБОЧАЯ СРЕДА</span><h3>Все пространства <span>{{spaces.length}}</span></h3></div><form v-if="canCreate" @submit.prevent="create"><input v-model="title" maxlength="120" placeholder="Название нового пространства" required><button class="primary" :disabled="busy"><UIcon name="i-lucide-plus"/>Создать пространство</button></form></div>
  <div v-if="spaces.length" class="space-grid"><button v-for="(s,index) in spaces" :key="s.id" class="space-card" @click="choose(s.id)"><div class="space-card-preview" :style="{'--card-hue':`${(index*53+245)%360}`}"><span class="mini-note"></span><span class="mini-line"></span><span class="mini-block"></span><span class="card-open"><UIcon name="i-lucide-arrow-up-right"/></span></div><div class="space-card-content"><h4>{{s.name}}</h4><p>{{s.description||'Добавьте описание пространства'}}</p><footer><span>{{s.object_count}} объектов</span><span>{{s.created_by===auth.user?.id?'Создатель':s.permission==='viewer'?'Просмотр':'Редактирование'}}</span></footer></div></button></div>
@@ -495,7 +857,35 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
  <div v-if="editable&&['pen','highlighter','eraser'].includes(tool)" class="properties-section"><button :class="{chosen:tool==='pen'}" @click="tool='pen'">Маркер</button><button :class="{chosen:tool==='highlighter'}" @click="tool='highlighter'">Фломастер</button><button :class="{chosen:tool==='eraser'}" @click="tool='eraser'">Ластик</button><label v-if="tool!=='eraser'">Цвет<input v-model="inkColor" type="color"></label><label v-if="tool!=='eraser'">Толщина<input v-model.number="inkWidth" type="range" min="1" max="10"></label><span v-else>Стирает только нарисованные линии</span></div>
 <div v-if="editable&&selectedItem&&!selectedItem.data.layerGroup&&!['link','stroke'].includes(selectedItem.data.kind)" class="properties-section"><strong>Карточка</strong><label>Ширина <input type="number" min="160" :max="selectedItem.data.kind==='frame'?undefined:2000" :value="selectedItem.data.width||220" @input="styleSelected({width:Number(($event.target as HTMLInputElement).value)})"></label><label>Высота <input type="number" min="100" :max="selectedItem.data.kind==='frame'?undefined:2000" :value="selectedItem.data.height||110" @input="styleSelected({height:Number(($event.target as HTMLInputElement).value)})"></label><label>Размер шрифта <input type="number" min="8" max="72" :value="selectedItem.data.fontSize||(selectedItem.data.kind==='frame'?26:14)" @input="styleSelected({fontSize:Number(($event.target as HTMLInputElement).value)})"></label><label>Шрифт <select :value="selectedItem.data.fontFamily||'system'" @change="styleSelected({fontFamily:($event.target as HTMLSelectElement).value as any})"><option value="system">Системный</option><option value="serif">С засечками</option><option value="mono">Моноширинный</option></select></label><label>Начертание <select :value="selectedItem.data.fontWeight||'normal'" @change="styleSelected({fontWeight:($event.target as HTMLSelectElement).value as any})"><option value="normal">Обычное</option><option value="bold">Полужирное</option></select></label></div>
 <div v-if="editable&&selectedItem?.data.kind==='frame'&&!selectedItem.data.layerGroup" class="properties-section"><label>Заголовок <select :value="selectedItem.data.titlePosition||'top-right'" @change="styleSelected({titlePosition:($event.target as HTMLSelectElement).value})"><option v-for="p in [{id:'top-left',name:'Сверху слева'},{id:'top-center',name:'Сверху по центру'},{id:'top-right',name:'Сверху справа'},{id:'bottom-left',name:'Снизу слева'},{id:'bottom-center',name:'Снизу по центру'},{id:'bottom-right',name:'Снизу справа'}]" :key="p.id" :value="p.id">{{p.name}}</option></select></label><label>Цвет заголовка <input type="color" :value="selectedItem.data.titleColor||'#334155'" @input="styleSelected({titleColor:($event.target as HTMLInputElement).value})"></label></div>
-<div v-if="editable&&selectedItem&&['document','image'].includes(selectedItem.data.kind)" class="properties-section"><label><input type="checkbox" :checked="selectedItem.data.showContent!==false" @change="styleSelected({showContent:($event.target as HTMLInputElement).checked});loadThumbnails()">Показывать содержимое</label></div>
+<div v-if="editable && selectedItem && hasFileDisplayOptions(selectedItem)" class="properties-section">
+  <label>На доске
+    <select :value="fileDisplay(selectedItem)" :disabled="busy" @change="setFileDisplay(($event.target as HTMLSelectElement).value)">
+      <option value="card">{{isImage(selectedItem) ? 'Изображение и название' : 'Содержимое и название'}}</option>
+      <option value="content">{{isImage(selectedItem) ? 'Только изображение' : 'Только содержимое'}}</option>
+      <option value="filename">Только название</option>
+    </select>
+  </label>
+</div>
+<div v-else-if="editable&&selectedItem&&selectedItem.data.kind==='document'" class="properties-section"><label><input type="checkbox" :checked="selectedItem.data.showContent!==false" @change="styleSelected({showContent:($event.target as HTMLInputElement).checked});loadThumbnails()">Показывать содержимое</label></div>
+<div v-if="editable && selectedItem && spreadsheetOptions(selectedItem)" class="properties-section">
+  <label>Лист
+    <select :value="selectedSheet(selectedItem)" :disabled="busy || !sheetNames(selectedItem)?.length"
+      @change="setSpreadsheetSheet(selectedItem, ($event.target as HTMLSelectElement).value)">
+      <option v-if="!sheetNames(selectedItem)?.length" value="">
+        {{thumbnails[thumbnailKey(selectedItem) ?? '']?.kind === 'unavailable' ? 'Листы недоступны' : 'Загружаем листы…'}}
+      </option>
+      <option v-for="sheet in sheetNames(selectedItem)" :key="sheet" :value="sheet">{{sheet}}</option>
+    </select>
+  </label>
+  <label>Строки
+    <input type="number" min="1" :max="spaceSpreadsheetPreviewLimits.rows" step="1"
+      :value="spreadsheetOptions(selectedItem)?.rows" :disabled="busy" @change="setSpreadsheetSize(selectedItem, 'rows', $event)">
+  </label>
+  <label>Столбцы
+    <input type="number" min="1" :max="spaceSpreadsheetPreviewLimits.columns" step="1"
+      :value="spreadsheetOptions(selectedItem)?.columns" :disabled="busy" @change="setSpreadsheetSize(selectedItem, 'columns', $event)">
+  </label>
+</div>
 <div v-if="editable&&selectedItem" class="inspector-apply"><button class="primary" :disabled="busy" @click="applySelected">Применить</button><button @click="cancelSelected">Отмена</button></div></aside>
  <input ref="fileInput" type="file" hidden @change="upload"><input ref="markdownInput" type="file" accept=".md,.markdown,text/markdown,text/plain" hidden @change="importMarkdown">
  <div v-if="attaching" class="floating-picker"><header><strong>Документы проекта</strong><button @click="attaching=false">Закрыть</button></header><button v-for="f in docs.query.data.value" :key="f.id" @click="add(f.type.startsWith('image/')?'image':'document',f.id);attaching=false">{{f.name}}</button><p v-if="!docs.query.data.value?.length">Пока нет доступных документов</p></div>
@@ -512,9 +902,57 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
   <path :transform="`translate(${item.data.x},${item.data.y})`" :d="inkPath(item.data)" fill="none" :stroke="selection.has(item.id)?'#8b5cf6':item.data.color||'#334155'" :stroke-width="item.data.strokeWidth||3" :opacity="item.data.opacity||1" stroke-linecap="round" stroke-linejoin="round" class="ink-hit" @pointerdown.stop="down($event,item)"/>
  </svg>
  <svg v-if="inkDraft" class="ink-layer" :style="{zIndex:objects.length+1}"><path :d="inkPath(inkDraft)" :transform="`translate(${inkDraft.x},${inkDraft.y})`" fill="none" :stroke="inkDraft.color" :stroke-width="inkDraft.strokeWidth" :opacity="inkDraft.opacity" stroke-linecap="round" stroke-linejoin="round"/></svg>
- <article v-for="item in visibleObjects.filter(i=>!['link','stroke'].includes(i.data.kind))" :key="item.id" class="space-object" :data-object-id="item.id" :class="[item.data.kind,item.data.kind==='shape'?'shape-'+(item.data.shape||'rectangle'):'',{chosen:selection.has(item.id),'layer-group':item.data.layerGroup}]" :style="nodeStyle(item)" @pointerdown.stop="down($event,item)" @dblclick="edit(item)">
+ <article v-for="item in visibleObjects.filter(i=>!['link','stroke'].includes(i.data.kind))" :key="item.id" class="space-object" :data-object-id="item.id" :class="[item.data.kind,item.data.kind==='shape'?'shape-'+(item.data.shape||'rectangle'):'',{chosen:selection.has(item.id),'layer-group':item.data.layerGroup, 'file-preview':hasFileDisplayOptions(item) && hasBoardFileContent(item), 'file-preview-sized':!!item.data.height, 'content-only':fileContentOnly(item) && hasBoardFileContent(item)}]" :style="nodeStyle(item)" @pointerdown.stop="down($event,item)" @dblclick="edit(item)">
  <template v-if="item.data.kind==='frame'"><span v-for="edge in ['top','right','bottom','left']" :key="edge" class="frame-hit" :class="edge"></span><div :class="['frame-label','title-'+(item.data.titlePosition||'top-right')]" :style="{color:item.data.titleColor||item.data.textColor,fontSize:(item.data.fontSize||26)+'px'}" @dblclick.stop="edit(item)"><div v-if="editing===item.id" class="inline-editor" @pointerdown.stop><textarea v-model="draft" autofocus @keydown.esc="editing=''"/><button class="primary" :disabled="busy" @click="saveEdit(item)">Применить</button><button @click="editing=''">Отмена</button></div><span v-else>{{item.data.text}}</span></div><span v-for="n in Math.max(0,(item.data.contours||1)-1)" :key="n" class="extra-contour" :style="{inset:(n*7)+'px',borderColor:item.data.borderColor||'#7c3aed',borderWidth:(item.data.borderWidth||2)+'px'}"></span><button v-for="corner in editable&&selected===item.id&&!item.data.layerGroup?['nw','ne','sw','se']:[]" :key="corner" class="resize-handle" :class="corner" :aria-label="`Изменить размер ${corner}`" @pointerdown.stop="resizeStart($event,item,corner)"></button></template>
- <template v-else-if="['document','image'].includes(item.data.kind)"><img v-if="isImage(item)&&item.data.showContent!==false&&images[file(item)?.id||'']" :src="images[file(item)?.id||'']" draggable="false"><template v-if="item.data.kind==='document'&&!isImage(item)&&item.data.showContent!==false"><img v-if="thumbnails[file(item)?.id||'']?.kind==='image'" :src="thumbnails[file(item)?.id||'']?.src" class="file-page" draggable="false"><table v-else-if="thumbnails[file(item)?.id||'']?.kind==='cells'" class="file-cells"><tbody><tr v-for="(row,r) in thumbnails[file(item)?.id||'']?.rows" :key="r"><td v-for="(cell,c) in row" :key="c">{{cell||' '}}</td></tr></tbody></table><button v-else-if="thumbnails[file(item)?.id||'']?.kind==='unavailable'" @pointerdown.stop @click="retryThumbnail(item)">Обновить миниатюру</button><p v-else-if="thumbnailLoading.has(file(item)?.id||'')" class="thumbnail-status">Готовим миниатюру…</p></template><strong>{{file(item)?.name||'Файл недоступен'}}</strong><div @pointerdown.stop><button @click="open(item)">Предпросмотр</button><button @click="open(item,true)">Скачать</button></div></template>
+ <template v-else-if="['document','image'].includes(item.data.kind)">
+   <div v-if="hasBoardFileContent(item)" class="board-file-content">
+     <img
+       v-if="imageSource(item)"
+       :src="imageSource(item)"
+       :alt="file(item)?.name || 'Изображение'"
+       class="board-image"
+       draggable="false"
+       tabindex="0"
+       role="button"
+       :aria-pressed="selected === item.id"
+       @keydown.enter.stop.prevent="replaceSelection([item.id])"
+       @keydown.space.stop.prevent="replaceSelection([item.id])"
+       @error="hideFailedImage(item, $event)"
+     >
+     <img
+       v-else-if="fileThumbnail(item)?.kind === 'image'"
+       :src="(fileThumbnail(item) as Extract<SpaceFileThumbnail, { kind: 'image' }>).src"
+       :alt="`Первая страница — ${file(item)?.name}`"
+       class="file-page"
+       draggable="false"
+     >
+     <table v-else-if="fileThumbnail(item)?.kind === 'cells'" class="file-cells" :aria-label="file(item)?.name"
+       :style="{ '--preview-rows': spreadsheetOptions(item)?.rows, '--preview-columns': spreadsheetOptions(item)?.columns }">
+       <tbody>
+         <tr v-for="(row, r) in (fileThumbnail(item) as Extract<SpaceFileThumbnail, { kind: 'cells' }>).rows" :key="r">
+           <td v-for="(cell, c) in row" :key="c">{{cell || ' '}}</td>
+         </tr>
+       </tbody>
+     </table>
+   </div>
+   <template v-else-if="item.data.kind === 'document' && !isImage(item) && item.data.showContent !== false">
+     <button v-if="fileThumbnail(item)?.kind === 'unavailable'" @pointerdown.stop @click="retryThumbnail(item)">Обновить миниатюру</button>
+     <p v-else-if="thumbnailLoading.has(thumbnailKey(item) ?? '')" class="thumbnail-status">Готовим миниатюру…</p>
+   </template>
+   <strong v-if="!fileContentOnly(item) || !hasBoardFileContent(item)" class="board-file-name" :title="file(item)?.name">
+     {{file(item)?.name || 'Файл недоступен'}}
+   </strong>
+   <div
+     v-if="!hasFileDisplayOptions(item) || (selected === item.id && selection.size === 1 && file(item))"
+     :class="{ 'board-file-actions': hasFileDisplayOptions(item) }"
+     @pointerdown.stop
+     @keydown.enter.stop
+     @keydown.space.stop
+   >
+     <button :disabled="busy" @click="open(item)">{{hasFileDisplayOptions(item) ? 'Рассмотреть' : 'Предпросмотр'}}</button>
+     <button :disabled="busy" @click="open(item, true)">Скачать</button>
+   </div>
+ </template>
  <div v-else-if="item.data.kind==='subscription'" class="resource-card"><UIcon name="i-lucide-repeat-2"/><small>ПОДПИСКА</small><h3>{{subscriptionFor(item)?.title||'Подписка недоступна'}}</h3><template v-if="subscriptionFor(item)"><p class="subscription-price">{{subscriptionFor(item)?.subscription?.price}} {{subscriptionFor(item)?.subscription?.currency}}</p><p>Период: {{subscriptionFor(item)?.subscription?.periodCount}} {{subscriptionFor(item)?.subscription?.periodUnit==='month'?'мес.':subscriptionFor(item)?.subscription?.periodUnit==='year'?'лет':'дн.'}}</p><p>Оплачено до {{subscriptionFor(item)?.subscription?.paidUntil}}</p><p>{{subscriptionFor(item)?.sourceName}}</p></template></div>
  <div v-else-if="item.data.kind==='calendar'" class="board-calendar"><header @pointerdown.stop><button @click="moveMonth(item,-1)" aria-label="Предыдущий месяц">‹</button><h3>{{monthTitle(item)}}</h3><button @click="moveMonth(item,1)" aria-label="Следующий месяц">›</button></header><div class="calendar-week"><span v-for="day in ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']" :key="day">{{day}}</span></div><div class="calendar-grid" @pointerdown.stop><button v-for="day in monthDays(item)" :key="day.date" :class="{muted:!day.current,today:day.date===new Date().toLocaleDateString('sv-SE')}" @click="openCalendar(item,day.date)"><span>{{day.day}}</span><i v-for="event in dayEvents(item,day.date).slice(0,2)" :key="event.id" :style="{background:event.color}" :title="event.title">{{event.title}}</i></button></div><button v-if="editable" class="calendar-add" @pointerdown.stop @click="openCalendar(item)">+ Событие или интервал</button></div>
  <template v-else-if="item.data.kind==='task-calendar'||item.data.kind==='task-gantt'">
@@ -540,7 +978,7 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
  <div v-if="boxSelection" class="selection-box" :style="boxStyle()"></div><div v-if="selection.size" class="group-toolbar"><strong>{{selection.size}} выбрано</strong><button v-if="editable&&selection.size>1" :disabled="busy" @click="changeLayerGroup(false)">Сгруппировать</button><button v-if="editable&&selectedRows.some(item=>item.data.layerGroup)" :disabled="busy" @click="changeLayerGroup(true)">Разгруппировать</button><button :disabled="busy" @click="groupDialog='copy';groupTarget=''">Копировать в…</button><button v-if="editable" :disabled="busy" @click="groupDialog='move';groupTarget=''">Перенести в…</button><button v-if="editable" :disabled="busy" @click="groupAction('delete')">Удалить</button><button @click="replaceSelection([])">Снять выделение</button></div>
  <section v-if="popupComment" class="comment-popover" :style="commentPosition()" role="dialog" aria-label="Обсуждение" @focusin="pinnedComment=popupComment.id" @pointerenter="hoverComment(popupComment.id)" @pointerleave="leaveComment" @keydown.esc.stop="pinnedComment='';hoveredComment=''"><button class="close-comment" aria-label="Закрыть обсуждение" @click="pinnedComment='';hoveredComment=''">×</button><div class="comment-thread"><div class="object-caption"><UIcon name="i-lucide-message-circle"/>Обсуждение <span v-if="popupComment.data.resolved">· Решено</span></div><textarea v-if="editing===popupComment.id" v-model="draft" autofocus @pointerdown.stop @keydown.esc="editing=''"/><h3 v-else>{{popupComment.data.text}}</h3><div class="comment-messages" @pointerdown.stop><article v-for="message in popupComment.data.messages" :key="message.id"><strong>{{author(message.author)}}</strong><p>{{message.text}}</p><time>{{new Date(message.createdAt).toLocaleString('ru-RU')}}</time></article></div><form v-if="editable" @pointerdown.stop @submit.prevent="reply(popupComment)"><input v-model="replyDrafts[popupComment.id]" placeholder="Написать комментарий…" maxlength="4000" required><button :disabled="busy">Отправить</button></form><button v-if="editable" @pointerdown.stop @click="put(popupComment,{...popupComment.data,resolved:!popupComment.data.resolved})">{{popupComment.data.resolved?'Открыть обсуждение':'Отметить решённым'}}</button></div>
 </section>
- <details class="keyboard-help" :open="controlsOpen" @toggle="controlsOpen=($event.target as HTMLDetailsElement).open"><summary><UIcon name="i-lucide-keyboard"/>Управление</summary><div class="keyboard-list"><p><kbd>Space</kbd><span>Удерживать для перемещения доски</span></p><p><kbd>V</kbd><span>Выделение рамкой</span></p><p><kbd>Shift + клик</kbd><span>Добавить / убрать объект</span></p><p><kbd>H</kbd><span>Перемещение</span></p><p><kbd>Cmd/Ctrl + G</kbd><span>Сгруппировать или разгруппировать</span></p><p><kbd>Cmd/Ctrl + Shift + G</kbd><span>Разгруппировать слои</span></p><p><kbd>T</kbd><span>Текст: выбрать место на доске</span></p><p><kbd>C</kbd><span>Комментарий: выбрать место</span></p><p><kbd>N</kbd><span>Новая заметка</span></p><p><kbd>B / M / E</kbd><span>Маркер / фломастер / ластик</span></p><p><kbd>R</kbd><span>Контурная рамка</span></p><p><kbd>L</kbd><span>Связь двух объектов</span></p><p><kbd>Enter</kbd><span>Редактировать выбранный объект</span></p><p><kbd>⌘/Ctrl D</kbd><span>Дублировать объект</span></p><p><kbd>← ↑ → ↓</kbd><span>Сдвиг на 1, с Shift — на 10</span></p><p><kbd>Delete</kbd><span>Удалить выбранный объект</span></p><p><kbd>+ / −</kbd><span>Масштаб</span></p><p><kbd>0</kbd><span>Сбросить вид</span></p><p><kbd>Esc</kbd><span>Закрыть обсуждение, отменить инструмент</span></p></div></details>
+ <details class="keyboard-help" :open="controlsOpen" @toggle="controlsOpen=($event.target as HTMLDetailsElement).open"><summary><UIcon name="i-lucide-keyboard"/>Управление</summary><div class="keyboard-list"><p><kbd>⌘/Ctrl + Z</kbd><span>Отменить последнее действие на доске</span></p><p><kbd>F</kbd><span>Включить или закрыть полноэкранный режим</span></p><p><kbd>Space</kbd><span>Удерживать для перемещения доски</span></p><p><kbd>V</kbd><span>Выделение рамкой</span></p><p><kbd>Shift + клик</kbd><span>Добавить / убрать объект</span></p><p><kbd>H</kbd><span>Перемещение</span></p><p><kbd>Cmd/Ctrl + G</kbd><span>Сгруппировать или разгруппировать</span></p><p><kbd>Cmd/Ctrl + Shift + G</kbd><span>Разгруппировать слои</span></p><p><kbd>T</kbd><span>Текст: выбрать место на доске</span></p><p><kbd>C</kbd><span>Комментарий: выбрать место</span></p><p><kbd>N</kbd><span>Новая заметка</span></p><p><kbd>B / M / E</kbd><span>Маркер / фломастер / ластик</span></p><p><kbd>R</kbd><span>Контурная рамка</span></p><p><kbd>L</kbd><span>Связь двух объектов</span></p><p><kbd>Enter</kbd><span>Редактировать выбранный объект</span></p><p><kbd>⌘/Ctrl D</kbd><span>Дублировать объект</span></p><p><kbd>← ↑ → ↓</kbd><span>Сдвиг на 1, с Shift — на 10</span></p><p><kbd>Delete</kbd><span>Удалить выбранный объект</span></p><p><kbd>+ / −</kbd><span>Масштаб</span></p><p><kbd>0</kbd><span>Сбросить вид</span></p><p><kbd>Esc</kbd><span>Закрыть обсуждение, отменить инструмент</span></p></div></details>
  <div class="canvas-status"><span>{{editable?'Редактирование':'Только просмотр'}}</span></div>
  <div v-if="tooltip" class="hud-tooltip" :style="{left:tooltip.left+'px',bottom:tooltip.bottom+'px'}" role="tooltip">{{tooltip.text}}</div>
  <nav class="board-hud" aria-label="Инструменты доски" @pointerover="hudHover" @pointerleave="tooltip=null" @focusin="hudHover" @focusout="tooltip=null">
@@ -558,9 +996,132 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
  <ChatTaskPicker v-if="taskPicker" :project-id="project.id" attachment-hint="Задача сохранится в Кабане и будет прикреплена к пространству." @choose="attachTask" @close="closeTaskPicker"/>
  <div v-if="calendarEditing" class="settings-overlay"><section class="space-settings calendar-editor" role="dialog" aria-modal="true" aria-label="События календаря"><header><h3>События и интервалы</h3><button @click="calendarEditing=null">Отмена</button></header><form ref="calendarEventForm" @submit.prevent="addEvent"><input v-model="eventForm.title" maxlength="200" placeholder="Название события" required><SharedDateTimePicker v-model="eventForm.start" label="Начало" required/><SharedDateTimePicker v-model="eventForm.end" label="Конец" required/><select v-model="eventForm.type"><option value="event">Событие</option><option value="range">Выделенный интервал</option></select><input v-model="eventForm.color" type="color"><button>Добавить в календарь</button></form><p v-if="calendarError">{{calendarError}}</p><div v-for="(event,index) in calendarDraft" :key="event.id" class="calendar-event-row"><span :style="{background:event.color}"></span><div><strong>{{event.title}}</strong><p>{{new Date(event.start).toLocaleString('ru-RU')}} — {{new Date(event.end).toLocaleString('ru-RU')}}</p></div><button @click="calendarDraft.splice(index,1)">Удалить</button></div><button class="primary" :disabled="busy" @click="applyCalendar">Применить</button></section></div>
  <div v-if="groupDialog" class="settings-overlay" @click.self="groupDialog=null"><section class="space-settings" role="dialog" aria-modal="true"><header><h3>{{groupDialog==='copy'?'Копировать':'Перенести'}} {{selection.size}} объектов</h3><button @click="groupDialog=null">Отмена</button></header><label>Пространство назначения<select v-model="groupTarget"><option value="">Выберите пространство</option><option v-for="target in spaces.filter(s=>s.id!==space&&['owner','editor'].includes(s.permission))" :key="target.id" :value="target.id">{{target.name}}</option></select></label><p>Вложения и связи между выбранными объектами сохранятся.</p><button class="primary" :disabled="!groupTarget||busy" @click="groupAction(groupDialog!)">{{groupDialog==='copy'?'Копировать':'Перенести'}}</button><p v-if="error">{{error}}</p></section></div>
+ <ProjectImageViewer :file="imagePreview?.file ?? null" :load="fileContent" :portal="fullscreen ? root : undefined" @close="imagePreview = null">
+   <template #actions>
+     <UButton v-if="imagePreview && documentEditor(imagePreview.file.name)" label="Открыть в PhotoCraft" icon="i-lucide-external-link" color="neutral" variant="soft" @click="open(imagePreview.item, false, true)" />
+   </template>
+ </ProjectImageViewer>
+ <UModal
+   :open="!!officePreview"
+   :title="officePreview?.file.name || 'Просмотр документа'"
+   :portal="fullscreen ? root : true"
+   :transition="false"
+   :ui="{ content: 'z-[1100]', wrapper: 'min-w-0 flex-1', title: 'truncate', body: 'min-h-0 bg-slate-100 dark:bg-slate-900' }"
+   fullscreen
+   @update:open="value => { if (!value) officePreview = null }"
+ >
+   <template #actions>
+     <UButton v-if="officePreview" class="me-10 shrink-0" color="neutral" variant="soft" icon="i-lucide-external-link"
+       :label="`Открыть в ${documentEditor(officePreview.file.name)?.label}`" @click="open(officePreview.item, false, true)" />
+   </template>
+   <template #body>
+     <template v-if="officePreviewContent?.kind === 'image'">
+       <p class="mb-3 text-center text-sm">Первая страница</p>
+       <img :src="officePreviewContent.src" alt="Первая страница документа" class="mx-auto h-auto max-w-full bg-white shadow-sm">
+     </template>
+     <template v-else-if="officePreviewContent?.kind === 'cells'">
+       <p class="mb-3 text-sm">Лист «{{officePreviewContent.sheet}}»</p>
+       <div class="overflow-auto">
+         <table class="office-preview-cells w-full bg-white text-sm text-slate-900" :aria-label="officePreviewContent.sheet">
+           <tbody>
+             <tr v-for="(row, r) in officePreviewContent.rows" :key="r">
+               <td v-for="(cell, c) in row" :key="c">{{cell || ' '}}</td>
+             </tr>
+           </tbody>
+         </table>
+       </div>
+     </template>
+     <div v-else-if="officePreviewContent?.kind === 'unavailable'" class="space-y-3">
+       <p role="alert">Не удалось показать содержимое файла.</p>
+       <UButton v-if="officePreview" label="Повторить" color="neutral" variant="outline" @click="officePreview = {...officePreview}" />
+     </div>
+     <p v-else role="status">Готовим предпросмотр…</p>
+   </template>
+ </UModal>
 </section>
 </template>
 <style scoped>
+.space-object.file-preview {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  padding: 0;
+}
+.space-object.file-preview.file-preview-sized { height: var(--board-card-height); }
+.space-object.file-preview.content-only { grid-template-rows: minmax(0, 1fr); }
+.space-object.content-only {
+  border-color: transparent;
+  background: transparent !important;
+  box-shadow: none;
+}
+.file-preview > .board-file-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 9px 9px 0 0;
+}
+.file-preview.content-only > .board-file-content { border-radius: 0; }
+.file-preview.file-preview-sized > .board-file-content { container-type: size; }
+.file-preview > .board-file-name {
+  margin: 0;
+  padding: 6px 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-preview .board-image,
+.file-preview .file-page {
+  display: block;
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  object-fit: contain;
+}
+.file-preview:not(.file-preview-sized).content-only .board-image { height: 110px; }
+.file-preview.file-preview-sized .board-image,
+.file-preview.file-preview-sized .file-page { height: 100%; max-height: none; }
+.file-preview .file-cells { margin: 0; background: white; }
+.file-preview.file-preview-sized .file-cells {
+  height: 100%;
+  font-size: clamp(6px, min(calc(8cqw / var(--preview-columns, 2)), calc(50cqh / var(--preview-rows, 5))), 28px);
+}
+.file-preview.file-preview-sized .file-cells tbody {
+  display: grid;
+  height: 100%;
+  grid-template-rows: repeat(var(--preview-rows, 5), minmax(0, 1fr));
+}
+.file-preview.file-preview-sized .file-cells tr {
+  display: grid;
+  grid-template-columns: repeat(var(--preview-columns, 2), minmax(0, 1fr));
+}
+.file-preview.file-preview-sized .file-cells td {
+  display: block;
+  align-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 4px;
+  border-top: 0;
+  border-left: 0;
+  line-height: 1.1;
+}
+.file-preview.file-preview-sized .file-cells { display: block; border-top: 1px solid #e2e8f0; border-left: 1px solid #e2e8f0; }
+.board-image:focus-visible { outline: 2px solid #7c3aed; outline-offset: -2px; }
+.board-file-actions {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-top: 10px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  white-space: nowrap;
+  background: white;
+  border: 1px solid #d8e0eb;
+  border-radius: 9px;
+  box-shadow: 0 4px 12px #0f172a18;
+}
+.office-preview-cells { border-collapse: collapse; }
+.office-preview-cells td { min-width: 7rem; padding: .5rem .75rem; border: 1px solid #e2e8f0; overflow-wrap: anywhere; }
 .space-world.camera-moving{transition:transform 300ms cubic-bezier(.2,.75,.25,1)}
 @media(prefers-reduced-motion:reduce){.space-world.camera-moving{transition:none}}
 

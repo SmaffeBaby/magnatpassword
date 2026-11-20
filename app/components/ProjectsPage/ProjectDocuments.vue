@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import FileUpload from '~/components/Shared/FileUpload.vue'
+import ProjectImageViewer from './ProjectImageViewer.vue'
 import type { Project } from '~~/shared/types/projects'
 import type { ProjectDocument, ProjectDocumentChange, ProjectDocumentFolder } from '~~/shared/types/project-documents'
 import { canEditProjectSection } from '~~/shared/utils/project-permissions'
 import { documentEditor, documentEditors, documentExtension, documentSize, documentMaxSize } from '~~/shared/utils/project-documents'
 import { saveFile } from '~/utils/file-download'
+import { canPreviewProjectImage } from '~/utils/project-image-preview'
 const props = defineProps<{ project: Project }>()
 const auth = useAuthStore(), route = useRoute(), router = useRouter(), { query, folders, base, refresh, content } = useProjectDocuments(() => props.project.id)
 const office = useOffice()
+const previewFile = ref<ProjectDocument | null>(null)
 const canUpload = computed(() => canEditProjectSection(props.project, 'documents'))
 const search = ref(''), kind = ref('all'), accessFilter = ref('all'), sort = ref('updated'), direction = ref<'asc'|'desc'>('desc')
 const busy = ref(false), error = ref(''), uploadStatus = ref('')
@@ -85,8 +88,11 @@ async function showHistory(file: ProjectDocument) {
 }
 function closeHistory() { historyRequest++; historyFile.value = null; history.value = [] }
 function actions(file: ProjectDocument) {
+  const editor = documentEditor(file.name)
+  const previewable = canPreviewProjectImage(file.name)
   return [
-    ...(documentEditor(file.name) ? [{ label: 'Открыть', icon: 'i-lucide-external-link', onSelect: () => openDocument(file) }] : []),
+    ...(previewable ? [{ label: 'На весь экран', icon: 'i-lucide-maximize', onSelect: () => openFile(file) }] : []),
+    ...(editor ? [{ label: previewable ? 'Открыть в PhotoCraft' : 'Открыть', icon: 'i-lucide-external-link', onSelect: () => openDocument(file) }] : []),
     ...(canUpload.value ? [{ label: 'Копировать в папку', icon: 'i-lucide-copy', onSelect: () => showOperation('copy', file) }] : []),
     ...(editable(file) ? [{ label: 'Переместить', icon: 'i-lucide-folder-input', onSelect: () => showOperation('move', file) }] : []),
     ...(canUpload.value && documentExtension(file.name) === 'zip' ? [{ label: 'Распаковать ZIP', icon: 'i-lucide-archive-restore', onSelect: () => showOperation('extract', file) }] : []),
@@ -97,7 +103,7 @@ function actions(file: ProjectDocument) {
     ...(editable(file) ? [{ label: 'Удалить', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => { deleting.value = file; error.value = '' } }] : [])
   ]
 }
-watch(() => [auth.user?.id, props.project.id], () => { closeHistory(); operation.value = null; editing.value = null; accessFile.value = null; deleting.value = null; replacing.value = null })
+watch(() => [auth.user?.id, props.project.id], () => { previewFile.value = null; closeHistory(); operation.value = null; editing.value = null; accessFile.value = null; deleting.value = null; replacing.value = null })
 
 const folderId = computed(() => typeof route.query.folder === 'string' ? route.query.folder : null)
 const view = ref<'list'|'tiles'>('list')
@@ -153,14 +159,19 @@ watch(breadcrumbs, path => {
 }, { immediate: true })
 watch(() => props.project.id, () => { expandedFolders.value = new Set() })
 async function openDocument(file: ProjectDocument) {
+  previewFile.value = null
   error.value = ''
   try { await office.openSource({ kind: 'document', projectId: props.project.id, fileId: file.id }) }
   catch (failure: any) { error.value = failure?.data?.message || failure?.message || 'Не удалось открыть документ' }
 }
+function openFile(file: ProjectDocument) {
+  if (canPreviewProjectImage(file.name)) previewFile.value = file
+  else if (documentEditor(file.name)) void openDocument(file)
+  else void download(file)
+}
 function openTreeFile(file: ProjectDocument) {
   navigateFolder(file.folderId)
-  if (documentEditor(file.name)) void openDocument(file)
-  else void download(file)
+  openFile(file)
 }
 function navigateFolder(id: string | null) { void router.push({ query: { ...route.query, folder: id || undefined } }) }
 type Operation = 'folder'|'rename-folder'|'delete-folder'|'create'|'copy'|'move'|'extract'|'import'
@@ -316,7 +327,7 @@ watch(files, visible => { selectedIds.value = selectedIds.value.filter(id => vis
         <article v-for="folder in childFolders" :key="folder.id" class="document-row document-folder" :class="{'document-selected':selectedFolderIds.includes(folder.id)}"><UCheckbox class="document-select" :model-value="selectedFolderIds.includes(folder.id)" :disabled="busy||!canUpload" :aria-label="`Выбрать папку: ${folder.name}`" @update:model-value="value=>selectFolder(folder,value===true)"/><button class="document-main" @click="navigateFolder(folder.id)"><UIcon name="i-lucide-folder"/><span><strong>{{folder.name}}</strong><small>Папка</small></span></button><UDropdownMenu v-if="canUpload" :items="[{label:'Переименовать',icon:'i-lucide-pencil',onSelect:()=>showOperation('rename-folder',undefined,folder)},{label:'Удалить папку',icon:'i-lucide-trash-2',onSelect:()=>showOperation('delete-folder',undefined,folder)}]"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :disabled="busy" :aria-label="`Действия с папкой: ${folder.name}`"/></UDropdownMenu></article>
         <article v-for="file in files" :key="file.id" class="document-row" :class="{'document-selected':selectedIds.includes(file.id)}">
           <UCheckbox class="document-select" :model-value="selectedIds.includes(file.id)" :disabled="busy||!editable(file)" :aria-label="`Выбрать файл: ${file.name}`" @update:model-value="value=>selectFile(file,value===true)"/>
-          <button class="document-main" :disabled="busy" @click="documentEditor(file.name)?openDocument(file):download(file)"><UIcon :name="icon(file)"/><span><strong>{{file.name}}</strong><small v-if="file.description">{{file.description}}</small><span v-if="file.tags.length" class="document-tags"><UBadge v-for="tag in file.tags" :key="tag" color="neutral" variant="soft" size="sm">{{tag}}</UBadge></span></span></button>
+          <button class="document-main" :disabled="busy" @click="openFile(file)"><UIcon :name="icon(file)"/><span><strong>{{file.name}}</strong><small v-if="file.description">{{file.description}}</small><span v-if="file.tags.length" class="document-tags"><UBadge v-for="tag in file.tags" :key="tag" color="neutral" variant="soft" size="sm">{{tag}}</UBadge></span></span></button>
           <div class="document-meta"><span>{{documentSize(file.size)}}</span><small>{{date(file.updatedAt)}}</small><small>{{editable(file)?'Редактирование':'Просмотр'}} · версия {{file.revision}} · {{ file.lastChangedBy || 'Автор версии неизвестен' }}</small></div>
           <UDropdownMenu :items="actions(file)"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="`Действия: ${file.name}`" :disabled="busy"/></UDropdownMenu>
         </article>
@@ -325,6 +336,11 @@ watch(files, visible => { selectedIds.value = selectedIds.value.filter(id => vis
       </div>
     </div>
     </template>
+    <ProjectImageViewer :file="previewFile" :load="content" @close="previewFile = null">
+      <template #actions>
+        <UButton v-if="previewFile && documentEditor(previewFile.name)" label="Открыть в PhotoCraft" icon="i-lucide-external-link" color="neutral" variant="soft" @click="openDocument(previewFile)" />
+      </template>
+    </ProjectImageViewer>
     <UModal :open="!!bulkDeletion" title="Удалить выбранные файлы и папки?" :description="`Всего будет удалено файлов: ${bulkDeletion?.filesCount??0}, папок: ${bulkDeletion?.foldersCount??0}`" :dismissible="!busy" @update:open="value=>{if(!value)bulkDeletion=null}"><template #body><p class="text-sm text-slate-500">Выбранные файлы и папки со всем вложенным содержимым будут удалены из проекта для всех участников. Восстановить их будет невозможно.</p><ul class="documents-delete-preview"><li v-for="folder in bulkDeletion?.folders" :key="`folder-${folder.id}`">Папка «{{folder.name}}» — со всем содержимым</li><li v-for="file in bulkDeletion?.files" :key="file.id">{{file.name}}</li></ul><UAlert v-if="error" color="error" :description="error"/></template><template #footer><UButton label="Отмена" color="neutral" variant="outline" :disabled="busy" @click="bulkDeletion=null"/><UButton label="Удалить выбранное" color="error" :loading="busy" @click="deleteSelected"/></template></UModal>
     <UModal :open="!!editing" title="Название и метки" :dismissible="!busy" @update:open="value=>{if(!value)editing=null}"><template #body><form class="space-y-4" @submit.prevent="saveMetadata"><UFormField label="Название файла" required><UInput v-model="form.name" :maxlength="240" required class="w-full"/></UFormField><UFormField label="Описание"><UTextarea v-model="form.description" :maxlength="4000" class="w-full"/></UFormField><UFormField label="Метки через запятую"><UInput v-model="form.tags" class="w-full" placeholder="Договор, согласовано"/></UFormField><UAlert v-if="error" color="error" :description="error"/><UButton type="submit" label="Сохранить" :loading="busy"/></form></template></UModal>
     <UModal :open="!!accessFile" title="Доступ к файлу" :description="accessFile?.name" :dismissible="!busy" @update:open="value=>{if(!value)accessFile=null}"><template #body><form class="space-y-5" @submit.prevent="saveAccess"><p class="text-sm text-slate-500">Владелец проекта всегда имеет полный доступ. Скрытый проект или раздел «Документы» закрывает доступ ко всем его файлам.</p><UFormField label="Для всех участников"><USelect v-model="access.defaultPermission" :items="defaults" class="w-full"/></UFormField><UFormField v-for="member in project.members.filter(m=>m.permission!=='owner')" :key="member.userId" :label="member.fullName||member.email" :description="member.permission==='hidden'?'Проект скрыт от участника':undefined"><USelect :model-value="access.members[member.userId]??'inherit'" :items="fileMemberOptions" class="w-full" @update:model-value="value=>access.members[member.userId]=String(value)"/></UFormField><UAlert v-if="error" color="error" :description="error"/><UButton type="submit" label="Сохранить доступ" :loading="busy"/></form></template></UModal>

@@ -16,3 +16,14 @@ export interface ProjectDocumentChange {
   actorName: string | null
   changedAt: string
 }
+
+export interface SpaceSpreadsheetPreview {
+  sheet?: string
+  rows: number
+  columns: number
+}
+
+export type SpaceFileThumbnail =
+  | { kind: 'cells'; rows: string[][]; sheets: string[]; sheet: string }
+  | { kind: 'image'; src: string }
+  | { kind: 'unavailable' }

@@ -19,3 +19,11 @@ export type DocumentEditorKey = typeof documentEditors[number]['key']
 export function documentExtension(name: string) { return name.split('.').pop()?.toLowerCase() || '' }
 export function documentEditor(name: string) { const extension = documentExtension(name); return documentEditors.find(editor => (editor.extensions as readonly string[]).includes(extension)) }
 export function documentSize(size: number) { return size < 1024 ? `${size} Б` : size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} КБ` : `${(size / 1024 / 1024).toFixed(1)} МБ` }
+
+export const spaceSpreadsheetPreviewDefaults = { rows: 5, columns: 2 }
+export const spaceSpreadsheetPreviewLimits = { rows: 50, columns: 20 }
+export const spaceSpreadsheetPreviewSchema = z.object({
+  sheet: z.string().min(1).max(255).optional(),
+  rows: z.number().int().min(1).max(spaceSpreadsheetPreviewLimits.rows),
+  columns: z.number().int().min(1).max(spaceSpreadsheetPreviewLimits.columns)
+}).strict()
