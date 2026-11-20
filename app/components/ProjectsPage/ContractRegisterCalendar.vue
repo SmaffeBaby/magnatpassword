@@ -9,10 +9,9 @@ import type { RegisterContract } from '~~/shared/types/contract-register'
 
 const auth=useAuthStore(),vault=useVaultStore(),access=useProjectAccess()
 const today=useState('subscription-today',()=>todayDate())
-const month=useState('contract-calendar-month',()=>today.value.slice(0,7)+'-01')
-const selected=useState('contract-calendar-selected',()=>today.value)
+const {month,selected,q,projectId,origin,status,kind}=toRefs(useSavedFilters('contract-calendar',{month:today.value.slice(0,7)+'-01',selected:today.value,q:'',projectId:'all',origin:'all',status:'all',kind:'all' as ContractCalendarKind}))
 const {monthTitle,dates,move,goToday}=useMonthCalendar(month,selected,today)
-const q=ref(''),search=ref(''),projectId=ref('all'),origin=ref('all'),status=ref('all'),kind=ref<ContractCalendarKind>('all')
+const search=ref(q.value)
 const current=ref<RegisterContract|null>(null)
 let timer:ReturnType<typeof setTimeout>|undefined
 watch(q,value=>{clearTimeout(timer);timer=setTimeout(()=>{search.value=value},300)})
@@ -28,7 +27,7 @@ const projects=computed(()=>[{label:'Все проекты',value:'all'},...(que
 const label=(event:typeof events.value[number])=>event.kind==='date'?'Дата договора':event.contract.autoRenew?'Срок · Автопродление':'Срок окончания'
 const overdue=(event:typeof events.value[number])=>event.kind==='deadline'&&event.date<today.value&&!event.contract.autoRenew
 const money=(value:number|null)=>value===null?'Сумма не указана':new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(value)
-watch(()=>auth.user?.id,()=>{current.value=null;q.value='';search.value='';projectId.value='all';origin.value='all';status.value='all'})
+watch(()=>auth.user?.id,()=>{current.value=null;clearTimeout(timer);search.value=q.value})
 watch(()=>access.data.value?.allowed,allowed=>{if(!allowed)current.value=null})
 </script>
 

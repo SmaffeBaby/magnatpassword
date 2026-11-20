@@ -7,7 +7,8 @@ import type { EstimateField } from '~~/shared/types/estimate'
 import { executionMoney } from '~~/shared/utils/project-execution'
 const props=defineProps<{project:Project}>(),auth=useAuthStore(),supabase=useNuxtApp().$supabase
 const query=useProjectProcessData(()=>props.project.id)
-const search=ref(''),type=ref('all'),onlyOpen=ref(false),expanded=ref(false),page=ref(1),selectedId=ref(''),selectedPhase=ref<ProcessPhase>('contracts'),detailTab=ref('documents'),error=ref(''),exporting=ref(''),pageSize=6
+const {search,type,onlyOpen}=toRefs(useSavedFilters(() => `project-process:${props.project.id}`,{search:'',type:'all',onlyOpen:false as boolean}))
+const expanded=ref(false),page=ref(1),selectedId=ref(''),selectedPhase=ref<ProcessPhase>('contracts'),detailTab=ref('documents'),error=ref(''),exporting=ref(''),pageSize=6
 const contracts=computed(()=>query.data.value?.contracts??[])
 const filtered=computed(()=>contracts.value.filter(c=>{
  const text=`${c.number} ${c.sellerName} ${c.buyerName} ${c.seller?.inn??''} ${c.buyer?.inn??''} ${c.documents.map(d=>d.title+' '+d.number).join(' ')} ${c.scope.map(i=>i.name).join(' ')}`.toLocaleLowerCase('ru')

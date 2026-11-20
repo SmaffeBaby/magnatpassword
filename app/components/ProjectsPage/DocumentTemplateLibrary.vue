@@ -9,14 +9,15 @@ import { defaultExecutionState } from '~~/shared/utils/project-execution'
 import { defaultClosingState } from '~~/shared/utils/project-closing'
 const props=defineProps<{inline?:boolean;stage:DocumentTemplateStage;projectTemplates:Partial<Record<DocumentTemplateKind,ExecutionTemplate>>;currentKind:DocumentTemplateKind;canApply:boolean;hasDocument:boolean;currentTemplate:ExecutionTemplate|null}>()
 const open=defineModel<boolean>('open',{default:false}),emit=defineEmits<{apply:[value:DocumentTemplateApplication]}>(),auth=useAuthStore()
-const search=ref(''),debounced=ref(''),kindFilter=ref('all'),owner=ref('all'),page=ref(1),mode=ref<'list'|'view'|'edit'>('list'),error=ref(''),busy=ref(false),loadingDetail=ref(false),detail=ref<DocumentTemplate|null>(null),editingId=ref(''),editingRevision=ref(0),editingProject=ref(false)
+const {search,kindFilter,owner}=toRefs(useSavedFilters(() => `document-templates:${props.stage}:${props.inline?'page':'picker'}`,{search:'',kindFilter:'all',owner:'all'}))
+const debounced=ref(search.value),page=ref(1),mode=ref<'list'|'view'|'edit'>('list'),error=ref(''),busy=ref(false),loadingDetail=ref(false),detail=ref<DocumentTemplate|null>(null),editingId=ref(''),editingRevision=ref(0),editingProject=ref(false)
 const kinds=computed(()=>documentTemplateKinds[props.stage].map(k=>({...k}))),filterOptions=computed(()=>[{label:'Все типы документов',value:'all'},...kinds.value])
 const defaults=()=>props.stage==='execution'?defaultExecutionState().templates:defaultClosingState().templates
 const draft=ref<DocumentTemplateInput>({stage:props.stage,kind:kinds.value[0]!.value,name:'',description:'',template:JSON.parse(JSON.stringify(Object.values(defaults())[0]))})
 watch(search,(value,_,cleanup)=>{const timer=setTimeout(()=>{debounced.value=value;page.value=1},250);cleanup(()=>clearTimeout(timer))})
 watch([kindFilter,owner],()=>{page.value=1})
 watch(open,value=>{if(value){mode.value='list';error.value=''}})
-watch(()=>props.stage,()=>{kindFilter.value='all';search.value='';debounced.value='';page.value=1;mode.value='list'})
+watch(()=>props.stage,()=>{debounced.value=search.value;page.value=1;mode.value='list'})
 const query=useQuery({queryKey:computed(()=>['account',auth.user?.id,'document-templates',props.stage,debounced.value,kindFilter.value,owner.value,page.value]),queryFn:({signal})=>{const params=new URLSearchParams({stage:props.stage,q:debounced.value,...(kindFilter.value==='all'?{}:{kind:kindFilter.value}),owner:owner.value,page:String(page.value)});return sharedRequest<DocumentTemplateList>('/api/projects/document-templates?'+params,{signal})},enabled:computed(()=>(props.inline||open.value)&&!!auth.user?.id),retry:false})
 const projectCards=computed(()=>kinds.value.filter(k=>props.projectTemplates[k.value]).map(k=>({id:`project-${k.value}`,kind:k.value,name:documentTemplateKindLabel(k.value),template:props.projectTemplates[k.value]!,stage:props.stage})).filter(card=>(kindFilter.value==='all'||card.kind===kindFilter.value)&&owner.value==='all'&&templateSearchMatches(`${card.name} ${card.template.title} Шаблон проекта`,debounced.value)))
 const localDetail=computed(()=>detail.value?.id.startsWith('project-')??false)

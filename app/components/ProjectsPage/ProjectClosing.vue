@@ -16,7 +16,8 @@ import { executionMoney } from '~~/shared/utils/project-execution'
 const route=useRoute()
 const props=defineProps<{project:Project}>(),auth=useAuthStore(),supabase=useNuxtApp().$supabase,client=useQueryClient(),today=useState('subscription-today',()=>todayDate())
 const query=useQuery({queryKey:computed(()=>['account',auth.user?.id,'project-closing',props.project.id]),queryFn:({signal})=>sharedRequest<ProjectClosing>(`/api/projects/${props.project.id}/closing`,{signal}),retry:false})
-const state=ref(defaultClosingState()),base=ref(''),revision=ref(0),estimateRevision=ref(0),executionRevision=ref(0),loaded=ref(false),selected=ref(String(route.query.contract??'')),kind=ref<ClosingKind>('act'),search=ref(''),error=ref(''),busy=ref(false),exporting=ref(''),templatesOpen=ref(false),resetOpen=ref(false),previewOpen=ref(true)
+const {search} = toRefs(useSavedFilters(() => `project-closing:${props.project.id}`, { search: '' }))
+const state=ref(defaultClosingState()),base=ref(''),revision=ref(0),estimateRevision=ref(0),executionRevision=ref(0),loaded=ref(false),selected=ref(String(route.query.contract??'')),kind=ref<ClosingKind>('act'),error=ref(''),busy=ref(false),exporting=ref(''),templatesOpen=ref(false),resetOpen=ref(false),previewOpen=ref(true)
 const editable=computed(()=>canEditProjectSection(props.project, 'economy')),dirty=computed(()=>loaded.value&&JSON.stringify(state.value)!==base.value)
 function load(data:ProjectClosing){state.value=JSON.parse(JSON.stringify(data.state));base.value=JSON.stringify(data.state);revision.value=data.revision;estimateRevision.value=data.estimateRevision;executionRevision.value=data.executionRevision;loaded.value=true;if(!data.execution.contracts.some(c=>c.id===selected.value))selected.value=data.execution.contracts[0]?.id??''}
 watch(()=>query.data.value,data=>{if(data&&!dirty.value)load(data)},{immediate:true})

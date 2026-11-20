@@ -7,11 +7,11 @@ import { companyInputSchema, newCompanyDraft } from '~~/shared/utils/project-com
 const props=defineProps<{ownOnly:boolean;basePath?:string}>(),route=useRoute()
 const {query,refresh}=useProjectCompanies(),auth=useAuthStore(),supabase=useNuxtApp().$supabase
 const openedFromRoute=ref('')
-const search=ref(''),open=ref(false),busy=ref(false),error=ref(''),exporting=ref('')
+const open=ref(false),busy=ref(false),error=ref(''),exporting=ref('')
 const selected=ref<DirectoryCompany|null>(null)
 const fresh=()=>newCompanyDraft('',props.ownOnly)
 const draft=ref(fresh()),readonly=computed(()=>!!selected.value&&!selected.value.canEdit)
-const projectFilter=ref<string[]>([]),ownership=ref('all'),usage=ref('all'),sort=ref('name')
+const {search,projectFilter,ownership,usage,sort}=toRefs(useSavedFilters(() => `company-directory:${props.basePath ?? '/projects'}:${props.ownOnly?'legal':'counterparties'}`, {search:'',projectFilter:[] as string[],ownership:'all',usage:'all',sort:'name'}))
 const scopeRows=computed(()=>query.data.value?.filter(row=>row.isOwnLegalEntity===props.ownOnly)??[])
 const projectOptions=computed(()=>{const projects=new Map<string,string>();for(const row of scopeRows.value)for(const project of row.projects??[])projects.set(project.id,project.name);return [...projects].map(([value,label])=>({value,label})).sort((a,b)=>a.label.localeCompare(b.label,'ru'))})
 const rows=computed(()=>scopeRows.value.filter(row=>{
@@ -33,7 +33,7 @@ const sortOptions=[{value:'name',label:'По названию А–Я'},{value:'
 function resetFilters(){search.value='';projectFilter.value=[];ownership.value='all';usage.value='all';sort.value='name'}
 
 function show(row?:DirectoryCompany){selected.value=row??null;draft.value=row?{company:row.company,inn:row.inn,kpp:row.kpp,ogrn:row.ogrn||'',director:row.director,address:row.address,bankAccount:row.bankAccount,isOwnLegalEntity:row.isOwnLegalEntity}:fresh();error.value='';open.value=true}
-watch(()=>props.ownOnly,()=>{resetFilters();open.value=false})
+watch(()=>props.ownOnly,()=>{open.value=false})
 watch([()=>route.query.company,()=>query.data.value],()=>{const id=String(route.query.company??'');const row=query.data.value?.find(row=>row.id===id);if(!id)openedFromRoute.value='';else if(row&&openedFromRoute.value!==id){openedFromRoute.value=id;show(row)}},{immediate:true})
 async function submit(remove=false){
  if(busy.value||readonly.value)return

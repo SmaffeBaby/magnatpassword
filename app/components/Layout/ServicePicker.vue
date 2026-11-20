@@ -1,27 +1,24 @@
 <script setup lang="ts">
 import type { HomeAppId } from '~~/shared/types/home-layout'
-import { documentEditors } from '~~/shared/utils/project-documents'
+import { homeApps } from '~~/shared/utils/home-layout'
+import ServiceShortcutCards from './ServiceShortcutCards.vue'
 
 const props = defineProps<{ mode: 'replace' | 'new'; dragging?: boolean }>()
 const emit = defineEmits<{ choose: [path: string] }>()
 const home = useHomeLayoutStore(), auth = useAuthStore(), route = useRoute()
-const open = ref(false), editors = ref(false)
-const cards: Record<HomeAppId, { to: string; name: string; icon: string }> = {
-  applications: { to: '', name: 'Редакторы', icon: 'i-lucide-layout-grid' },
-  contracts: { to: '/contract-register', name: 'Реестр договоров', icon: 'i-lucide-notebook-tabs' },
-  passwords: { to: '/password', name: 'Пароли', icon: 'i-lucide-key-round' },
-  finances: { to: '/finances', name: 'Финансы', icon: 'i-lucide-chart-pie' },
-  relationships: { to: '/relationships', name: 'Взаимосвязи', icon: 'i-lucide-network' },
-  projects: { to: '/projects', name: 'Проекты', icon: 'i-lucide-folder-kanban' },
-  spaces: { to: '/spaces', name: 'Пространства', icon: 'i-lucide-orbit' },
-  team: { to: '/team', name: 'Команда', icon: 'i-lucide-users-round' },
-  kaban: { to: '/kaban', name: 'Задачи', icon: 'i-lucide-list-checks' }
-}
+const open = ref(false), service = ref<HomeAppId | null>(null)
+const panel = ref<HTMLElement>()
+function label(id: HomeAppId) { return id === 'applications' ? 'Редакторы' : homeApps[id].label }
+watch(service, async (current, previous) => {
+  await nextTick()
+  if (!open.value) return
+  panel.value?.querySelector<HTMLElement>(current ? '.service-back' : `[data-service="${previous}"]`)?.focus()
+})
 const rows = computed(() => home.display.rows.filter(row => row.cards.length))
 watch(open, value => {
   if (!value) return
   if (!home.ready && !home.loading) void home.load()
-  editors.value = false
+  service.value = null
 })
 watch([() => route.fullPath, () => auth.user?.id], () => { open.value = false })
 watch(() => props.dragging, dragging => { if (dragging) open.value = false })
@@ -40,23 +37,19 @@ function choose(path: string) {
   >
     <slot/>
     <template #content>
-        <section class="services-panel" :aria-label="mode === 'new' ? 'Новая вкладка' : 'Все сервисы'">
+        <section ref="panel" class="services-panel" :class="{ 'services-panel-submenu': service }" :aria-label="service ? label(service) : mode === 'new' ? 'Новая вкладка' : 'Все сервисы'">
           <header>
-            <button v-if="editors" type="button" class="service-back" aria-label="Назад к сервисам" @click="editors = false"><UIcon name="i-lucide-arrow-left"/></button>
-            <strong>{{ editors ? 'Редакторы' : mode === 'new' ? 'Новая вкладка' : 'Все сервисы' }}</strong>
+            <button v-if="service" type="button" class="service-back" aria-label="Назад к сервисам" @click="service = null"><UIcon name="i-lucide-arrow-left"/></button>
+            <strong>{{ service ? label(service) : mode === 'new' ? 'Новая вкладка' : 'Все сервисы' }}</strong>
             <UButton icon="i-lucide-house" color="neutral" variant="ghost" aria-label="На главную" @click="choose('/')"/>
           </header>
-          <div v-if="editors" class="services-row">
-            <button v-for="editor in documentEditors" :key="editor.key" type="button" class="service-card" @click="choose(`/office/${editor.key}`)">
-              <img :src="`/editor-icons/${editor.key}.ico`" alt=""/>{{ editor.label }}
-            </button>
-          </div>
+          <ServiceShortcutCards v-if="service" :service="service" in-tabs @choose="choose"/>
           <p v-else-if="home.loading" role="status">Загружаем сервисы…</p>
           <UAlert v-else-if="home.error && !home.ready" color="error" title="Не удалось загрузить сервисы" :actions="[{label:'Повторить',onClick:()=>home.load()}]"/>
           <template v-else>
             <div v-for="(row, index) in rows" :key="index" class="services-row" :class="`align-${row.align}`">
-              <button v-for="id in row.cards" :key="id" type="button" class="service-card" @click="id === 'applications' ? editors = true : choose(cards[id].to)">
-                <UIcon :name="cards[id].icon"/>{{ cards[id].name }}
+              <button v-for="id in row.cards" :key="id" type="button" class="service-card" :data-service="id" @click="service = id">
+                <UIcon :name="homeApps[id].icon"/>{{ label(id) }}
               </button>
             </div>
             <p v-if="!rows.length">Сервисы скрыты в настройках главной страницы.</p>
@@ -72,6 +65,7 @@ function choose(path: string) {
 .service-back:hover,.service-card:hover { background:#eaf2fa; }
 .service-back:focus-visible,.service-card:focus-visible { outline:2px solid #356c9e; outline-offset:-2px; }
 .services-panel { width:min(540px,calc(100vw - 36px)); display:grid; gap:12px; padding:14px; background:#f8fbfe; max-height:65dvh; overflow:auto; }
+.services-panel-submenu { background:white; }
 .services-panel header { display:flex; align-items:center; gap:8px; }
 .services-panel header strong { flex:1; color:#26374d; }
 .services-row { display:flex; flex-wrap:wrap; gap:8px; }

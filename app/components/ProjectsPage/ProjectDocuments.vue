@@ -12,7 +12,7 @@ const auth = useAuthStore(), route = useRoute(), router = useRouter(), { query, 
 const office = useOffice()
 const previewFile = ref<ProjectDocument | null>(null)
 const canUpload = computed(() => canEditProjectSection(props.project, 'documents'))
-const search = ref(''), kind = ref('all'), accessFilter = ref('all'), sort = ref('updated'), direction = ref<'asc'|'desc'>('desc')
+const {search, kind, accessFilter, sort, direction, sidebarOpen} = toRefs(useSavedFilters(() => `project-documents:${props.project.id}`, { search: '', kind: 'all', accessFilter: 'all', sort: 'updated', direction: 'desc' as 'asc'|'desc', sidebarOpen: true as boolean }))
 const busy = ref(false), error = ref(''), uploadStatus = ref('')
 const editing = ref<ProjectDocument | null>(null), deleting = ref<ProjectDocument | null>(null), accessFile = ref<ProjectDocument | null>(null), replacing = ref<ProjectDocument | null>(null)
 const form = reactive({ name: '', description: '', tags: '' })
@@ -107,7 +107,6 @@ watch(() => [auth.user?.id, props.project.id], () => { previewFile.value = null;
 
 const folderId = computed(() => typeof route.query.folder === 'string' ? route.query.folder : null)
 const view = ref<'list'|'tiles'>('list')
-const sidebarOpen = ref(true)
 const expandedFolders = ref(new Set<string>())
 const folderList = computed(() => folders.data.value ?? [])
 function folderPath(id: string | null) {

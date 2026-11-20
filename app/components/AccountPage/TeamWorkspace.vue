@@ -2,7 +2,8 @@
 import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 import { unitLabel,unitPath } from '~~/shared/utils/team'
 import type { TeamDirectory,TeamPerson } from '~~/shared/types/team'
-const team=useTeamStore(),data=ref<TeamDirectory|null>(null),query=ref(''),company=ref('all'),page=ref(1),view=ref<'people'|'structure'>('structure'),loading=ref(false),error=ref('')
+const {query,company,view}=toRefs(useSavedFilters('team',{query:'',company:'all',view:'structure' as 'people'|'structure'}))
+const team=useTeamStore(),data=ref<TeamDirectory|null>(null),page=ref(1),loading=ref(false),error=ref('')
 let sequence=0,timer:ReturnType<typeof setTimeout>|undefined
 async function load(force=false){const current=++sequence;loading.value=true;error.value='';try{const result=await team.directory(query.value,page.value,company.value==='all'?'':company.value,force);if(current===sequence)data.value=result}catch(failure:any){if(current===sequence)error.value=failure?.data?.message||'Команда недоступна'}finally{if(current===sequence)loading.value=false}}
 watch([query,company],()=>{page.value=1;clearTimeout(timer);timer=setTimeout(()=>load(),300)})

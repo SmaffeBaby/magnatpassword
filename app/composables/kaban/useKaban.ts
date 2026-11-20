@@ -385,7 +385,8 @@ export function useKaban(projectId:()=>string|undefined=()=>undefined, {embedded
   if(workspaceId.value!==target)workspaceId.value=target
   else if(!loading.value)void load()
  },{immediate:true})
- watch([workspaceId,()=>auth.user?.id,()=>vault.unlocked],()=>{generation++;categoryActionOpen.value=false;data.value=null;workspaces.value=[];locationOpen.value=false;targetVaultId.value='';targetRequest++;loading.value=false;busy.value=false;error.value='';editorOpen.value=false;draft.value=null;editorSession++;files.value=[];filesLoading.value=false;pendingFiles.value=[];clearPreview();stagesOpen.value=false;categoryOpen.value=false;deleteOpen.value=false;selectedCategory.value='all';view.value='board';history.value=[];historyBefore.value=null;historyLoading.value=false;mobileOpen.value=false;void load()},{immediate:true})
+ watch([workspaceId,()=>auth.user?.id,()=>vault.unlocked],()=>{generation++;categoryActionOpen.value=false;data.value=null;workspaces.value=[];locationOpen.value=false;targetVaultId.value='';targetRequest++;loading.value=false;busy.value=false;error.value='';editorOpen.value=false;draft.value=null;editorSession++;files.value=[];filesLoading.value=false;pendingFiles.value=[];clearPreview();stagesOpen.value=false;categoryOpen.value=false;deleteOpen.value=false;view.value='board';history.value=[];historyBefore.value=null;historyLoading.value=false;mobileOpen.value=false;void load()},{immediate:true})
+ if (!embedded) bindSavedFilters(() => `kaban-board:${workspaceId.value}`, reactive({selectedCategory,search,onlyMine,onlyOverdue,closedFrom,closedUntil}), () => vault.unlocked)
  watch(()=>sources.value.map(source=>source.id).join(','),()=>{void load()})
  const realtimeConnected=embedded?ref(false):useKabanRealtime(async()=>{
   const attempt=generation,id=auth.user?.id
@@ -397,7 +398,7 @@ export function useKaban(projectId:()=>string|undefined=()=>undefined, {embedded
  if(navigation){
   watch([categories,canCategorize,view,()=>data.value?.tasks],()=>{if(navigation.state.value.projectId!==projectId())return;navigation.state.value.canEdit=canCategorize.value;navigation.state.value.categories=categories.value.map(category=>({...category,count:categoryCount(category)}))},{immediate:true})
   watch(()=>navigation.state.value.createCategory,()=>{if(canCategorize.value)editCategory()})
-  watch(view,value=>{search.value='';if(value==='history')void loadHistory()})
+  watch(view,value=>{if(value==='history')void loadHistory()})
   onBeforeUnmount(()=>{if(navigation.state.value.projectId===projectId())Object.assign(navigation.state.value,{projectId:'',canEdit:false,categories:[]})})
  }
  const assistantUpdated=()=>{if(!busy.value&&!editorOpen.value)void load(true)}

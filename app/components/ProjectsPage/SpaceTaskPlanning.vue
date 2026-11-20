@@ -42,7 +42,7 @@ function shift(direction: number) {
   anchor.value = shiftTaskPlanningPeriod(anchor.value, 'month', direction)
 }
 
-const search = ref('')
+const {search} = toRefs(useSavedFilters(() => `space-task-search:${props.project.id}`, {search:''}))
 const busy = ref(false)
 const ganttStages = computed(() => props.board ? kabanProjectPlanningStages(props.board) : [])
 const categories = computed(() => props.board?.categories.filter(category => !category.archived) ?? [])
@@ -90,7 +90,7 @@ async function reschedule(task: KabanTask, startOn: string, dueOn: string) {
     <p v-else-if="failed && !board" class="plan-empty">Не удалось загрузить задачи проекта.</p>
     <div v-else-if="board && mode === 'gantt'" class="space-gantt" @pointerdown.stop @keydown.stop @wheel.stop>
       <UInput v-model="search" icon="i-lucide-search" placeholder="Найти задачу…" aria-label="Поиск задач" class="w-full max-w-md" />
-      <ProjectTasksPlanner mode="gantt" embedded :portal="portal"
+      <ProjectTasksPlanner mode="gantt" :filter-scope="`space:${props.project.id}`" embedded :portal="portal"
         :project-start-on="project.profile?.startOn" :project-end-on="project.profile?.endOn"
         :marker-projects="markerProjects" :tasks="ganttTasks" :stages="ganttStages" :categories="categories" :people="board.people"
         :category-contains="categoryContains" :can-create="false" :can-reschedule="canReschedule" :reschedule="reschedule" :busy="busy"

@@ -16,7 +16,8 @@ const query=useQuery({queryKey:computed(()=>['account',auth.user?.id,'project-ex
 const timeline=useProjectTimeline(()=>props.project.id)
 const timelineRow=(id:string)=>timeline.data.value?.contracts.find(c=>c.id===id)
 const state=ref(defaultExecutionState()),base=ref(''),revision=ref(0),estimateRevision=ref(0),loaded=ref(false)
-const selected=ref(''),active=ref('contract'),tab=ref('legal'),search=ref(''),busy=ref(false),exporting=ref(''),error=ref(''),templatesOpen=ref(false),previewOpen=ref(true),resetOpen=ref(false)
+const {search} = toRefs(useSavedFilters(() => `project-execution:${props.project.id}`, { search: '' }))
+const selected=ref(''),active=ref('contract'),tab=ref('legal'),busy=ref(false),exporting=ref(''),error=ref(''),templatesOpen=ref(false),previewOpen=ref(true),resetOpen=ref(false)
 const templateNotice=ref('')
 function applyTemplate(value:DocumentTemplateApplication){if(!editable.value||!['contract','appendix','invoice'].includes(value.kind))return;const key=value.kind as ExecutionKind;if(value.target==='document'){if(key!==kind.value||!document.value)return;editDoc('title',value.template.title);editDoc('body',value.template.body)}else{if(JSON.stringify(state.value.templates[key])===JSON.stringify(value.template)){templateNotice.value='Этот шаблон уже используется в проекте.';return}state.value.templates[key]=value.template}templateNotice.value='Шаблон применён. Сохраните изменения на странице этапа.'}
 const dirty=computed(()=>loaded.value&&JSON.stringify(state.value)!==base.value)

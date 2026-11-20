@@ -12,7 +12,7 @@ export function useAppSession() {
   watch(() => team.me, profile => {
     if (profile && profile.person.id === auth.user?.id) void auth.updateSavedProfile(profile.person.id, profile.person.fullName, profile.person.avatarUrl)
   })
-  watch(() => vault.unlocked, open => { if (open) { shared.refresh(); notifications.refresh(); useTeamStore().refreshMe() } else { shared.lock(); notifications.lock(); useTeamStore().lock(); useFiltersStore().reset(); useFinanceReportsStore().lock() } })
+  watch(() => vault.unlocked, open => { if (open) { shared.refresh(); notifications.refresh(); useTeamStore().refreshMe() } else { shared.lock(); notifications.lock(); useTeamStore().lock(); useFinanceReportsStore().lock() } })
   const { brand, productName, previewBrand } = useAccountBrand()
   useHead(() => ({ htmlAttrs: { 'data-brand': brand.value }, title: productName.value, link: [{ key: 'brand-favicon', rel: 'icon', type: 'image/svg+xml', href: brand.value === 'light' ? '/light-favicon.svg' : '/favicon.svg' }] }))
   watch(() => auth.user?.id, (id, previous) => {

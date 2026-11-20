@@ -6,8 +6,9 @@ const auth=useAuthStore(),access=useProjectAccess()
 const route=useRoute(),router=useRouter(),linkError=ref('')
 const {query:companies}=useProjectCompanies()
 const companyOptions=(own:boolean)=>[{label:'Все',value:'all'},...(companies.data.value||[]).filter(row=>row.isOwnLegalEntity===own).map(row=>({label:row.company,value:row.id,inn:row.inn,description:row.inn?'ИНН '+row.inn:''}))]
-const q=ref(''),search=ref(''),page=ref(1),editing=ref(false),selected=ref<RegisterContract|null>(null)
-const filters=reactive({legalEntityId:'all',counterpartyId:'all',origin:'all',projectId:'all',source:'all',status:'all',from:'',until:'',files:'all',sort:'date-desc',pageSize:'25'})
+const {q}=toRefs(useSavedFilters('contract-register-search',{q:''}))
+const search=ref(q.value),page=ref(1),editing=ref(false),selected=ref<RegisterContract|null>(null)
+const filters=useSavedFilters('contract-register',{legalEntityId:'all',counterpartyId:'all',origin:'all',projectId:'all',source:'all',status:'all',from:'',until:'',files:'all',sort:'date-desc',pageSize:'25'})
 let timer:ReturnType<typeof setTimeout>|undefined
 watch(q,value=>{clearTimeout(timer);timer=setTimeout(()=>{search.value=value;page.value=1},300)})
 onBeforeUnmount(()=>clearTimeout(timer))
@@ -15,7 +16,7 @@ watch(()=>filters.origin,value=>{if(value==='standalone')filters.projectId='all'
 watch(()=>({...filters}),()=>{page.value=1})
 const params=computed(()=>new URLSearchParams({...filters,q:search.value,page:String(page.value)}).toString())
 const query=useQuery({queryKey:computed(()=>['account',auth.user?.id,'contract-register',params.value]),queryFn:({signal})=>sharedRequest<ContractRegisterResult>(`/api/contract-register?${params.value}`,{signal}),enabled:computed(()=>!!auth.user&&!!access.data.value?.allowed),retry:false,refetchInterval:30000})
-watch(()=>auth.user?.id,()=>{editing.value=false;selected.value=null;reset()})
+watch(()=>auth.user?.id,()=>{editing.value=false;selected.value=null;clearTimeout(timer);search.value=q.value;page.value=1})
 watch(()=>access.data.value?.allowed,allowed=>{if(!allowed){editing.value=false;selected.value=null}})
 function reset(){clearTimeout(timer);q.value='';search.value='';page.value=1;Object.assign(filters,{legalEntityId:'all',counterpartyId:'all',origin:'all',projectId:'all',source:'all',status:'all',from:'',until:'',files:'all',sort:'date-desc',pageSize:'25'})}
 const columns=[{key:'number',label:'Номер'},{key:'project',label:'Проект / источник'},{key:'seller',label:'Продавец / исполнитель'},{key:'buyer',label:'Покупатель / заказчик'},{key:'date',label:'Дата'},{key:'deadline',label:'Срок'},{key:'amount',label:'Сумма с НДС, ₽'},{key:'vat',label:'НДС, ₽'},{key:'files',label:'Файлы'}]

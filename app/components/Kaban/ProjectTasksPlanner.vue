@@ -10,6 +10,7 @@ import GanttMarkers from './GanttMarkers.vue'
 
 const props = defineProps<{
   mode: 'calendar' | 'gantt'
+  filterScope: string
   embedded?: boolean
   portal?: HTMLElement
   projectStartOn?: string
@@ -30,9 +31,10 @@ const emit = defineEmits<{ open: [task: KabanTask, edit?: boolean]; create: [due
 const canEditTask = (task: KabanTask) => task.canEdit && !task.archived
 
 const today = todayDate()
-const anchor = ref(today)
-const calendarPeriod = ref<TaskPeriod>('month')
-const ganttPeriod = ref<TaskPeriod>('4')
+const {anchor, calendarPeriod, ganttPeriod, categories, assignees, stages, deadline, ganttSort} = toRefs(useSavedFilters(
+  () => `task-planner:${props.filterScope}:${props.mode}`,
+  {anchor:today, calendarPeriod:'month' as TaskPeriod, ganttPeriod:'4' as TaskPeriod, categories:[] as string[], assignees:[] as string[], stages:[] as string[], deadline:'all', ganttSort:'start-asc' as GanttTaskSort}
+))
 const period = computed({ get: () => props.mode === 'calendar' ? calendarPeriod.value : ganttPeriod.value, set: (value: TaskPeriod) => {
   if (props.mode === 'calendar') calendarPeriod.value = value
   else ganttPeriod.value = value
@@ -121,7 +123,6 @@ const periodLabel = computed(() => period.value === 'month'
 const scopedKey = (id: string, boardId?: string) => props.projectBoards && boardId ? `${boardId}:${id}` : id
 const stageById = computed(() => new Map(props.stages.map(stage => [scopedKey(stage.id, stage.boardId), stage])))
 const stage = (task: KabanTask, categoryId?: string) => stageById.value.get(scopedKey(kabanTaskStage(task, categoryId), task.boardId))
-const categories = ref<string[]>([]), assignees = ref<string[]>([]), stages = ref<string[]>([]), deadline = ref('all')
 const unassigned = 'unassigned'
 const categoryOptions = computed(() => {
   const names = new Map(props.categories.map(category => [scopedKey(category.id, category.boardId), category.name]))
@@ -147,7 +148,6 @@ const deadlineOptions = [
   { label: 'Любой срок', value: 'all' }, { label: 'Просроченные', value: 'overdue' },
   { label: 'Срок сегодня', value: 'today' }, { label: 'Без срока', value: 'none' }
 ]
-const ganttSort = ref<GanttTaskSort>('start-asc')
 const sortOptions: { label: string; value: GanttTaskSort }[] = [
   { label: 'По началу · сначала ранние', value: 'start-asc' },
   { label: 'По началу · сначала поздние', value: 'start-desc' },

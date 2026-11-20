@@ -12,7 +12,8 @@ const props = defineProps<{
   reload: () => Promise<unknown>
 }>()
 const auth = useAuthStore()
-const search = ref(''), busy = ref(false)
+const {search}=toRefs(useSavedFilters(() => `kaban-planning-search:${props.mode}`, {search:''}))
+const busy = ref(false)
 const editor = ref<{ projectId: string; id: string; edit: boolean }>()
 watch(() => props.mode, () => { editor.value = undefined })
 const byBoard = computed(() => new Map(props.boards.map(entry => [entry.workspace.board.id, entry])))
@@ -68,7 +69,7 @@ async function reschedule(task: KabanTask, startOn: string, dueOn: string) {
 <template>
   <div class="grid min-w-0 gap-4">
     <UInput v-model="search" icon="i-lucide-search" placeholder="Найти задачу…" aria-label="Поиск задач" class="w-full max-w-md" />
-    <ProjectTasksPlanner :mode="mode" :project-boards="planProjects" :tasks="tasks" :stages="stages" :categories="categories" :people="people"
+    <ProjectTasksPlanner filter-scope="all-projects" :mode="mode" :project-boards="planProjects" :tasks="tasks" :stages="stages" :categories="categories" :people="people"
       :marker-projects="boards.map(({project, workspace}) => ({ id: project.id, name: project.name, canEdit: workspace.canEdit }))"
       :category-contains="categoryContains" :can-create="false" :can-reschedule="canReschedule" :reschedule="reschedule" :busy="busy"
       @open="openTask" />

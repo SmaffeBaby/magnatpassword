@@ -34,7 +34,7 @@ watch(()=>c.editorOpen,open=>{if(props.editorTask&&editorStarted.value&&!open)em
 const route=useRoute(),router=useRouter()
 const activeView=computed(()=>props.projectId?projectTaskView(route.query.view):'board')
 const planner=computed(()=>activeView.value==='board'?null:projectTaskViews.find(view=>view.value===activeView.value))
-const sortOrder = ref<KabanBoardSort>('default')
+const {sortOrder} = toRefs(useSavedFilters(() => props.editorTask ? undefined : `kaban-sort:${props.projectId ?? 'legacy'}`, {sortOrder:'default' as KabanBoardSort}))
 const sortOptions: { label: string; value: KabanBoardSort }[] = [
   { label: 'Порядок по умолчанию', value: 'default' },
   { label: 'Сначала ближайший срок', value: 'due-asc' },
@@ -143,7 +143,7 @@ function notification(notification:{entryId:string|null;vaultId:string|null}){na
      <div v-if="c.workspaceId!=='all'&&c.view==='board'&&!planner&&!c.categoryOptions.length" class="kaban-onboarding"><UIcon name="i-lucide-folder-plus"/><strong>Начните с категории</strong><p>{{c.canCategorize?'Создайте собственную категорию Кабана и добавляйте в неё подкатегории. Категории паролей здесь не используются.':'Попросите администратора хранилища создать категорию или открыть доступ к существующей.'}}</p><UButton v-if="c.canCategorize" label="Создать категорию" icon="i-lucide-plus" @click="c.editCategory()"/></div>
      <div v-if="c.view==='closed'" class="kaban-closed-filters"><UFormField label="Закрыты с"><SharedDatePicker v-model="c.closedFrom" aria-label="Закрыты с" :max="c.closedUntil||undefined"/></UFormField><UFormField label="По"><SharedDatePicker v-model="c.closedUntil" aria-label="Закрыты по" :min="c.closedFrom||undefined"/></UFormField><UButton label="Сбросить период" color="neutral" variant="ghost" :disabled="!c.closedFrom&&!c.closedUntil" @click="c.closedFrom='';c.closedUntil=''"/><small>По дате закрытия · московское время</small></div><div v-if="c.view==='closed'" class="kaban-closed-grid"><KabanTaskCard v-for="task in c.closedTasks" :key="task.id" :task="task" :controller="c"/><p v-if="!c.closedTasks.length" class="kaban-help">За выбранный период закрытых задач нет.</p></div>
      <p v-if="c.view!=='closed'&&c.workspaceId==='all'&&!c.tasks.length" class="kaban-loading">Нет задач по выбранным условиям.</p>
-     <ProjectTasksPlanner v-if="activeView !== 'board'" :mode="activeView" :project-start-on="c.project?.profile?.startOn" :project-end-on="c.project?.profile?.endOn"
+     <ProjectTasksPlanner v-if="activeView !== 'board'" :filter-scope="`project:${props.projectId}`" :mode="activeView" :project-start-on="c.project?.profile?.startOn" :project-end-on="c.project?.profile?.endOn"
        :marker-projects="c.project ? [{ id: c.project.id, name: c.project.name, canEdit: c.displayData.canEdit }] : []" :tasks="c.planningTasks" :stages="c.planningStages" :categories="c.categories" :people="c.displayData.people" :category-contains="c.categoryContains" :can-create="c.displayData.canEdit" :can-reschedule="c.canOwn" :reschedule="c.rescheduleTask" :busy="c.busy" @open="(task, edit) => c.openTask(task, undefined, edit && task.canEdit)" @create="createForDay" />
      <div v-else-if="c.view!=='closed'" ref="boardElement" class="kaban-board" role="region" aria-label="Канбан-доска" tabindex="0"
        @pointerdown="boardPan.start" @pointermove="boardPan.move" @pointerup="boardPan.stop"

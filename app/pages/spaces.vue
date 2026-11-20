@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useSpacesDirectory } from '~/composables/projects/useSpacesDirectory'
 definePageMeta({layout:'home'})
-const search=ref(''),projectFilter=ref(''),sort=ref('recent')
+const {search,projectFilter,sort}=toRefs(useSavedFilters('spaces',{search:'',projectFilter:'',sort:'recent'}))
 const query=useSpacesDirectory()
 const rows=computed(()=>{const term=search.value.trim().toLocaleLowerCase('ru');return (query.data.value||[]).filter(p=>!projectFilter.value||p.id===projectFilter.value).map(project=>({...project,spaces:project.spaces.filter(s=>!term||`${project.name} ${s.name} ${s.description}`.toLocaleLowerCase('ru').includes(term)).sort((a,b)=>sort.value==='name'?a.name.localeCompare(b.name,'ru'):sort.value==='oldest'?a.updated_at.localeCompare(b.updated_at):b.updated_at.localeCompare(a.updated_at))})).filter(p=>p.spaces.length||!term).sort((a,b)=>sort.value==='project'?a.name.localeCompare(b.name,'ru'):sort.value==='name'?a.name.localeCompare(b.name,'ru'):sort.value==='oldest'?(a.spaces[0]?.updated_at||'').localeCompare(b.spaces[0]?.updated_at||''):(b.spaces[0]?.updated_at||'').localeCompare(a.spaces[0]?.updated_at||''))})
 </script>

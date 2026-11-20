@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import type { Project } from '~~/shared/types/projects'
 import { projectProfile, projectStatuses } from '~~/shared/utils/project-workspace'
 const props=defineProps<{projects:Project[]}>(),emit=defineEmits<{settings:[project:Project]}>()
-const auth=useAuthStore(),client=useQueryClient(),search=ref(''),status=ref('all'),view=ref<'grid'|'list'>('grid'),folder=ref('all'),archived=ref(false),favorites=ref(false)
+const auth=useAuthStore(),client=useQueryClient()
+const {search,status,view,folder,archived,favorites}=toRefs(useSavedFilters('projects',{search:'',status:'all',view:'grid' as 'grid'|'list',folder:'all',archived:false as boolean,favorites:false as boolean}))
 const folderOpen=ref(false),folderName=ref(''),busy=ref(false),error=ref(''),target=ref<Project|null>(null),action=ref(''),folderTarget=ref('root')
 const folders=useQuery({queryKey:computed(()=>['account',auth.user?.id,'project-folders']),queryFn:()=>sharedRequest<{id:string;name:string}[]>('/api/projects/folders'),retry:false})
 const folderOptions=computed(()=>[{label:'Без папки',value:'root'},...(folders.data.value??[]).map(f=>({label:f.name,value:f.id}))])

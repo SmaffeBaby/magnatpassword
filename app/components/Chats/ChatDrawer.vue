@@ -5,7 +5,8 @@ import type { TeamDirectory } from '~~/shared/types/team'
 import ProjectChats from '~/components/ProjectsPage/ProjectChats.vue'
 import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 const hub=useChatHubStore(),auth=useAuthStore(),projects=useProjectsData()
-const search=ref(''),newDirect=ref(false),peopleSearch=ref(''),peoplePage=ref(1),error=ref(''),busy=ref(false),projectChoice=ref('')
+const {search}=toRefs(useSavedFilters(() => `chat-list:${hub.tab}`, {search:''}))
+const newDirect=ref(false),peopleSearch=ref(''),peoplePage=ref(1),error=ref(''),busy=ref(false),projectChoice=ref('')
 const people=useQuery({queryKey:computed(()=>['account',auth.user?.id,'chat-people',peopleSearch.value,peoplePage.value]),queryFn:({signal})=>sharedRequest<TeamDirectory>(`/api/chats/people?q=${encodeURIComponent(peopleSearch.value)}&page=${peoplePage.value}`,{signal}),enabled:computed(()=>hub.opened&&newDirect.value),retry:false})
 watch(peopleSearch,()=>{peoplePage.value=1})
 const selectedChat=computed(()=>hub.items.find(item=>item.id===hub.selected?.chatId))

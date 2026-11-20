@@ -3,7 +3,7 @@ import { safeUrl } from '~~/shared/utils/crypto'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 const props=defineProps<{entries:ScopedCredential[];allEntries:ScopedCredential[];busy:boolean}>()
 const emit=defineEmits<{edit:[entry:ScopedCredential];create:[];open:[entry:ScopedCredential]}>()
-const query=ref('')
+const {query}=toRefs(useSavedFilters('relationship-cards',{query:''}))
 const cards=computed(()=>props.entries.filter(entry=>entry.kind==='relationship'&&`${entry.title} ${entry.url} ${entry.notes}`.toLowerCase().includes(query.value.trim().toLowerCase())))
 function connections(entry:ScopedCredential){return (entry.links??[]).map(link=>({link,target:props.allEntries.find(target=>target.id===link.targetEntryId&&(target.vaultIds??[target.vaultId]).includes(link.targetVaultId))}))}
 const label=(entry:ScopedCredential)=>entry.kind==='subscription'?'Финансы':entry.kind==='relationship'?'Взаимосвязи':'Пароли'

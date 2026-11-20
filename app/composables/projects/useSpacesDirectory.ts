@@ -21,7 +21,7 @@ export function useSpacesDirectory(enabled: MaybeRefOrGetter<boolean> = true) {
   return useQuery({
     queryKey: computed(() => ['account', auth.user?.id, 'spaces-directory']),
     queryFn: () => sharedRequest<DirectoryProject[]>('/api/spaces'),
-    enabled: computed(() => toValue(enabled)),
+    enabled: computed(() => !!auth.user?.id && toValue(enabled)),
     retry: false,
     refetchInterval: 30000
   })

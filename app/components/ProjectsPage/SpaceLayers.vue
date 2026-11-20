@@ -15,7 +15,7 @@ interface LayerRow {
   hiddenByParent: boolean
   hiddenByLink: boolean
 }
-const props = defineProps<{ rows: LayerRow[]; selected: ReadonlySet<string>; primary: string; editable: boolean; busy: boolean }>()
+const props = defineProps<{ spaceId: string; rows: LayerRow[]; selected: ReadonlySet<string>; primary: string; editable: boolean; busy: boolean }>()
 const emit = defineEmits<{
   focus: [id: string, toggle: boolean]
   visibility: [id: string]
@@ -24,7 +24,7 @@ const emit = defineEmits<{
 const canEdit = computed(() => props.editable && !props.busy)
 const open = ref(true)
 onMounted(() => { if (window.matchMedia('(max-width: 680px)').matches) open.value = false })
-const query = ref('')
+const {query} = toRefs(useSavedFilters(() => `space-layers:${props.spaceId}`, {query:''}))
 const searchInput = ref<HTMLInputElement>()
 const panel = ref<HTMLElement>()
 const collapsed = ref(new Set<string>())

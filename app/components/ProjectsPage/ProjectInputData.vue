@@ -8,7 +8,8 @@ import { inputCardWriteSchema } from '~~/shared/utils/project-inputs'
 const props=defineProps<{project:Project}>(),auth=useAuthStore(),client=useQueryClient()
 const key=computed(()=>['account',auth.user?.id,'project-inputs',props.project.id]),base=computed(()=>`/api/projects/${props.project.id}/input-data`)
 const query=useQuery({queryKey:key,queryFn:({signal})=>sharedRequest<ProjectInputs>(base.value,{signal}),retry:false,refetchInterval:30000})
-const canEdit=computed(()=>canEditProjectSection(props.project, 'economy')),search=ref(''),open=ref(false),busy=ref(false),error=ref(''),uploadStatus=ref(''),removeId=ref(''),preview=ref(''),previewName=ref(''),loadingFile=ref('')
+const {search} = toRefs(useSavedFilters(() => `project-input-data:${props.project.id}`, { search: '' }))
+const canEdit=computed(()=>canEditProjectSection(props.project, 'economy')),open=ref(false),busy=ref(false),error=ref(''),uploadStatus=ref(''),removeId=ref(''),preview=ref(''),previewName=ref(''),loadingFile=ref('')
 const draft=ref({id:'',title:'',description:'',fields:[] as InputField[]}),draftRevision=ref(0),files=ref<File[]>([]),existing=ref<InputAttachment[]>([])
 const types=[{label:'Текст',value:'text'},{label:'Длинный текст',value:'multiline'},{label:'Ссылка',value:'url'},{label:'Дата',value:'date'},{label:'Число',value:'number'},{label:'Флажок',value:'checkbox'}]
 const rows=computed(()=>(query.data.value?.cards??[]).filter(card=>`${card.title} ${card.description} ${card.fields.map(f=>f.label+' '+f.value).join(' ')} ${card.attachments.map(f=>f.name).join(' ')}`.toLocaleLowerCase('ru').includes(search.value.toLocaleLowerCase('ru').trim())))

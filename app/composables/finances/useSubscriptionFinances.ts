@@ -36,7 +36,7 @@ export function useSubscriptionFinances(props:{sources:VaultSource[]}) {
   return months
  })
  const distribution=computed(()=>props.sources.map(source=>({key:source.id,label:source.name,value:planned.value.filter(event=>event.currency===chartCurrency.value&&(filters.group.value==='all'?event.row.entry.vaultId===source.id:filters.group.value===source.id)).reduce((sum,event)=>sum+Math.round(event.amount*100),0)/100})).filter(item=>item.value>0))
- watch(()=>filters.currency.value,value=>{if(currencies.includes(value as Currency))chartCurrency.value=value as Currency})
+ watch(()=>filters.currency.value,value=>{if(currencies.includes(value as Currency))chartCurrency.value=value as Currency},{flush:'sync'})
  const stamp=(value:string)=>new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'medium',timeStyle:'short'}).format(new Date(value))
  return {paymentEntry,...filters,from,to,chartCurrency,chartOptions,tab,validRange,planned,payments,planTotals,paidTotals,monthly,distribution,amountLabel,dateLabel,stamp}
 }
