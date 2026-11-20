@@ -1,4 +1,4 @@
-import { readFile, realpath, stat } from 'node:fs/promises'
+import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { resolve, sep } from 'node:path'
 import { z } from 'zod'
 const filename = z.string().regex(/^Magnat-[\w.-]+\.(exe|dmg|apk|ipa|app\.tar\.gz)$/)
@@ -11,6 +11,22 @@ export async function getReleaseRoot() {
   const root = useRuntimeConfig().releasesDirectory
   if (!root) throw createError({ statusCode: 503, statusMessage: 'Release SSD is not configured' })
   try { return await realpath(root) } catch { throw createError({ statusCode: 503, statusMessage: 'Release SSD unavailable' }) }
+}
+export async function getReleaseAssetBytes() {
+  const root = await getReleaseRoot()
+  let bytes = 0
+  for (const version of await readdir(root, { withFileTypes: true })) {
+    if (!version.isDirectory() || !/^\d+\.\d+\.\d+$/.test(version.name)) continue
+
+    const directory = resolve(root, version.name)
+    for (const file of await readdir(directory, { withFileTypes: true })) {
+      if (!file.isFile() || !filename.safeParse(file.name).success) continue
+
+      const info = await lstat(resolve(directory, file.name))
+      if (info.isFile()) bytes += info.size
+    }
+  }
+  return bytes
 }
 export async function getAppRelease(version?: string) {
   const root = await getReleaseRoot()

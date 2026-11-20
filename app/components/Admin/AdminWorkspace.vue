@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import AssistantUpdates from '~/components/Assistant/Updates.vue'
+import AdminOverview from '~/components/Admin/AdminOverview.vue'
 import ReleaseSettings from '~/components/Admin/ReleaseSettings.vue'
 import TeamSettings from '~/components/PasswordPage/Admin/TeamSettings.vue'
-import ProjectAccess from '~/components/ProjectsPage/Admin/ProjectAccess.vue'
 import AuthGate from '~/components/Auth/AuthGate.vue'
 import BrandLogo from '~/components/Brand/BrandLogo.vue'
-import VaultWorkspace from '~/components/PasswordPage/VaultWorkspace.vue'
 import { useAdminPage } from '~/composables/admin/useAdminPage'
 
-const { setTeamVisibility, visibilityBusy, auth, vault, identity, checking, accessError, overview, section, titles, navigation, restore, switchAccount, switchingAccount, date, productName } = useAdminPage()
+const { setTeamVisibility, visibilityBusy, auth, vault, identity, checking, accessError, overview, section, titles, navigation, restore, switchAccount, switchingAccount, date } = useAdminPage()
 </script>
 <template>
   <AuthGate admin>
@@ -23,9 +22,7 @@ const { setTeamVisibility, visibilityBusy, auth, vault, identity, checking, acce
       <UDashboardPanel :id="section">
         <template #header><UDashboardNavbar :title="titles[section]"><template #leading><UDashboardSidebarCollapse /></template><template #right><UButton to="/" icon="i-lucide-external-link" label="Открыть сайт" color="neutral" variant="outline" size="sm" /></template></UDashboardNavbar></template>
         <template #body>
-          <template v-if="section === 'overview'"><div class="admin-intro"><span class="eyebrow">{{ productName.toUpperCase() }} / ADMIN</span><h1>Всё под контролем.</h1><p>Состояние сервиса и управление вашим хранилищем.</p></div><div class="grid gap-5 md:grid-cols-3"><UCard><p class="text-sm text-slate-500">Пользователей</p><p class="mt-3 text-3xl font-semibold">{{ overview?.totalUsers ?? '—' }}</p></UCard><UCard><p class="text-sm text-slate-500">Зашифрованных хранилищ</p><p class="mt-3 text-3xl font-semibold">{{ overview?.vaults ?? '—' }}</p></UCard><UCard><p class="text-sm text-slate-500">Шифрование</p><p class="mt-3 text-2xl font-semibold text-emerald-600">AES-256-GCM</p></UCard></div><UCard class="mt-6"><div class="flex items-start gap-4"><UIcon name="i-lucide-shield-check" class="size-8 shrink-0 text-primary-500" /><div><h2 class="font-semibold">Личные данные остаются личными</h2><p class="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Администратор видит список аккаунтов и общую статистику. Пароли хранятся зашифрованными на сервере и доступны только владельцу или участникам соответствующего хранилища. В разделах «Категории» и «Пароли» вы управляете своими записями и общими хранилищами, к которым вам выдан доступ.</p><UButton class="mt-5" to="/admin/password?section=credentials" label="Мои пароли" icon="i-lucide-arrow-right" variant="soft" /></div></div></UCard></template>
-          <AuthGate v-else-if="section === 'categories' || section === 'credentials'"><VaultWorkspace embedded :mode="section" /></AuthGate>
-          <ProjectAccess v-else-if="section === 'projects'" />
+          <AdminOverview v-if="section === 'overview'" :account-id="identity.id" :totals="overview" />
           <AssistantUpdates v-else-if="section === 'assistant'" admin />
           <ReleaseSettings v-else-if="section === 'releases'" />
           <TeamSettings v-else-if="section==='team'"/>

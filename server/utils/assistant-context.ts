@@ -1,5 +1,6 @@
 import { canEditProjectSection } from '../../shared/utils/project-permissions'
 import type { H3Event } from 'h3'
+import type { $Fetch } from 'ofetch'
 import type { AssistantContext } from '../../shared/types/assistant'
 import type { KabanWorkspace } from '../../shared/types/kaban'
 import type { Project } from '../../shared/types/projects'
@@ -15,7 +16,7 @@ import { assistantRelations } from '../../shared/utils/assistant-relations'
 
 // Calls the same authenticated endpoints as the normal UI. Never accepts a model-provided URL.
 export function assistantFetch<T>(event: H3Event, path: string, options: Record<string, unknown> = {}): Promise<T> {
-  return event.$fetch(path, { ...options, headers: { ...(options.headers as Record<string, string> || {}), authorization: getHeader(event, 'authorization') || '' } }) as Promise<T>
+  return (event.$fetch as unknown as $Fetch)<T>(path, { ...options, headers: { ...(options.headers as Record<string, string> || {}), authorization: getHeader(event, 'authorization') || '' } })
 }
 export async function assistantContext(event: H3Event, selected: { projectId?: string; vaultId?: string } = {}): Promise<AssistantContext> {
   const result: AssistantContext = { projects: [], vaults: [], kaban: null, project: null, projectData: null, uploadTargets: [], relations: [], warnings: [] }

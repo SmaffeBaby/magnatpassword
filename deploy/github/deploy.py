@@ -57,6 +57,8 @@ def plan(paths, initial=False):
             restart.add('functions')
         if path.startswith('supabase/volumes/pooler/'):
             restart.add('supavisor')
+        if path == 'scripts/admin-metrics.mjs':
+            restart.add('metrics')
     return {'web': web, 'stack': stack, 'proxy': proxy, 'restart': sorted(restart)}
 
 

@@ -1,4 +1,4 @@
 <script setup lang="ts">
-import AdminWorkspace from '~/components/Admin/AdminWorkspace.vue'
+definePageMeta({ redirect: '/admin/password' })
 </script>
-<template><AdminWorkspace /></template>
+<template><span hidden /></template>

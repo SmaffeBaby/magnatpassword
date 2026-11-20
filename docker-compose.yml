@@ -58,6 +58,26 @@ services:
         condition: service_healthy
       storage:
         condition: service_healthy
+  metrics:
+    image: node:24-alpine
+    command: ['node', '/collector/admin-metrics.mjs']
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 128m
+    environment:
+      METRICS_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-magnat-password}
+    volumes:
+      - ./scripts/admin-metrics.mjs:/collector/admin-metrics.mjs:ro
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+        bind:
+          create_host_path: false
+      - metrics-data:/metrics
   app:
     build: .
     restart: unless-stopped
@@ -73,6 +93,7 @@ services:
       api-gw:
         condition: service_healthy
     volumes:
+      - metrics-data:/metrics:ro
       - type: bind
         source: ${MAGNAT_RELEASES_DIR:?Set MAGNAT_RELEASES_DIR to the existing SSD release directory}
         target: /releases
@@ -82,4 +103,5 @@ services:
     ports:
       - '0.0.0.0:3003:3000'
 volumes:
+  metrics-data:
   ollama-models:
