@@ -18,12 +18,13 @@ import { canViewProjectSection } from '~~/shared/utils/project-permissions'
 import type { KabanWorkspace } from '~~/shared/types/kaban'
 import { groupSpaceLayers, moveSpaceLayer, moveSpaceLayers, spaceHiddenLayers, spaceLayers, spaceSearchText, ungroupSpaceLayers, type SpaceLayerChange, type SpaceLayerPosition } from '~~/shared/utils/space-layers'
 import { documentEditor, spaceSpreadsheetPreviewDefaults, spaceSpreadsheetPreviewLimits } from '~~/shared/utils/project-documents'
+import { spaceWebLinkMaxLength, spaceWebLinkUrl } from '~~/shared/utils/space-web-link'
 import { saveFile } from '~/utils/file-download'
 import { canPreviewProjectImage, projectImagePreview } from '~/utils/project-image-preview'
 const props=defineProps<{project:Project}>()
 type Space={id:string;name:string;description:string;created_by:string;permission:string;object_count:number;members:{user_id:string;permission:string}[]}
 type Message={id:string;author:string;text:string;createdAt:string}
-type Item={id:string;revision:number;data:{kind:string;layerHidden?:boolean;layerGroup?:true;parentId?:string;layerOrder?:number;fontSize?:number;fontFamily?:'system'|'serif'|'mono';fontWeight?:'normal'|'bold';titlePosition?:string;titleColor?:string;showContent?:boolean;imageOnly?:boolean;contentOnly?:boolean;spreadsheetPreview?:SpaceSpreadsheetPreview;subscriptionSource?:any;calendarEvents?:{id:string;title:string;start:string;end:string;color:string;type:'event'|'range'}[];contours?:number;shape?:string;taskId?:string;boardId?:string;bookingId?:string;passwordId?:string;chatId?:string;personId?:string;role?:string;duty?:string;assetId?:string;points?:[number,number][];strokeWidth?:number;opacity?:number;description?:string;targetSpace?:string;borderColor?:string;borderWidth?:number;width?:number;height?:number;rows?:string[][];resolved?:boolean;messages?:Message[];name?:string;text?:string;x:number;y:number;fileId?:string;from?:string;to?:string;color?:string;textColor?:string;lineStyle?:'straight'|'dashed'|'wavy';arrow?:'none'|'forward'|'backward'|'both'}}
+type Item={id:string;revision:number;data:{kind:string;layerHidden?:boolean;layerGroup?:true;parentId?:string;layerOrder?:number;fontSize?:number;fontFamily?:'system'|'serif'|'mono';fontWeight?:'normal'|'bold';titlePosition?:string;titleColor?:string;showContent?:boolean;imageOnly?:boolean;contentOnly?:boolean;spreadsheetPreview?:SpaceSpreadsheetPreview;subscriptionSource?:any;calendarEvents?:{id:string;title:string;start:string;end:string;color:string;type:'event'|'range'}[];contours?:number;shape?:string;taskId?:string;boardId?:string;bookingId?:string;passwordId?:string;chatId?:string;personId?:string;role?:string;duty?:string;assetId?:string;points?:[number,number][];strokeWidth?:number;opacity?:number;description?:string;targetSpace?:string;borderColor?:string;borderWidth?:number;width?:number;height?:number;rows?:string[][];resolved?:boolean;messages?:Message[];name?:string;url?:string;text?:string;x:number;y:number;fileId?:string;from?:string;to?:string;color?:string;textColor?:string;lineStyle?:'straight'|'dashed'|'wavy';arrow?:'none'|'forward'|'backward'|'both'}}
 type Cursor={id:string;user_id:string;name:string;x:number;y:number;updated_at:string}
 const accountQueries=useAccountQueries(),auth=useAuthStore(),supabase=useNuxtApp().$supabase
 const base=`/api/projects/${props.project.id}/spaces`,space=ref(''),spaces=ref<Space[]>([]),objects=ref<Item[]>([]),cursors=ref<Cursor[]>([])
@@ -38,9 +39,13 @@ const root=ref<HTMLElement>(),fullscreen=ref(false),headerOpen=ref(false)
 const imagePreview = ref<{ file: ProjectDocument; item: Item } | null>(null)
 const officePreview = ref<{ file: ProjectDocument; item: Item } | null>(null)
 const officePreviewContent = ref<SpaceFileThumbnail | null>(null)
+const webLinkEditor = ref<{ id?: string; revision?: number } | null>(null)
+const webLinkForm = reactive({ name: '', url: '' })
+const webLinkError = ref('')
 watch(() => [auth.user?.id, props.project.id, space.value], () => {
   imagePreview.value = null
   officePreview.value = null
+  webLinkEditor.value = null
 })
 const serviceTabs = useServiceTabsStore(), office = useOffice(), route = useRoute()
 const workspaceTabId = serviceTabs.activeId
@@ -177,22 +182,57 @@ async function create(){if(!title.value.trim())return;const id=crypto.randomUUID
 async function choose(id:string,remember=false,view?:{x:number;y:number;zoom:number}){if(id===space.value)return;await flushNudge();if(remember&&space.value)history.value.push({id:space.value,x:offset.x,y:offset.y,zoom:zoom.value});else if(!remember&&!view)history.value=[];objects.value=[];space.value=id;cursorPoint=null;replaceSelection([]);editing.value='';pinnedComment.value='';hoveredComment.value='';offset.x=view?.x??150;offset.y=view?.y??100;zoom.value=view?.zoom??1;await load()}
 async function goBack(){let previous=history.value.pop();while(previous&&!spaces.value.some(s=>s.id===previous!.id))previous=history.value.pop();if(previous)await choose(previous.id,false,previous)}
 function point(e:PointerEvent|WheelEvent){const r=canvas.value!.getBoundingClientRect();return{x:(e.clientX-r.left-offset.x)/zoom.value,y:(e.clientY-r.top-offset.y)/zoom.value}}
-async function add(kind:string,fileId?:string,extra:Partial<Item['data']>={}){const id=crypto.randomUUID();await createBoardItem(id,{kind,x:(350-offset.x)/zoom.value,y:(220-offset.y)/zoom.value,text:kind==='todo'?'[ ] Первая задача':kind==='spec'?'# Без названия\n\nНачните описывать требования…':kind==='comment'?'Комментарий':kind==='text'?'Текст':kind==='frame'?'Контурный блок':kind==='shape'?'Новый блок':'Новая заметка',...(kind==='table'?{rows:[['Столбец 1','Столбец 2','Столбец 3'],['','',''],['','','']],width:440}:{}),...(kind==='spec'?{width:520,height:420}:{}),...(kind==='frame'?{borderColor:'#7c3aed',borderWidth:2,width:320,height:200}:{}),...(fileId?{fileId}:{}),...(kind==='calendar'?{calendarEvents:[],width:560,height:430}:{}),...(kind==='task-calendar'?{width:620,height:410}:kind==='task-gantt'||kind==='booking-gantt'?{width:1040,height:420}:kind==='booking-calendar'?{width:660,height:430}:{}),...extra});if(objects.value.some(i=>i.id===id)){selected.value=id;return id}}
+async function add(kind:string,fileId?:string,extra:Partial<Item['data']>={}){const id=crypto.randomUUID();const saved=await createBoardItem(id,{kind,x:(350-offset.x)/zoom.value,y:(220-offset.y)/zoom.value,text:kind==='todo'?'[ ] Первая задача':kind==='spec'?'# Без названия\n\nНачните описывать требования…':kind==='comment'?'Комментарий':kind==='text'?'Текст':kind==='frame'?'Контурный блок':kind==='shape'?'Новый блок':'Новая заметка',...(kind==='table'?{rows:[['Столбец 1','Столбец 2','Столбец 3'],['','',''],['','','']],width:440}:{}),...(kind==='spec'?{width:520,height:420}:{}),...(kind==='frame'?{borderColor:'#7c3aed',borderWidth:2,width:320,height:200}:{}),...(fileId?{fileId}:{}),...(kind==='calendar'?{calendarEvents:[],width:560,height:430}:{}),...(kind==='task-calendar'?{width:620,height:410}:kind==='task-gantt'||kind==='booking-gantt'?{width:1040,height:420}:kind==='booking-calendar'?{width:660,height:430}:{}),...extra});if(objects.value.some(i=>i.id===id))selected.value=id;return saved?id:undefined}
 async function createBoardItem(id: string, data: Record<string, unknown>) {
   const scope = undoScope.value
   if (await run(() => send('put', id, data))) {
     rememberUndo({ kind: 'create', targets: [changedTarget(id, 0)] }, scope)
+    return true
   }
+  return false
 }
 async function put(item: Item, data: Item['data'], previous = item.data) {
   const scope = undoScope.value
   const before = structuredClone(toRaw(originalStyles.get(item.id) ?? previous))
   const target = changedTarget(item.id, item.revision)
   originalStyles.delete(item.id)
-  if (JSON.stringify(before) === JSON.stringify(data)) return
+  if (JSON.stringify(before) === JSON.stringify(data)) return true
   if (await run(() => send('put', item.id, data, target.beforeRevision))) {
     rememberUndo({ kind: 'update', targets: [target], before }, scope)
+    return true
   }
+  return false
+}
+
+function openWebLinkEditor(item?: Item) {
+  if (!space.value || !editable.value || busy.value) return
+  webLinkForm.name = item?.data.name ?? ''
+  webLinkForm.url = item?.data.url ?? ''
+  webLinkError.value = ''
+  webLinkEditor.value = { id: item?.id, revision: item?.revision }
+}
+
+async function saveWebLink() {
+  const editor = webLinkEditor.value
+  if (!editor || !space.value || !editable.value || busy.value) return
+  const url = spaceWebLinkUrl(webLinkForm.url)
+  if (!url) {
+    webLinkError.value = 'Введите действительный адрес, начинающийся с https:// или http://.'
+    return
+  }
+  const name = webLinkForm.name.trim() || undefined
+  webLinkError.value = ''
+  const item = editor.id ? objects.value.find(item => item.id === editor.id) : undefined
+  if (editor.id && (!item || item.revision !== editor.revision)) {
+    webLinkError.value = 'Карточка изменилась. Закройте форму и снова откройте карточку.'
+    return
+  }
+  const saved = item
+    ? await put(item, { ...item.data, name, url })
+    : await add('web-link', undefined, { name, url, text: undefined })
+  if (webLinkEditor.value !== editor) return
+  if (saved) webLinkEditor.value = null
+  else webLinkError.value = error.value || 'Не удалось сохранить ссылку.'
 }
 function select(item:Item){if(tool.value==='link'&&(item.data.layerGroup||selectedItem.value?.data.layerGroup)){replaceSelection([]);return}if(tool.value==='link'&&selected.value&&selected.value!==item.id){const from=selected.value;void createBoardItem(crypto.randomUUID(),{kind:'link',x:0,y:0,from,to:item.id,...lineDefaults});tool.value='select'}selected.value=item.id}
 let cursorPoint:{x:number;y:number}|null=null
@@ -216,7 +256,7 @@ function move(e:PointerEvent){if(!space.value)return;const p=point(e);cursorPoin
 function up(){if(boxSelection.value){updateBox();boxSelection.value=null;return}if(inkDraft.value||erasing.value){void finishInk();return}if(resizing){const r=resizing;resizing=null;const item=objects.value.find(i=>i.id===r.id);if(item&&r.moved)void put(item,{...item.data},r.before);return}const d=drag;drag=null;if(d?.moved)lastDragEnd=Date.now();if(d?.id&&d.moved){const item=objects.value.find(i=>i.id===d.id);if(item)void finishLayerDrag(item, [{id:item.id,x:d.ox,y:d.oy}, ...(d.children||[])])}}
 function wheel(e:WheelEvent){stopCameraTransition();const p=point(e),r=canvas.value!.getBoundingClientRect();zoom.value=Math.max(.15,Math.min(3,zoom.value*Math.exp(-e.deltaY*.001)));offset.x=e.clientX-r.left-p.x*zoom.value;offset.y=e.clientY-r.top-p.y*zoom.value}
 const draftTodos=ref<{text:string;done:boolean}[]>([])
-function edit(item:Item){if(item.data.kind==='space'){if(spaces.value.some(s=>s.id===item.data.targetSpace))void choose(item.data.targetSpace!,true);return}if(!editable.value||['image','document','table','comment','task','password','chat','person','stroke','subscription','calendar','task-calendar','task-gantt','booking','booking-calendar','booking-gantt'].includes(item.data.kind))return;editing.value=item.id;draft.value=item.data.text||'';if(item.data.kind==='todo')draftTodos.value=(item.data.text||'').split('\n').map(line=>({text:line.replace(/^\[[ x]\]\s*/,''),done:line.startsWith('[x]')}))}
+function edit(item:Item){if(item.data.kind==='web-link'){openWebLinkEditor(item);return}if(item.data.kind==='space'){if(spaces.value.some(s=>s.id===item.data.targetSpace))void choose(item.data.targetSpace!,true);return}if(!editable.value||['image','document','table','comment','task','password','chat','person','stroke','subscription','calendar','task-calendar','task-gantt','booking','booking-calendar','booking-gantt'].includes(item.data.kind))return;editing.value=item.id;draft.value=item.data.text||'';if(item.data.kind==='todo')draftTodos.value=(item.data.text||'').split('\n').map(line=>({text:line.replace(/^\[[ x]\]\s*/,''),done:line.startsWith('[x]')}))}
 async function saveEdit(item:Item){const text=item.data.kind==='todo'?draftTodos.value.map(row=>(row.done?'[x] ':'[ ] ')+row.text).join('\n'):draft.value;editing.value='';await put(item,{...item.data,text})}
 function file(item:Item){return item.data.assetId?assets.value.find(f=>f.id===item.data.assetId):docs.query.data.value?.find(f=>f.id===item.data.fileId)}
 async function fileContent(f:ProjectDocument){return assets.value.some(a=>a.id===f.id)?sharedRequest<Blob>(`${base}/${space.value}/files/${f.id}`,{responseType:'blob'}):docs.content(f)}
@@ -519,7 +559,7 @@ function typingTarget(target:EventTarget|null){return target instanceof HTMLElem
 function resetKeys(){spaceHeld.value=false}
 function keyUp(e:KeyboardEvent){if(e.code==='Space')spaceHeld.value=false}
 function keyboard(e:KeyboardEvent){
- if(e.defaultPrevented||imagePreview.value||officePreview.value)return
+ if(e.defaultPrevented||imagePreview.value||officePreview.value||webLinkEditor.value)return
  if(e.code==='Tab'&&fullscreen.value&&!settingsOpen.value&&!groupDialog.value){headerArmed=true;headerOpen.value=true}
  if(groupDialog.value||taskPicker.value||bookingPicker.value||resourcePanel.value||calendarEditing.value||pendingFile.value||settingsOpen.value)return
  if(space.value&&(e.ctrlKey||e.metaKey)&&e.code==='KeyF'){e.preventDefault();layerPanel.value?.focusSearch();return}
@@ -608,7 +648,7 @@ const layerKinds: Record<string, [string, string]> = {
   group: ['Группа', 'group'],
   frame: ['Контур', 'square-dashed'], note: ['Заметка', 'sticky-note'], text: ['Текст', 'type'], todo: ['Список дел', 'list-todo'],
   shape: ['Фигура', 'square'], table: ['Таблица', 'table-2'], spec: ['Спецификация', 'clipboard-list'], comment: ['Комментарий', 'message-circle'],
-  document: ['Документ', 'file-text'], image: ['Изображение', 'image'], link: ['Связь', 'move-up-right'], stroke: ['Рисунок', 'pencil'],
+  document: ['Документ', 'file-text'], image: ['Изображение', 'image'], link: ['Связь', 'move-up-right'], 'web-link': ['Веб-ссылка', 'link-2'], stroke: ['Рисунок', 'pencil'],
   subscription: ['Подписка', 'repeat-2'], calendar: ['Календарь', 'calendar-days'], task: ['Задача', 'columns-3'],
   'task-calendar': ['Календарь задач', 'calendar-days'], 'task-gantt': ['Диаграмма Ганта', 'chart-gantt'],
   booking: ['Бронь переговорной', 'calendar-clock'], 'booking-calendar': ['Календарь броней', 'calendar-days'], 'booking-gantt': ['Гант броней', 'chart-gantt'],
@@ -622,6 +662,7 @@ function layerLabel(item: Item) {
   if (data.kind === 'chat') return chatFor(item)?.name || kind
   if (data.kind === 'person') return author(data.personId || '')
   if (data.kind === 'subscription') return subscriptionFor(item)?.title || kind
+  if (data.kind === 'web-link') return data.name || data.url || kind
   if (data.kind === 'space') return spaces.value.find(space => space.id === data.targetSpace)?.name || kind
   if (['table', 'calendar', 'task-calendar', 'task-gantt', 'booking-calendar', 'booking-gantt', 'link', 'stroke'].includes(data.kind)) return kind
   return file(item)?.name || data.name || data.text?.split('\n').find(line => line.trim())?.replace(/^(?:#+\s*|\[[ x]\]\s*)/, '') || kind
@@ -633,7 +674,7 @@ const layerRows = computed(() => layers.value.rows.map(({ item, depth, parent })
   const parentItem = parent && layers.value.byId.get(parent)
   const context = [kind, parentItem && layerLabel(parentItem)].filter(Boolean).join(' · ')
   const linked = data.from && data.to ? [data.from, data.to].map(id => layers.value.byId.get(id)).flatMap(item => item ? [layerLabel(item)] : []) : []
-  const search = spaceSearchText([title, context, data.text, data.description, data.role, data.duty, file(item)?.type,
+  const search = spaceSearchText([title, context, data.url, data.text, data.description, data.role, data.duty, file(item)?.type,
     ...linked, ...(data.rows ?? []).flat(), ...(data.calendarEvents ?? []).map(event => event.title), ...(data.messages ?? []).map(message => message.text)
   ].filter(Boolean).join(' '))
   return {
@@ -968,6 +1009,21 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
      <button :disabled="busy" @click="open(item, true)">Скачать</button>
    </div>
  </template>
+ <div v-else-if="item.data.kind === 'web-link'" class="resource-card web-link-card">
+   <div class="web-link-header">
+     <UIcon name="i-lucide-link-2" aria-hidden="true" />
+     <button v-if="editable" type="button" aria-label="Редактировать ссылку" title="Редактировать ссылку"
+       :disabled="busy" @pointerdown.stop @dblclick.stop @keydown.enter.stop @click.stop="openWebLinkEditor(item)">
+       <UIcon name="i-lucide-pencil" />
+     </button>
+   </div>
+   <h3 v-if="item.data.name">{{ item.data.name }}</h3>
+   <p class="web-link-address" :title="item.data.url">{{ item.data.url }}</p>
+   <a v-if="spaceWebLinkUrl(item.data.url)" :href="spaceWebLinkUrl(item.data.url)" target="_blank" rel="noopener noreferrer"
+     @pointerdown.stop @dblclick.stop @keydown.enter.stop>
+     Открыть ссылку <UIcon name="i-lucide-external-link" aria-hidden="true" />
+   </a>
+ </div>
  <div v-else-if="item.data.kind==='subscription'" class="resource-card"><UIcon name="i-lucide-repeat-2"/><small>ПОДПИСКА</small><h3>{{subscriptionFor(item)?.title||'Подписка недоступна'}}</h3><template v-if="subscriptionFor(item)"><p class="subscription-price">{{subscriptionFor(item)?.subscription?.price}} {{subscriptionFor(item)?.subscription?.currency}}</p><p>Период: {{subscriptionFor(item)?.subscription?.periodCount}} {{subscriptionFor(item)?.subscription?.periodUnit==='month'?'мес.':subscriptionFor(item)?.subscription?.periodUnit==='year'?'лет':'дн.'}}</p><p>Оплачено до {{subscriptionFor(item)?.subscription?.paidUntil}}</p><p>{{subscriptionFor(item)?.sourceName}}</p></template></div>
  <div v-else-if="item.data.kind==='calendar'" class="board-calendar"><header @pointerdown.stop><button @click="moveMonth(item,-1)" aria-label="Предыдущий месяц">‹</button><h3>{{monthTitle(item)}}</h3><button @click="moveMonth(item,1)" aria-label="Следующий месяц">›</button></header><div class="calendar-week"><span v-for="day in ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']" :key="day">{{day}}</span></div><div class="calendar-grid" @pointerdown.stop><button v-for="day in monthDays(item)" :key="day.date" :class="{muted:!day.current,today:day.date===new Date().toLocaleDateString('sv-SE')}" @click="openCalendar(item,day.date)"><span>{{day.day}}</span><i v-for="event in dayEvents(item,day.date).slice(0,2)" :key="event.id" :style="{background:event.color}" :title="event.title">{{event.title}}</i></button></div><button v-if="editable" class="calendar-add" @pointerdown.stop @click="openCalendar(item)">+ Событие или интервал</button></div>
  <template v-else-if="item.data.kind==='task-calendar'||item.data.kind==='task-gantt'">
@@ -1002,6 +1058,8 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
  <nav class="board-hud" aria-label="Инструменты доски" @pointerover="hudHover" @pointerleave="tooltip=null" @focusin="hudHover" @focusout="tooltip=null">
  <button data-tip="Найти объект или файл" aria-label="Поиск по пространству" @click="layerPanel?.focusSearch()"><UIcon name="i-lucide-search"/></button>
  <button data-tip="Выделение" aria-label="Выделение" :class="{active:tool==='select'}" @click="tool='select'"><UIcon name="i-lucide-mouse-pointer-2"/></button><button data-tip="Перемещение" aria-label="Перемещение" :class="{active:tool==='hand'}" @click="tool='hand'"><UIcon name="i-lucide-hand"/></button><span class="hud-divider"></span>
+ <button v-if="editable" type="button" data-tip="Карточка ссылки" aria-label="Добавить карточку ссылки"
+   :disabled="busy" @click="openWebLinkEditor()"><UIcon name="i-lucide-link-2" /></button>
  <template v-if="editable"><button data-tip="Маркер (B)" aria-label="Маркер" :class="{active:tool==='pen'}" @click="tool='pen'"><UIcon name="i-lucide-pencil"/></button><button data-tip="Фломастер (M)" aria-label="Фломастер" :class="{active:tool==='highlighter'}" @click="tool='highlighter'"><UIcon name="i-lucide-highlighter"/></button><button data-tip="Ластик (E)" aria-label="Ластик" :class="{active:tool==='eraser'}" @click="tool='eraser'"><UIcon name="i-lucide-eraser"/></button><button class="note-tool" data-tip="Заметка" aria-label="Добавить заметку" :disabled="busy" @click="add('note')"><span></span></button><button data-tip="Фигуры" aria-label="Фигуры" @click="showPanel('shape')"><UIcon name="i-lucide-square"/></button><button data-tip="Прозрачный контурный блок" aria-label="Прозрачный контурный блок" :disabled="busy" @click="add('frame')"><UIcon name="i-lucide-square-dashed"/></button><button data-tip="Связь: выберите два объекта" aria-label="Добавить связь" :class="{active:tool==='link'}" @click="tool=tool==='link'?'select':'link'"><UIcon name="i-lucide-move-up-right"/></button><span class="hud-divider"></span><button data-tip="Текст (T): нажмите на доску" aria-label="Добавить текст" :class="{active:tool==='text'}" @click="tool='text'"><UIcon name="i-lucide-type"/></button><button data-tip="To-do" aria-label="Добавить To-do" :disabled="busy" @click="add('todo')"><UIcon name="i-lucide-list-todo"/></button><button data-tip="Таблица" aria-label="Добавить таблицу" :disabled="busy" @click="add('table')"><UIcon name="i-lucide-table-2"/></button><button data-tip="Spec" aria-label="Добавить Spec" :disabled="busy" @click="add('spec')"><UIcon name="i-lucide-clipboard-list"/></button><button data-tip="Комментарий (C): нажмите на доску" aria-label="Добавить комментарий" :class="{active:tool==='comment'}" @click="tool='comment'"><UIcon name="i-lucide-message-circle"/></button><button data-tip="Подписка" aria-label="Подписка" @click="showPanel('subscription')"><UIcon name="i-lucide-repeat-2"/></button><button data-tip="Календарь" aria-label="Календарь" @click="add('calendar')"><UIcon name="i-lucide-calendar-days"/></button><button v-if="canShowTaskPlanning" data-tip="Календарь задач проекта" aria-label="Добавить календарь задач проекта" :disabled="busy" @click="add('task-calendar')"><UIcon name="i-lucide-calendar-check"/></button><button v-if="canShowTaskPlanning" data-tip="Диаграмма Ганта проекта" aria-label="Добавить диаграмму Ганта проекта" :disabled="busy" @click="add('task-gantt')"><UIcon name="i-lucide-chart-gantt"/></button><UPopover v-model:open="bookingTools" :portal="fullscreen ? root : true" :content="{ side: 'top', align: 'center' }">
    <button type="button" data-tip="Переговорная комната" aria-label="Объекты переговорной" :disabled="busy"><UIcon name="i-lucide-calendar-clock"/></button>
    <template #content>
@@ -1029,6 +1087,26 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
      <UButton v-if="imagePreview && documentEditor(imagePreview.file.name)" label="Открыть в PhotoCraft" icon="i-lucide-external-link" color="neutral" variant="soft" @click="open(imagePreview.item, false, true)" />
    </template>
  </ProjectImageViewer>
+ <UModal :open="!!webLinkEditor" :title="webLinkEditor?.id ? 'Редактировать ссылку' : 'Добавить ссылку'"
+   :portal="fullscreen ? root : true" :dismissible="!busy" :close="!busy" :ui="{ content: 'z-[1100]' }"
+   @update:open="value => { if (!value && !busy) webLinkEditor = null }">
+   <template #body>
+     <form class="grid gap-4" @submit.prevent="saveWebLink">
+       <UFormField label="Адрес ссылки" required>
+         <UInput v-model="webLinkForm.url" type="url" required :maxlength="spaceWebLinkMaxLength"
+           placeholder="https://github.com/owner/repository.git" class="w-full" :disabled="busy" autofocus />
+       </UFormField>
+       <UFormField label="Название">
+         <UInput v-model="webLinkForm.name" maxlength="120" class="w-full" :disabled="busy" />
+       </UFormField>
+       <p v-if="webLinkError" role="alert" class="text-sm text-error">{{ webLinkError }}</p>
+       <div class="flex justify-end gap-2">
+         <UButton label="Отмена" type="button" variant="ghost" color="neutral" :disabled="busy" @click="webLinkEditor=null" />
+         <UButton type="submit" :label="webLinkEditor?.id ? 'Сохранить' : 'Добавить'" :loading="busy" />
+       </div>
+     </form>
+   </template>
+ </UModal>
  <UModal
    :open="!!officePreview"
    :title="officePreview?.file.name || 'Просмотр документа'"
@@ -1159,6 +1237,12 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
 .space-header{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:18px 22px;border-bottom:1px solid #e8edf3}.space-title{display:flex;align-items:center;gap:14px;min-width:0}.space-title>.iconify{font-size:25px;color:#8b5cf6}.space-title h1{font-size:16px;font-weight:650}.space-title p{font-size:12px;color:#94a3b8;max-width:600px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}.space-header-actions{display:flex;align-items:center;gap:10px}.space-header button{display:inline-flex;align-items:center;gap:8px}.live-status{font-size:11px;color:#94a3b8}.live-status.online{color:#059669}.space-catalog{padding:32px;min-height:480px;background:#f8fafc}.catalog-heading{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:26px}.catalog-heading h3{font-size:24px;font-weight:600;margin-top:8px}.catalog-heading h3 span{font-size:13px;color:#94a3b8;margin-left:8px}.eyebrow{font-size:10px;letter-spacing:.15em;color:#94a3b8}.catalog-heading form{display:flex;gap:10px}.catalog-heading input,.space-settings input,.space-settings textarea{border:1px solid #e2e8f0;border-radius:9px;padding:10px 12px;font-size:13px}.primary{background:#7c3aed;color:white;border-color:#7c3aed;display:inline-flex;gap:8px;align-items:center}.space-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:22px}.space-card{padding:0;border-radius:16px;text-align:left;overflow:hidden;transition:transform .2s,box-shadow .2s;background:white;border:1px solid #e2e8f0}.space-card:hover{transform:translateY(-3px);box-shadow:0 12px 30px #0f172a0c}.space-card-preview{height:155px;background-color:hsl(var(--card-hue) 65% 97%);background-image:radial-gradient(#cbd5e1 1px,transparent 1px);background-size:15px 15px;position:relative}.mini-note{position:absolute;left:22%;top:25%;width:70px;height:65px;background:#fff0ac;box-shadow:0 4px 12px #0001;transform:rotate(-7deg);border-radius:3px}.mini-block{position:absolute;right:21%;bottom:25%;width:65px;height:44px;border:2px solid hsl(var(--card-hue) 60% 70%);border-radius:8px;background:white}.mini-line{position:absolute;width:90px;top:53%;left:40%;border-top:2px dashed #a5b4c9;transform:rotate(15deg)}.card-open{position:absolute;right:14px;top:14px;background:white;padding:6px;border-radius:8px;display:flex;color:#7c3aed}.space-card-content{padding:18px}.space-card h4{font-size:15px;font-weight:650}.space-card p{margin-top:7px;color:#94a3b8;min-height:36px;font-size:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.space-card footer{display:flex;justify-content:space-between;border-top:1px solid #f1f5f9;margin-top:14px;padding-top:12px;color:#94a3b8;font-size:10px}.catalog-empty{text-align:center;padding:75px 20px;color:#94a3b8}.catalog-empty>.iconify{font-size:45px;color:#c4b5fd}.catalog-empty h3{font-size:20px;color:#475569;margin:18px 0 8px}.canvas-shell{position:relative;min-height:560px}.space-canvas{height:70vh;min-height:560px}.board-hud{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);max-width:calc(100% - 32px);display:flex;align-items:center;gap:5px;background:#ffffffed;backdrop-filter:blur(20px);border:1px solid #e2e8f0;border-radius:19px;padding:9px;box-shadow:0 12px 35px #0f172a18,0 2px 6px #0f172a08;z-index:110;overflow-x:auto}.board-hud button{display:flex;align-items:center;justify-content:center;flex-shrink:0;border:0;padding:0;width:38px;height:40px;border-radius:10px;background:transparent;color:#334155}.board-hud button .iconify{font-size:22px}.board-hud button:hover{background:#f1f5f9}.board-hud button.active{background:#9747ff;color:white}.hud-divider{height:30px;width:1px;flex-shrink:0;background:#e5e7eb;margin:0 4px}.board-hud .zoom-tool{width:52px;font-size:11px}.note-tool span{display:block;width:24px;height:25px;border-radius:3px;background:#f7a8d6;box-shadow:-4px 3px #fbcfe8;transform:rotate(-7deg)}.canvas-status{position:absolute;left:16px;top:12px;display:flex;gap:12px;font-size:10px;color:#94a3b8;pointer-events:none}.properties{position:absolute;right:14px;top:42px;max-width:calc(100% - 28px);background:white;z-index:120;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 8px 24px #0001}.floating-picker{position:absolute;right:16px;bottom:100px;width:300px;max-height:320px;overflow:auto;background:white;border:1px solid #e2e8f0;border-radius:14px;padding:14px;z-index:121;box-shadow:0 10px 35px #0002;display:flex;flex-direction:column;gap:8px}.floating-picker header{display:flex;justify-content:space-between;align-items:center}.floating-picker>button{text-align:left;display:flex;align-items:center;gap:8px}.portal-card>.iconify{font-size:30px;color:#8b5cf6}.portal-card h3{font-size:16px;font-weight:600;margin:10px 0}.portal-card p{font-size:12px;color:#94a3b8;margin-bottom:16px}.portal-card button{display:flex;gap:8px;align-items:center;color:#7c3aed}.space-object.frame{border-style:solid;border-radius:12px}.space-object.spec{padding:26px;min-height:420px}.object-caption{display:flex;gap:8px;align-items:center;color:#94a3b8;font-size:11px;margin-bottom:18px}.object-caption button{margin-left:auto;font-size:10px}.spec-document h1{font-size:28px;font-weight:650;margin:18px 0}.spec-document h2{font-size:21px;font-weight:600;margin:16px 0}.spec-document h3{font-size:17px;font-weight:600;margin:12px 0}.spec-document p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.8}.spec-document textarea{min-height:330px;line-height:1.7}.board-table{overflow:auto}.board-table table{width:100%;border-collapse:collapse;table-layout:fixed}.board-table td{border:1px solid #e2e8f0;min-width:90px}.board-table tr:first-child{background:#f8fafc;font-weight:600}.board-table input{width:100%;min-width:65px;padding:9px;font-size:12px;background:transparent}.table-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:12px}.table-actions button{font-size:10px;padding:5px}.comment-thread h3{font-size:14px;font-weight:600}.comment-thread form{display:flex;gap:6px;margin:14px 0}.comment-thread form input{min-width:0;width:100%;font-size:12px;border-bottom:1px solid #e2e8f0}.comment-messages{max-height:260px;overflow:auto}.comment-messages article{margin-top:12px;padding:10px;background:#f8fafc;border-radius:8px;font-size:12px}.comment-messages p{white-space:pre-wrap;overflow-wrap:anywhere}.comment-messages time{display:block;font-size:9px;color:#94a3b8;margin-top:6px}.settings-overlay{position:absolute;inset:0;z-index:200;background:#0f172a55;display:flex;justify-content:center;align-items:center;padding:20px}.space-settings{width:520px;max-width:100%;max-height:90%;overflow:auto;border-radius:18px;background:white;padding:24px;box-shadow:0 30px 90px #0003}.space-settings header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}.space-settings h3{font-size:18px;font-weight:600}.space-settings form{display:flex;flex-direction:column;gap:15px}.space-settings label{display:flex;flex-direction:column;gap:6px;font-size:12px}.space-settings h4{font-size:14px;font-weight:600;margin:24px 0 14px}.member-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;font-size:12px;border-bottom:1px solid #f1f5f9}.member-row select{border:1px solid #e2e8f0;padding:7px;border-radius:7px}.delete-space{margin-top:24px;padding-top:16px;border-top:1px solid #fee2e2;font-size:12px}.delete-space p{margin-bottom:12px;color:#b91c1c}.danger{color:#dc2626;border-color:#fecaca}.spaces{position:relative}.spaces.is-fullscreen .canvas-shell,.spaces:fullscreen .canvas-shell{flex:1;min-height:0;display:flex;flex-direction:column}.spaces.is-fullscreen .space-canvas,.spaces:fullscreen .space-canvas{flex:1;min-height:0}.spaces.previewing{z-index:40}.spaces.is-fullscreen .space-catalog{flex:1;overflow:auto}@media(max-width:800px){.space-header{padding:14px;gap:10px}.catalog-heading{align-items:stretch;flex-direction:column}.catalog-heading form{flex-wrap:wrap}.space-catalog{padding:20px}.board-hud{bottom:14px;gap:2px;padding:7px}.board-hud button{width:34px;height:36px}.space-title p{max-width:180px}.live-status{display:none}}
 
 .space-object.frame{border-style:dashed;pointer-events:none;z-index:0;border-radius:8px}.space-object:not(.frame):not(.comment){z-index:1}.space-object.comment{z-index:30;cursor:grab}.space-object.comment:has(.opened){z-index:35}.frame-hit{position:absolute;pointer-events:auto}.frame-hit.top,.frame-hit.bottom{left:0;right:0;height:10px}.frame-hit.top{top:-5px}.frame-hit.bottom{bottom:-5px}.frame-hit.left,.frame-hit.right{top:0;bottom:0;width:10px}.frame-hit.left{left:-5px}.frame-hit.right{right:-5px}.frame-label{position:absolute;left:12px;top:-27px;max-width:calc(100% - 24px);pointer-events:auto;color:inherit;font-size:12px;cursor:grab;white-space:nowrap}.frame-label textarea{min-height:32px;width:200px;background:white;white-space:normal}.resize-handle{position:absolute;width:12px;height:12px;padding:0;border:2px solid #8b5cf6;background:white;border-radius:2px;pointer-events:auto;z-index:3}.resize-handle.nw{left:-7px;top:-7px;cursor:nwse-resize}.resize-handle.ne{right:-7px;top:-7px;cursor:nesw-resize}.resize-handle.sw{left:-7px;bottom:-7px;cursor:nesw-resize}.resize-handle.se{right:-7px;bottom:-7px;cursor:nwse-resize}.space-object.text{border-radius:0}.space-object.text .object-text{font-size:18px;line-height:1.45}.comment-pin{position:relative;width:32px;height:32px;padding:0;border:2px solid white;background:#8b5cf6;color:white;border-radius:50% 50% 50% 5px;box-shadow:0 3px 10px #0002;display:flex;align-items:center;justify-content:center}.comment-pin .iconify{font-size:18px}.comment-pin.resolved{background:#94a3b8}.comment-pin.opened{outline:2px solid #c4b5fd;outline-offset:2px}.comment-pin small{position:absolute;right:-7px;top:-7px;background:white;color:#7c3aed;border-radius:12px;min-width:16px;font-size:9px;border:1px solid #ddd6fe}.comment-popover{position:absolute;width:320px;max-width:calc(100% - 20px);max-height:calc(100% - 40px);overflow:auto;z-index:130;border:1px solid #e2e8f0;border-radius:16px 16px 16px 3px;background:white;padding:20px;box-shadow:0 12px 35px #0f172a22}.close-comment{position:absolute;right:8px;top:7px;border:0;padding:0 6px;font-size:20px}.comment-popover .object-caption{padding-right:12px}.comment-popover .comment-messages{max-height:210px}.keyboard-help{position:absolute;left:14px;bottom:22px;z-index:125;font-size:12px}.keyboard-help summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;background:white;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;box-shadow:0 4px 14px #0f172a12}.keyboard-help summary::-webkit-details-marker{display:none}.keyboard-list{position:absolute;left:0;bottom:48px;width:320px;max-height:440px;overflow:auto;background:white;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 10px 30px #0002;padding:16px}.keyboard-list p{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:9px 0;font-size:11px}.keyboard-list kbd{font-family:inherit;white-space:nowrap;min-width:36px;padding:3px 5px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;text-align:center;font-size:10px}.keyboard-list span{text-align:right;color:#64748b}.space-canvas.panning{cursor:grab}.space-canvas.panning:active{cursor:grabbing}.space-canvas.placing{cursor:crosshair}.back-space{font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}@media(max-width:1100px){.keyboard-help{bottom:88px}.back-space{max-width:170px}.space-title p{max-width:200px}}
+.web-link-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.web-link-header > .iconify { color: #8b5cf6; font-size: 22px; }
+.web-link-header button { display: inline-flex; padding: 5px; }
+.web-link-card .web-link-address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.web-link-card a { display: inline-flex; align-items: center; gap: 5px; text-decoration: underline; }
+.web-link-card a:focus-visible { outline: 2px solid #7c3aed; outline-offset: 3px; }
 .frame-label{left:auto;right:0;top:-46px;font-size:26px;font-weight:650;text-align:right;max-width:100%;line-height:1.3}.extra-contour{position:absolute;border-style:dashed;border-radius:6px;pointer-events:none}.resource-card>.iconify{font-size:26px;color:#8b5cf6}.resource-card small{display:block;font-size:9px;letter-spacing:.12em;color:#94a3b8;margin:10px 0}.resource-card h3{font-size:15px;font-weight:650;margin:10px 0;overflow-wrap:anywhere}.resource-card p{font-size:12px;color:#64748b;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}.resource-card a{font-size:12px;color:#7c3aed}.resource-card code{display:block;overflow-wrap:anywhere;margin:12px 0;font-size:12px}.person-avatar{display:flex;align-items:center;justify-content:center;width:42px;height:42px;background:#ede9fe;color:#7c3aed;border-radius:50%;font-weight:600;font-size:20px}.person-role{font-weight:600}.resource-picker{display:flex;flex-direction:column;gap:10px}.resource-picker>button{text-align:left}.resource-picker label{display:grid;gap:6px}.upload-choice{display:flex!important;flex-direction:row!important;align-items:center;gap:8px;margin:18px 0}.upload-hint{font-size:12px;line-height:1.6;color:#94a3b8;margin:12px 0}.space-settings select{border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin:10px 0}.space-object.shape-ellipse{border-radius:50%;min-height:150px;display:flex;align-items:center;justify-content:center}.space-object.shape-pill{border-radius:60px}.space-object.shape-diamond{clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);border:0;padding:45px 35px;min-height:180px;}.space-object.shape-triangle{clip-path:polygon(50% 0,100% 100%,0 100%);border:0;padding:75px 38px 25px;min-height:180px;}.space-object.shape-hexagon{clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);border:0;padding:40px;min-height:150px;}
 .ink-layer{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none;z-index:2}.ink-hit{pointer-events:stroke;cursor:crosshair}
 
