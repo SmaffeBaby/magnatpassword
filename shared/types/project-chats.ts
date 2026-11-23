@@ -1,3 +1,4 @@
+import type { MeetingRoomReference } from './meeting-room'
 import type { Credential } from './vault'
 import type { ProjectDocumentMetadata } from './project-documents'
 export interface ProjectChatMember { userId: string; lastReadSeq: number }
@@ -32,6 +33,7 @@ export interface ChatMessageDraft {
   retry: boolean
   sending: boolean
   tasks: Pick<ChatTaskReference, 'taskId' | 'boardId' | 'title'>[]
+  bookings: MeetingRoomReference[]
   poll?: ProjectChatPoll
   todo?: ProjectChatTodo
 }
@@ -48,6 +50,7 @@ export interface ProjectChatMessage {
   revision: number; editedAt: string | null; deletedAt: string | null; pinned: boolean
   text: string; passwordIds: string[]; files: ProjectChatFile[]; mentionIds: string[]
   tasks: ChatTaskReference[]; passwordCopies: Credential[]; forwardedFrom?: { authorId: string | null; authorName: string };
+  bookings: MeetingRoomReference[]
   poll?: ProjectChatPoll; todo?: ProjectChatTodo; pollClosed: boolean
   votes: { userId: string; optionId: string }[]
   todoStates: { itemId: string; done: boolean; updatedBy: string | null }[]

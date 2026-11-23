@@ -13,9 +13,8 @@ export async function teamUnits(context:Context):Promise<TeamUnit[]> {
  if(error)throw createError({statusCode:503,message:'Не удалось загрузить структуру команды'})
  return data.map(row=>({id:row.id,parentId:row.parent_id,name:row.name,kind:row.kind,brand:row.brand}))
 }
-export async function teamPeople(context:Context,rows:any[]):Promise<TeamPerson[]> {
- const paths=[...new Set(rows.map(row=>row.avatar_path).filter(Boolean))] as string[]
- const urls=await signedAvatars(context.user.id,paths,async missing=>{
+export function teamAvatarUrls(context:Context,paths:string[]) {
+ return signedAvatars(context.user.id,[...new Set(paths)],async missing=>{
   const {data}=await context.client.storage.from('profile-avatars').createSignedUrls(missing,3600)
   return (data??[]).flatMap(item=>{
    if(!item.signedUrl||!item.path)return []
@@ -23,6 +22,9 @@ export async function teamPeople(context:Context,rows:any[]):Promise<TeamPerson[
    return [{path:item.path,signedUrl:`/supabase${url.pathname}${url.search}`}]
   })
  })
+}
+export async function teamPeople(context:Context,rows:any[]):Promise<TeamPerson[]> {
+ const urls=await teamAvatarUrls(context,rows.map(row=>row.avatar_path).filter(Boolean))
  return rows.map(row=>({isHidden:!!row.is_hidden,id:row.user_id,fullName:row.full_name,email:row.account_email,workEmail:row.work_email,telegram:row.telegram,brand:row.brand,avatarUrl:urls.get(row.avatar_path)??'',roleIds:row.role_ids??[],commonVaultCount:Number(row.common_vault_count??0)}))
 }
 export async function teamDirectory(context:Context,query:string,page=1,company:string|null=null,limit=50,includeHidden=false){

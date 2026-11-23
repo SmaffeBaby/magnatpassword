@@ -8,7 +8,18 @@ export interface HomeServiceLink {
   description?: string
 }
 
+export const meetingRoomViews = [
+  { view: 'today', to: '/meeting-room', label: 'Сегодня', icon: 'i-lucide-clock-3' },
+  { view: 'calendar', to: '/meeting-room?view=calendar', label: 'Календарь', icon: 'i-lucide-calendar-days' },
+  { view: 'gantt', to: '/meeting-room?view=gantt', label: 'Диаграмма Ганта', icon: 'i-lucide-chart-gantt' }
+] as const
+
+export function meetingRoomView(value: unknown) {
+  return value === 'calendar' || value === 'gantt' ? value : 'today'
+}
+
 export const homeServiceLinks: Record<Exclude<HomeAppId, 'applications'>, HomeServiceLink[]> = {
+  'meeting-room': [...meetingRoomViews],
   kaban: [
     { to: '/kaban?view=mine', label: 'Мои задачи', icon: 'i-lucide-user-round-check' },
     { to: '/kaban?view=all', label: 'Все задачи', icon: 'i-lucide-list-checks' },

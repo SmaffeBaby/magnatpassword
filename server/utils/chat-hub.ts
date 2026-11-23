@@ -36,7 +36,7 @@ export async function forwardChatMessages(event: H3Event, context: Awaited<Retur
     const poll = content.poll ? { ...content.poll, options: content.poll.options.map(option => ({...option,id:randomUUID()})) } : undefined
     const todo = content.todo ? { ...content.todo, items: content.todo.items.map(item => ({...item,id:randomUUID()})) } : undefined
     const data = { ...content, tasks:decoded.tasks.map(({available,completed,...task})=>task), passwordIds: [], passwordCopies: copies, poll, todo, forwardedFrom: content.forwardedFrom ?? { authorId: row.authorId, authorName: decoded.authorName || 'Участник' } }
-    if (!data.text && !data.poll && !data.todo && !data.tasks.length && !copies.length && !row.files.length) throw createError({statusCode:400,message:'В сообщении не осталось доступных вложений'})
+    if (!data.text && !data.poll && !data.todo && !data.tasks.length && !data.bookings.length && !copies.length && !row.files.length) throw createError({statusCode:400,message:'В сообщении не осталось доступных вложений'})
     const files: string[] = []
     try {
       for (const file of row.files) {

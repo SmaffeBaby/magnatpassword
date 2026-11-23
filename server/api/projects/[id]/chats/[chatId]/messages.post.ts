@@ -1,8 +1,13 @@
+import { readMeetingRoomReferences } from '../../../../../utils/meeting-room'
+
 export default defineEventHandler(async event => {
   const { context, project, chat } = await projectChatContext(event)
   const body = await sharedBody(event, chatMessageSchema)
   const tasks = (await resolveChatTasks(event, context, body.tasks, true)).map(({ available, completed, ...task }) => task)
-  const content = { text: body.text, passwordIds: [...new Set(body.passwordIds)], poll: body.poll, todo: body.todo, tasks }
+  const references = await readMeetingRoomReferences(context, body.bookingIds)
+  if (body.bookingIds.some(id => !references.has(id))) throw createError({ statusCode: 404, message: 'Выбранная бронь недоступна.' })
+  const bookings = [...references.values()]
+  const content = { text: body.text, passwordIds: [...new Set(body.passwordIds)], poll: body.poll, todo: body.todo, tasks, bookings }
   const mentions = await chatMentions(context, project, chat, content.text)
   return chatRpc(context, 'chat_send_message', { p_project: project, p_chat: chat, p_message: body.id,
     p_data: sealSharedVault(content, sharedSecret(event), `project-chat:${project}:${chat}:${body.id}`, 1),

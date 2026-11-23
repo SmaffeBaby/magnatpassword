@@ -1,14 +1,18 @@
-<script setup lang="ts">
+<script setup lang="ts" generic="Entry extends KabanTask | MeetingRoomPlanningEntry">
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import type { KabanCategory, KabanStage, KabanTask } from '~~/shared/types/kaban'
 import type { TeamPerson } from '~~/shared/types/team'
+import type { MeetingRoomPlanningEntry } from '~~/shared/types/meeting-room'
+import { meetingRoomCompleted } from '~~/shared/utils/meeting-room'
 import { kabanOverdue } from '~~/shared/utils/kaban'
 import { kabanTaskStage } from '~~/shared/utils/kaban-stages'
 import { clipTaskDateRange, compareGanttTasks, resizeTaskDateRange, shiftTaskPlanningPeriod, taskDateRange, taskPlanningDays, type GanttMarker, type GanttMarkerProject, type GanttTaskSort, type PlanningProjectBoard, type TaskDateEdge, type TaskDateRange, type TaskPeriod } from '~~/shared/utils/project-task-planning'
 import { addPeriod, dateLabel, dayDifference, todayDate, validDate } from '~~/shared/utils/subscriptions'
 import GanttMarkers from './GanttMarkers.vue'
+import Organizer from '~/components/MeetingRoom/Organizer.vue'
+import BookingGantt from '~/components/MeetingRoom/BookingGantt.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   mode: 'calendar' | 'gantt'
   filterScope: string
   embedded?: boolean
@@ -17,18 +21,24 @@ const props = defineProps<{
   projectEndOn?: string
   projectBoards?: PlanningProjectBoard[]
   markerProjects?: GanttMarkerProject[]
-  tasks: KabanTask[]
-  stages: (KabanStage & { boardId?: string })[]
-  categories: KabanCategory[]
-  people: TeamPerson[]
-  categoryContains: (id: string, ids: string[], boardId: string) => boolean
+  tasks: Entry[]
+  bookings?: boolean
+  moveBooking?: (entry: MeetingRoomPlanningEntry, start: string, end: string) => Promise<void>
+  loading?: boolean
+  stages?: (KabanStage & { boardId?: string })[]
+  categories?: KabanCategory[]
+  people?: TeamPerson[]
+  categoryContains?: (id: string, ids: string[], boardId: string) => boolean
   canCreate: boolean
-  canReschedule: (task: KabanTask) => boolean
-  reschedule: (task: KabanTask, startOn: string, dueOn: string) => Promise<void>
+  canReschedule?: (task: Entry) => boolean
+  reschedule?: (task: Entry, startOn: string, dueOn: string) => Promise<void>
   busy: boolean
-}>()
-const emit = defineEmits<{ open: [task: KabanTask, edit?: boolean]; create: [dueOn: string] }>()
-const canEditTask = (task: KabanTask) => task.canEdit && !task.archived
+}>(), { stages: () => [], categories: () => [], people: () => [] })
+const emit = defineEmits<{ open: [task: Entry, edit?: boolean]; create: [dueOn: string]; 'range-change': [range: TaskDateRange] }>()
+const canEditTask = (task: Entry) => 'boardId' in task && task.canEdit && !task.archived
+const canReschedule = (task: Entry) => !!props.reschedule && !!props.canReschedule?.(task)
+const createLabel = computed(() => props.bookings ? 'Добавить бронь' : 'Добавить задачу')
+const bookingClock = useMeetingRoomClock()
 
 const today = todayDate()
 const {anchor, calendarPeriod, ganttPeriod, categories, assignees, stages, deadline, ganttSort} = toRefs(useSavedFilters(
@@ -40,14 +50,19 @@ const period = computed({ get: () => props.mode === 'calendar' ? calendarPeriod.
   else ganttPeriod.value = value
 } })
 const periodOptions = [
-  { value: 'month', label: 'Месяц' }, { value: '1', label: 'Неделя' },
+  { value: 'day', label: 'День' }, { value: 'month', label: 'Месяц' }, { value: '1', label: 'Неделя' },
   { value: '2', label: '2 недели' }, { value: '3', label: '3 недели' },
   { value: '4', label: '4 недели' }, { value: '8', label: '8 недель' }
 ] as const
-const options = computed(() => periodOptions.filter(item => props.mode === 'calendar' ? item.value !== '8' : ['2', '4', '8'].includes(item.value)))
+const options = computed(() => periodOptions.filter(item => {
+  if (item.value === 'day') return props.bookings && props.mode === 'gantt'
+  return props.mode === 'calendar' ? item.value !== '8' : ['2', '4', '8'].includes(item.value)
+}))
+const hourly = computed(() => props.bookings && props.mode === 'gantt' && period.value === 'day')
 const days = computed(() => taskPlanningDays(anchor.value, period.value))
 const first = computed(() => days.value[0] ?? anchor.value)
 const last = computed(() => days.value.at(-1) ?? anchor.value)
+watch([first, last], ([start, end]) => emit('range-change', { start, end }), { immediate: true })
 const auth = useAuthStore()
 const client = useQueryClient()
 const markerKey = computed(() => ['account', auth.user?.id, 'kaban-gantt-markers'] as const)
@@ -87,15 +102,18 @@ async function markerChanged(marker: GanttMarker, deleted: boolean) {
   ])
   void client.invalidateQueries({ queryKey: key, exact: true })
 }
-const singleProject = computed(() => props.projectBoards ? (props.projectBoards.length === 1 ? props.projectBoards[0] : undefined) : { startOn: props.projectStartOn, endOn: props.projectEndOn })
+const singleProject = computed(() => {
+  if (props.bookings) return undefined
+  return props.projectBoards ? (props.projectBoards.length === 1 ? props.projectBoards[0] : undefined) : { startOn: props.projectStartOn, endOn: props.projectEndOn }
+})
 const projectDates = computed(() => [
   { kind: 'start', label: 'Начало проекта', date: singleProject.value?.startOn },
   { kind: 'end', label: 'Окончание проекта', date: singleProject.value?.endOn }
 ] as const)
 const projectNames = computed(() => new Map(props.projectBoards?.map(project => [project.boardId, project.name])))
-const taskKey = (task: KabanTask) => `${task.boardId}:${task.id}`
-const projectName = (task: KabanTask) => projectNames.value.get(task.boardId)
-const taskLabel = (task: KabanTask) => [task.title, projectName(task)].filter(Boolean).join(' · ')
+const taskKey = (task: Entry) => 'boardId' in task ? `${task.boardId}:${task.id}` : task.id
+const taskSubtitle = (task: Entry) => 'boardId' in task ? projectNames.value.get(task.boardId) : task.timeLabel
+const taskLabel = (task: Entry) => [task.title, taskSubtitle(task)].filter(Boolean).join(' · ')
 const projectRows = computed(() => (props.projectBoards ?? [{ boardId: '', name: 'Период проекта', ...singleProject.value }]).flatMap(project => {
   const start = project.startOn || project.endOn
   const end = project.endOn || project.startOn
@@ -119,7 +137,11 @@ const shortFormat = new Intl.DateTimeFormat('ru-RU', { month: 'short', day: 'num
 const dateAt = (date: string) => new Date(date + 'T12:00:00Z')
 const periodLabel = computed(() => period.value === 'month'
   ? monthFormat.format(dateAt(anchor.value))
-  : `${shortFormat.format(dateAt(first.value))} — ${dateLabel(last.value)}`)
+  : hourly.value ? dateLabel(anchor.value) : `${shortFormat.format(dateAt(first.value))} — ${dateLabel(last.value)}`)
+function showBookingDay(date: string) {
+  anchor.value = date
+  period.value = 'day'
+}
 const scopedKey = (id: string, boardId?: string) => props.projectBoards && boardId ? `${boardId}:${id}` : id
 const stageById = computed(() => new Map(props.stages.map(stage => [scopedKey(stage.id, stage.boardId), stage])))
 const stage = (task: KabanTask, categoryId?: string) => stageById.value.get(scopedKey(kabanTaskStage(task, categoryId), task.boardId))
@@ -163,7 +185,11 @@ function resetFilters() {
 const filteredStages = computed(() => {
   const matches = new Map<string, KabanStage | undefined>()
   for (const task of props.tasks) {
-    const categoryIds = categories.value.length ? task.categoryIds.filter(id => categories.value.some(selected => props.categoryContains(selected, [id], task.boardId))) : []
+    if (!('boardId' in task)) {
+      matches.set(taskKey(task), undefined)
+      continue
+    }
+    const categoryIds = categories.value.length ? task.categoryIds.filter(id => categories.value.some(selected => props.categoryContains?.(selected, [id], task.boardId))) : []
     if (categories.value.length && !categoryIds.length) continue
     if (assignees.value.length && !assignees.value.some(id => id === unassigned ? !task.participantIds.length : task.participantIds.includes(id))) continue
     const candidates = categoryIds.length ? categoryIds.map(id => stage(task, id)) : [stage(task)]
@@ -180,11 +206,14 @@ const filteredStages = computed(() => {
   return matches
 })
 const rangeGroups = computed(() => {
-  const scheduled: { task: KabanTask; start: string; end: string; column: number; length: number; gridColumn: string }[] = []
-  const unscheduled: KabanTask[] = []
-  const outside: { task: KabanTask; start: string; end: string }[] = []
+  const scheduled: { task: Entry; start: string; end: string; column: number; length: number; gridColumn: string }[] = []
+  const unscheduled: Entry[] = []
+  const outside: { task: Entry; start: string; end: string }[] = []
   const tasks = props.tasks.filter(task => filteredStages.value.has(taskKey(task)))
-  if (props.mode === 'gantt') tasks.sort((a, b) => compareGanttTasks(a, b, ganttSort.value))
+  if (props.mode === 'gantt') tasks.sort((a, b) => {
+    if ('start' in a && 'start' in b) return a.startOn.localeCompare(b.startOn) || a.start.localeCompare(b.start)
+    return compareGanttTasks(a, b, ganttSort.value)
+  })
   for (const task of tasks) {
     const range = taskDateRange(task)
     if (!range) { unscheduled.push(task); continue }
@@ -198,8 +227,18 @@ const rangeGroups = computed(() => {
   }
   return { scheduled, unscheduled, outside }
 })
+function isBooking(task: KabanTask | MeetingRoomPlanningEntry): task is MeetingRoomPlanningEntry {
+  return !('boardId' in task)
+}
+const bookingRows = computed(() => rangeGroups.value.scheduled.flatMap(({ task, column }) =>
+  isBooking(task) ? [{ entry: task, column }] : []
+))
+function openBooking(id: string) {
+  const task = props.tasks.find(task => task.id === id)
+  if (task) emit('open', task)
+}
 const calendar = computed(() => {
-  const cells = days.value.map(date => ({ date, tasks: [] as KabanTask[] }))
+  const cells = days.value.map(date => ({ date, tasks: [] as Entry[] }))
   for (const { task, column, length } of rangeGroups.value.scheduled) {
     for (const cell of cells.slice(column, column + length)) cell.tasks.push(task)
   }
@@ -254,12 +293,13 @@ async function showProjectDate(date: string) {
   container.scrollLeft += (position - (viewport.width + nameWidth) / 2) / scale
 }
 
-const editing = ref<KabanTask | null>(null)
+const editing = shallowRef<Entry | null>(null)
+const editingTitle = computed(() => editing.value?.title)
 const dates = reactive({ startOn: '', dueOn: '' })
 const dateError = ref('')
 const dateForm = useId()
 type ResizeState = {
-  task: KabanTask; edge: TaskDateEdge; pointerId: number | null; track: HTMLElement;
+  task: Entry; edge: TaskDateEdge; pointerId: number | null; track: HTMLElement;
   offset: number; original: TaskDateRange; preview: TaskDateRange;
 }
 const resize = shallowRef<ResizeState | null>(null)
@@ -267,8 +307,8 @@ const resizingTask = computed(() => resize.value ? taskKey(resize.value.task) : 
 const resizeError = ref('')
 const resizePreview = computed(() => resize.value && timelinePosition(resize.value.preview))
 const resizeLabel = computed(() => resize.value && `${dateLabel(resize.value.preview.start)} — ${dateLabel(resize.value.preview.end)}`)
-function beginResize(event: PointerEvent, task: KabanTask, edge: TaskDateEdge) {
-  if (event.button !== 0 || !event.isPrimary || resize.value || props.busy || !props.canReschedule(task)) return
+function beginResize(event: PointerEvent, task: Entry, edge: TaskDateEdge) {
+  if (event.button !== 0 || !event.isPrimary || resize.value || props.busy || !canReschedule(task)) return
   const original = taskDateRange(task)
   const track = (event.currentTarget as HTMLElement).closest<HTMLElement>('.gantt-track')
   if (!original || !track) return
@@ -299,7 +339,7 @@ async function finishResize(event: PointerEvent) {
   if (!active || active.pointerId !== event.pointerId) return
   moveResize(event)
   const { task, edge, original, preview } = resize.value!
-  if (preview[edge] === original[edge] || props.busy || !props.canReschedule(task)) { cancelResize(event); return }
+  if (preview[edge] === original[edge] || props.busy || !props.reschedule || !canReschedule(task)) { cancelResize(event); return }
   resize.value = { ...active, preview, pointerId: null }
   try { await props.reschedule(task, preview.start, preview.end) }
   catch (failure) { resizeError.value = failure instanceof Error ? failure.message : 'Не удалось изменить даты задачи.' }
@@ -308,14 +348,14 @@ async function finishResize(event: PointerEvent) {
 watch([first, last, ganttSort, () => props.mode], () => { cancelResize(); hideMarkerTooltip() })
 watch(markers, hideMarkerTooltip)
 watch(filteredStages, matches => { if (resize.value && !matches.has(resizingTask.value)) cancelResize() })
-function edit(task: KabanTask) {
-  if (props.busy || !props.canReschedule(task)) return
+function edit(task: Entry) {
+  if (props.busy || !canReschedule(task)) return
   editing.value = task
   Object.assign(dates, { startOn: task.startOn || '', dueOn: task.dueOn })
   dateError.value = ''
 }
 async function saveDates() {
-  if (!editing.value || props.busy) return
+  if (!editing.value || props.busy || !props.reschedule) return
   dateError.value = ''
   try {
     await props.reschedule(editing.value, dates.startOn, dates.dueOn)
@@ -329,7 +369,7 @@ async function saveDates() {
 </script>
 
 <template>
-  <section class="task-planner" :class="{ embedded }" :aria-label="mode === 'calendar' ? 'Календарь задач' : 'Диаграмма Ганта'">
+  <section class="task-planner" :class="{ embedded }" :aria-label="mode === 'calendar' ? (bookings ? 'Календарь бронирований' : 'Календарь задач') : 'Диаграмма Ганта'">
     <header class="planner-toolbar">
       <div class="flex flex-wrap items-center gap-2">
         <UButton icon="i-lucide-chevron-left" color="neutral" variant="outline" aria-label="Предыдущий период" @click="shift(-1)" />
@@ -343,7 +383,7 @@ async function saveDates() {
       </div>
     </header>
 
-    <div class="task-filters" :class="{ 'gantt-filters': mode === 'gantt' }" role="group" :aria-label="mode === 'gantt' ? 'Фильтры и сортировка диаграммы Ганта' : 'Фильтры календаря задач'">
+    <div v-if="!bookings" class="task-filters" :class="{ 'gantt-filters': mode === 'gantt' }" role="group" :aria-label="mode === 'gantt' ? 'Фильтры и сортировка диаграммы Ганта' : 'Фильтры календаря задач'">
       <USelectMenu :portal="portal ?? true" v-model="categories" :items="categoryOptions" value-key="value" multiple placeholder="Все категории" aria-label="Категории" class="min-w-0 w-full" />
       <USelectMenu :portal="portal ?? true" v-model="assignees" :items="assigneeOptions" value-key="value" multiple placeholder="Все исполнители" aria-label="Исполнители" class="min-w-0 w-full" />
       <USelectMenu :portal="portal ?? true" v-model="stages" :items="stageOptions" value-key="value" multiple placeholder="Все стадии" aria-label="Стадии" class="min-w-0 w-full" />
@@ -385,16 +425,21 @@ async function saveDates() {
         <article v-for="cell in calendar" :key="cell.date" class="calendar-cell" :class="{muted: period === 'month' && cell.date.slice(0, 7) !== anchor.slice(0, 7), today: cell.date === today}" :aria-label="dateLabel(cell.date)">
           <header>
             <span :aria-current="cell.date === today ? 'date' : undefined">{{ Number(cell.date.slice(-2)) }}</span>
-            <UButton v-if="canCreate" color="neutral" variant="ghost" size="xs" icon="i-lucide-plus" :aria-label="`Добавить задачу на ${dateLabel(cell.date)}`" :disabled="busy" @click="emit('create', cell.date)" />
+            <UButton v-if="canCreate" color="neutral" variant="ghost" size="xs" icon="i-lucide-plus" :aria-label="`${createLabel} на ${dateLabel(cell.date)}`" :disabled="busy" @click="emit('create', cell.date)" />
           </header>
-          <button v-for="task in cell.tasks.slice(0, 3)" :key="taskKey(task)" type="button" class="calendar-task" :class="{done: filteredStages.get(taskKey(task))?.done}" :title="taskLabel(task)" @click="emit('open', task)">
+          <button v-for="task in cell.tasks.slice(0, 3)" :key="taskKey(task)" type="button" class="calendar-task"
+            :class="{ done: filteredStages.get(taskKey(task))?.done, 'booking-completed': isBooking(task) && meetingRoomCompleted(task.startOn, task.end, bookingClock) }"
+            :title="taskLabel(task)" @click="emit('open', task)">
             <span class="task-dot" :style="{background: filteredStages.get(taskKey(task))?.color}" />
-            <span class="calendar-task-text"><span>{{ task.title }}</span><small v-if="projectName(task)">{{ projectName(task) }}</small></span>
+            <span class="calendar-task-text"><span>{{ task.title }}</span><small v-if="taskSubtitle(task)">{{ taskSubtitle(task) }}</small><Organizer v-if="'organizer' in task" :person="task.organizer" /></span>
           </button>
           <button v-if="cell.tasks.length > 3" type="button" class="calendar-more" @click="selectedDay = cell.date">Ещё {{ cell.tasks.length - 3 }}</button>
         </article>
       </div>
     </div>
+
+    <BookingGantt v-else-if="bookings" :days="days" :today="today" :hourly="!!hourly" :rows="bookingRows"
+      :busy="busy" :loading="loading" :move="moveBooking" @open="openBooking" @day="showBookingDay" />
 
     <div v-else ref="ganttScroll" class="planner-scroll" tabindex="0" aria-label="Шкала диаграммы Ганта" @pointermove="hoverMarker" @pointerleave="hideMarkerTooltip" @pointerdown="hideMarkerTooltip" @scroll="hideMarkerTooltip">
       <div class="gantt" :style="{ '--days': days.length }">
@@ -416,14 +461,17 @@ async function saveDates() {
         </div>
         <div v-for="{ task, start, end, gridColumn } in rangeGroups.scheduled" :key="taskKey(task)" class="gantt-row">
           <div class="gantt-name">
-            <button type="button" :title="taskLabel(task)" @click="emit('open', task)"><span>{{ task.title }}</span><small v-if="projectName(task)" class="task-project-name">{{ projectName(task) }}</small></button>
+            <button type="button" :title="taskLabel(task)" @click="emit('open', task)">
+              <span>{{ task.title }}</span><small v-if="taskSubtitle(task)" class="task-project-name">{{ taskSubtitle(task) }}</small>
+            </button>
             <div v-if="canEditTask(task)" class="gantt-task-actions">
               <UButton v-if="canReschedule(task)" icon="i-lucide-calendar-days" size="xs" color="neutral" variant="ghost" :aria-label="`Изменить даты: ${task.title}`" title="Изменить даты" :disabled="busy" @click="edit(task)" />
               <UButton icon="i-lucide-pencil" size="xs" color="neutral" variant="ghost" :aria-label="`Редактировать задачу: ${task.title}`" title="Редактировать задачу" :disabled="busy" @click="emit('open', task, true)" />
             </div>
           </div>
           <div class="gantt-track" @pointermove="moveResize" @pointerup="finishResize" @pointercancel="cancelResize" @lostpointercapture="cancelResize">
-            <div class="gantt-bar" :class="{done: filteredStages.get(taskKey(task))?.done, resizing: resizingTask === taskKey(task)}" :style="{ gridColumn: resizingTask === taskKey(task) ? resizePreview?.gridColumn ?? gridColumn : gridColumn, '--stage': filteredStages.get(taskKey(task))?.color }">
+            <div class="gantt-bar" :class="{done: filteredStages.get(taskKey(task))?.done, resizing: resizingTask === taskKey(task)}"
+              :style="{ gridColumn: resizingTask === taskKey(task) ? resizePreview?.gridColumn ?? gridColumn : gridColumn, '--stage': filteredStages.get(taskKey(task))?.color }">
               <button type="button" class="gantt-bar-label" :title="`${taskLabel(task)} · ${dateLabel(start)} — ${dateLabel(end)}`" :aria-label="`Открыть задачу: ${taskLabel(task)}, ${dateLabel(start)} — ${dateLabel(end)}`" @click="emit('open', task)">
                 {{ resizingTask === taskKey(task) ? resizeLabel : task.title }}
               </button>
@@ -434,7 +482,7 @@ async function saveDates() {
             </div>
           </div>
         </div>
-        <p v-if="!rangeGroups.scheduled.length && (!hasFilters || filteredStages.size)" class="planner-empty">На выбранный период нет задач с датами.</p>
+        <p v-if="!loading && !rangeGroups.scheduled.length && (!hasFilters || filteredStages.size)" class="planner-empty">На выбранный период нет задач с датами.</p>
         <div v-if="markerLines.length" ref="markerOverlay" class="gantt-marker-overlay" aria-hidden="true">
           <span v-for="marker in markerLines" :key="marker.id" class="gantt-marker-line" :style="{ left: marker.left, borderColor: marker.color }" />
         </div>
@@ -451,7 +499,7 @@ async function saveDates() {
       <h3>Задачи без дат <small>{{ rangeGroups.unscheduled.length }}</small></h3>
       <ul>
         <li v-for="task in rangeGroups.unscheduled" :key="taskKey(task)">
-          <button type="button" @click="emit('open', task)"><span>{{ task.title }}</span><small v-if="projectName(task)" class="task-project-name">{{ projectName(task) }}</small></button>
+          <button type="button" @click="emit('open', task)"><span>{{ task.title }}</span><small v-if="taskSubtitle(task)" class="task-project-name">{{ taskSubtitle(task) }}</small></button>
           <div v-if="mode === 'gantt' && canEditTask(task)" class="gantt-task-actions">
             <UButton v-if="canReschedule(task)" label="Назначить даты" size="xs" color="neutral" variant="outline" :disabled="busy" @click="edit(task)" />
             <UButton icon="i-lucide-pencil" size="xs" color="neutral" variant="ghost" :aria-label="`Редактировать задачу: ${task.title}`" title="Редактировать задачу" :disabled="busy" @click="emit('open', task, true)" />
@@ -463,7 +511,7 @@ async function saveDates() {
       <summary>Задачи за пределами периода <small>{{ rangeGroups.outside.length }}</small></summary>
       <ul>
         <li v-for="{ task, start } in rangeGroups.outside" :key="taskKey(task)">
-          <button type="button" @click="emit('open', task)"><span>{{ task.title }}</span><small v-if="projectName(task)" class="task-project-name">{{ projectName(task) }}</small></button>
+          <button type="button" @click="emit('open', task)"><span>{{ task.title }}</span><small v-if="taskSubtitle(task)" class="task-project-name">{{ taskSubtitle(task) }}</small></button>
           <div class="gantt-task-actions">
             <UButton :label="dateLabel(start)" icon="i-lucide-calendar-days" size="xs" color="neutral" variant="ghost" @click="anchor = start" />
             <UButton v-if="mode === 'gantt' && canEditTask(task)" icon="i-lucide-pencil" size="xs" color="neutral" variant="ghost" :aria-label="`Редактировать задачу: ${task.title}`" title="Редактировать задачу" :disabled="busy" @click="emit('open', task, true)" />
@@ -472,11 +520,11 @@ async function saveDates() {
       </ul>
     </details>
 
-    <UModal :portal="portal ?? true" :ui="portal ? { overlay: 'z-[150]', content: 'z-[151]' } : undefined" :open="!!selectedDay" :title="dateLabel(selectedDay)" description="Задачи на выбранный день" @update:open="value => { if (!value) selectedDay = '' }">
+    <UModal :portal="portal ?? true" :ui="portal ? { overlay: 'z-[150]', content: 'z-[151]' } : undefined" :open="!!selectedDay" :title="dateLabel(selectedDay)" :description="bookings ? 'Брони на выбранный день' : 'Задачи на выбранный день'" @update:open="value => { if (!value) selectedDay = '' }">
       <template #body><ul class="planner-day-list"><li v-for="task in dayTasks" :key="taskKey(task)"><UButton :label="taskLabel(task)" color="neutral" variant="ghost" @click="selectedDay = ''; emit('open', task)" /></li></ul></template>
-      <template v-if="canCreate" #footer><UButton label="Добавить задачу" icon="i-lucide-plus" :disabled="busy" @click="emit('create', selectedDay); selectedDay = ''" /></template>
+      <template v-if="canCreate" #footer><UButton :label="createLabel" icon="i-lucide-plus" :disabled="busy" @click="emit('create', selectedDay); selectedDay = ''" /></template>
     </UModal>
-    <UModal :portal="portal ?? true" :ui="portal ? { overlay: 'z-[150]', content: 'z-[151]' } : undefined" :open="!!editing" title="Даты задачи" :description="editing?.title" :dismissible="!busy" @update:open="value => { if (!value && !busy) editing = null }">
+    <UModal :portal="portal ?? true" :ui="portal ? { overlay: 'z-[150]', content: 'z-[151]' } : undefined" :open="!!editing" title="Даты задачи" :description="editingTitle" :dismissible="!busy" @update:open="value => { if (!value && !busy) editing = null }">
       <template #body>
         <form :id="dateForm" class="grid gap-4 sm:grid-cols-2" @submit.prevent="saveDates">
           <UFormField label="Дата начала"><SharedDatePicker v-model="dates.startOn" :max="dates.dueOn || undefined" class="w-full" :disabled="busy" /></UFormField>
@@ -552,4 +600,6 @@ async function saveDates() {
 @media(max-width:600px){.gantt{--name-width:8rem}.calendar-cell{min-height:94px}}
 @media(max-width:1200px){.gantt-filters{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:850px){.task-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.calendar-task.booking-completed{background:color-mix(in srgb,var(--ui-success) 14%,var(--ui-bg))}
+.calendar-task.booking-completed .task-dot{background:var(--ui-success)}
 </style>

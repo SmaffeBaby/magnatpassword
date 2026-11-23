@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import type { EncryptedData } from '../../shared/types/vault'
 import type { ProjectDocumentMetadata } from '../../shared/types/project-documents'
 import type { ProjectChatActivity, ProjectChatFile } from '../../shared/types/project-chats'
+import { readMeetingRoomReferences } from './meeting-room'
 import { documentMaxSize, documentMetadataSchema } from '../../shared/utils/project-documents'
 
 export const chatManageSchema = z.object({ name: z.string().trim().min(1).max(120), members: z.array(z.uuid()).max(100) }).strict()
@@ -12,8 +13,9 @@ export const chatTodoSchema = z.object({ title: z.string().trim().min(1).max(200
 export const chatTaskReferenceSchema = z.object({ taskId: z.uuid(), boardId: z.uuid() }).strict()
 const chatSharedTaskSchema = chatTaskReferenceSchema.extend({ title: z.string().max(200), projectId: z.uuid().nullable().optional(), vaultId: z.uuid().nullable().optional() })
 const chatForwardSchema = z.object({ authorId: z.uuid().nullable(), authorName: z.string().max(120) }).strict()
-export const chatMessageSchema = z.object({ id: z.uuid(), text: z.string().trim().max(10000), fileIds: z.array(z.uuid()).max(10), passwordIds: z.array(z.uuid()).max(10), poll: chatPollSchema.optional(), todo: chatTodoSchema.optional(), tasks: z.array(chatTaskReferenceSchema).max(10).default([]) }).strict().refine(value => !!value.text || value.fileIds.length > 0 || value.passwordIds.length > 0 || !!value.poll || !!value.todo || value.tasks.length > 0)
-const chatContentSchema = z.object({ text: z.string().max(10000), passwordIds: z.array(z.uuid()).max(10), poll: chatPollSchema.optional(), todo: chatTodoSchema.optional(), tasks: z.array(chatSharedTaskSchema).max(10).default([]), passwordCopies: z.array(credentialSchema).max(10).default([]), forwardedFrom: chatForwardSchema.optional() }).strict()
+const chatBookingSchema = z.object({ id: z.uuid(), title: z.string().max(120), date: z.iso.date(), start: z.string().length(5), end: z.string().length(5) }).strict()
+export const chatMessageSchema = z.object({ id: z.uuid(), text: z.string().trim().max(10000), fileIds: z.array(z.uuid()).max(10), passwordIds: z.array(z.uuid()).max(10), poll: chatPollSchema.optional(), todo: chatTodoSchema.optional(), tasks: z.array(chatTaskReferenceSchema).max(10).default([]), bookingIds: z.array(z.uuid()).max(10).default([]) }).strict().refine(value => !!value.text || value.fileIds.length > 0 || value.passwordIds.length > 0 || !!value.poll || !!value.todo || value.tasks.length > 0 || value.bookingIds.length > 0)
+const chatContentSchema = z.object({ text: z.string().max(10000), passwordIds: z.array(z.uuid()).max(10), poll: chatPollSchema.optional(), todo: chatTodoSchema.optional(), tasks: z.array(chatSharedTaskSchema).max(10).default([]), bookings: z.array(chatBookingSchema).max(10).default([]), passwordCopies: z.array(credentialSchema).max(10).default([]), forwardedFrom: chatForwardSchema.optional() }).strict()
 export async function projectChatContext(event: H3Event, requireChat = true) {
   const context = await requireProjectsUser(event), project = getRouterParam(event, 'id') === 'personal' ? 'personal' : projectId(event)
   const parsed = z.uuid().safeParse(getRouterParam(event, 'chatId'))
@@ -115,7 +117,13 @@ const chatActivitySchema = z.discriminatedUnion('kind', [
 ])
 
 export async function decodeChatMessages(event: H3Event, current: Awaited<ReturnType<typeof projectChatContext>>, rows: any[]) {
-  const parsed = rows.map(row => ({ row, activity: chatActivitySchema.safeParse(row.activity).data }))
+  const parsed = rows.map(row => ({
+    row,
+    activity: chatActivitySchema.safeParse(row.activity).data,
+    content: row.deletedAt || row.activity ? { text: '', passwordIds: [], tasks: [], bookings: [], passwordCopies: [] }
+      : decodeChatContent(event, current.project, current.chat, row.id, row.encryptedData)
+  }))
+  const bookingReferences = await readMeetingRoomReferences(current.context, parsed.flatMap(({ content }) => content.bookings.map(booking => booking.id)))
   const authors = new Set<string>(rows.map(row => row.authorId).filter(Boolean))
   const ids = [...new Set([...authors, ...parsed.flatMap(({activity}) =>
     activity && 'memberIds' in activity ? activity.memberIds.slice(0, 3) : [])])]
@@ -127,15 +135,15 @@ export async function decodeChatMessages(event: H3Event, current: Awaited<Return
   }
   const people = new Map((await teamPeople(current.context, profiles.filter(profile => authors.has(profile.user_id)))).map(person => [person.id, person]))
   const names = new Map(profiles.map(profile => [profile.user_id, profile.full_name]))
-  return Promise.all(parsed.map(async ({ row, activity }) => {
+  return Promise.all(parsed.map(async ({ row, activity, content }) => {
     const { encryptedData, files, activity: storedActivity, ...message } = row
     const author = people.get(row.authorId)
-    const content = row.deletedAt || storedActivity ? { text: '', passwordIds: [], tasks: [], passwordCopies: [] } : decodeChatContent(event, current.project, current.chat, row.id, encryptedData)
     const action: ProjectChatActivity | undefined = activity && 'memberIds' in activity
       ? { kind: activity.kind, memberCount: activity.memberIds.length, memberNames: activity.memberIds.slice(0, 3).map(id => names.get(id) || 'Участник') }
       : activity
     const tasks = await resolveChatTasks(event, current.context, content.tasks, false)
-    return { ...message, ...content, tasks, activity: action,
+    const bookings = content.bookings.map(booking => ({ ...(bookingReferences.get(booking.id) ?? booking), available: bookingReferences.has(booking.id) }))
+    return { ...message, ...content, tasks, bookings, activity: action,
       authorName: author?.fullName || 'Участник', authorAvatarUrl: author?.avatarUrl || '',
       files: row.deletedAt || storedActivity ? [] : files.map((file: any) => decodeChatFile(event, current.project, current.chat, file, current.context.user.id)) }
   })) as Promise<import('../../shared/types/project-chats').ProjectChatMessage[]>
@@ -151,7 +159,7 @@ export async function readChatPage(event: H3Event, current: Awaited<ReturnType<t
     for (const row of [...result.messages].reverse()) {
       if (row.deletedAt || row.activity) continue
       const data = decodeChatContent(event, current.project, current.chat, row.id, row.encryptedData)
-      const text = [data.text, data.poll?.question, ...(data.poll?.options.map(option => option.label) ?? []), data.todo?.title, ...(data.todo?.items.map(item => item.label) ?? []), ...data.tasks.map(task=>task.title), ...data.passwordCopies.map(password=>password.title)].join(' ').normalize('NFKC').toLocaleLowerCase('ru')
+      const text = [data.text, data.poll?.question, ...(data.poll?.options.map(option => option.label) ?? []), data.todo?.title, ...(data.todo?.items.map(item => item.label) ?? []), ...data.tasks.map(task=>task.title), ...data.bookings.map(booking=>booking.title), ...data.passwordCopies.map(password=>password.title)].join(' ').normalize('NFKC').toLocaleLowerCase('ru')
       if (text.includes(term)) matches.push(row)
       if (matches.length === 60) return { messages: await decodeChatMessages(event, current, matches.reverse()), nextBefore: row.seq }
     }

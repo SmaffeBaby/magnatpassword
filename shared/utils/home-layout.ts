@@ -8,6 +8,7 @@ export const homeApps = {
   contracts: { label: 'Реестр договоров', actionLabel: 'Реестр договоров', icon: 'i-lucide-notebook-tabs' },
   spaces: { label: 'Пространства', actionLabel: 'Пространства', icon: 'i-lucide-orbit' },
   projects: { label: 'Проекты', actionLabel: 'Проекты', icon: 'i-lucide-folder-kanban' },
+  'meeting-room': { label: 'Переговорная комната', actionLabel: 'Переговорную комнату', icon: 'i-lucide-calendar-clock' },
   team: { label: 'Команда', actionLabel: 'Команду', icon: 'i-lucide-users-round' },
   kaban: { label: 'Задачи', actionLabel: 'Задачи', icon: 'i-lucide-list-checks' }
 } satisfies Record<HomeAppId, { label: string; actionLabel: string; icon: string }>

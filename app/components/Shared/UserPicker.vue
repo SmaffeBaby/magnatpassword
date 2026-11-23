@@ -5,7 +5,7 @@ import { normalizePeopleQuery } from '~~/shared/utils/team'
 import type { TeamPerson } from '~~/shared/types/team'
 
 const person = defineModel<TeamPerson | null>({ default: null })
-const props = defineProps<{ disabled?: boolean; admin?: boolean; projects?: boolean; projectId?: string }>()
+const props = defineProps<{ disabled?: boolean; admin?: boolean; projects?: boolean; projectId?: string; excludedIds?: string[] }>()
 const auth = useAuthStore()
 const query = ref(''), debounced = ref(''), expanded = ref(true), page = ref(1)
 const listId = useId()
@@ -35,7 +35,7 @@ const search = useQuery({
   enabled: computed(() => !!auth.user && !person.value && showResults.value),
   staleTime: 30000
 })
-const results = computed(() => search.data.value?.people ?? [])
+const results = computed(() => (search.data.value?.people ?? []).filter(person => !props.excludedIds?.includes(person.id)))
 function choose(value: TeamPerson) { person.value = value; expanded.value = false }
 function clear() {
   person.value = null

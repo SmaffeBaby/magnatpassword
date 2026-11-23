@@ -14,6 +14,10 @@ import FileUpload from '~/components/Shared/FileUpload.vue'
 import CredentialDetails from '~/components/PasswordPage/CredentialDetails.vue'
 import { useChatMessageMenu } from '~/composables/chats/useChatMessageMenu'
 import ChatForwardModal from '~/components/Chats/ChatForwardModal.vue'
+import BookingPicker from '~/components/MeetingRoom/BookingPicker.vue'
+import type { MeetingRoomReference } from '~~/shared/types/meeting-room'
+import { meetingRoomCompleted } from '~~/shared/utils/meeting-room'
+import { dateLabel } from '~~/shared/utils/subscriptions'
 import ChatTaskPicker from '~/components/Chats/ChatTaskPicker.vue'
 import ProjectChatActivities from './ProjectChatActivities.vue'
 import ProjectChatAttachment from './ProjectChatAttachment.vue'
@@ -123,17 +127,30 @@ async function saveAvatar() {
   } finally { avatarBusy.value = false }
 }
 watch(selectedId, () => { avatarDialog.value = false })
+const bookingPicker = ref(false)
+const bookingClock = useMeetingRoomClock()
+watch([selectedId, () => auth.user?.id], () => { bookingPicker.value = false })
+function addBooking(booking: MeetingRoomReference) {
+  if (draft.value.retry || draft.value.bookings.length >= 10 || draft.value.bookings.some(item => item.id === booking.id)) return
+  draft.value.bookings.push(booking)
+}
+function openBooking(booking: MeetingRoomReference) {
+  if (!booking.available) return
+  useChatHubStore().opened = false
+  void useServiceTabsStore().open({ path: '/meeting-room', query: { booking: booking.id } })
+}
+
 const forwardKey = computed(() => hub.draftKey(props.personal ? null : props.project.id, selectedId.value))
 const forwardDraft = computed(() => hub.forwardDrafts[forwardKey.value])
 const draft = computed(() => {
   const entries = props.embedded ? hub.messageDrafts : drafts
   const key = forwardKey.value
-  entries[key] ??= { text: '', files: [], passwordIds: [], nonce: '', retry: false, sending: false, tasks: [] }
+  entries[key] ??= { text: '', files: [], passwordIds: [], nonce: '', retry: false, sending: false, tasks: [], bookings: [] }
   return entries[key]!
 })
 const sending = computed(() => draft.value.sending)
 const attachmentCount = computed(() => draft.value.files.length + draft.value.passwordIds.length)
-const hasMessageContent = computed(() => !!(draft.value.text.trim() || attachmentCount.value || draft.value.poll || draft.value.todo || draft.value.tasks.length || forwardDraft.value))
+const hasMessageContent = computed(() => !!(draft.value.text.trim() || attachmentCount.value || draft.value.poll || draft.value.todo || draft.value.tasks.length || draft.value.bookings.length || forwardDraft.value))
 const canSend = computed(() => !!current.value && !sending.value && !busy.value && hasMessageContent.value)
 const inlinePassword = ref<Credential|null>(null)
 const activePasswordId = ref(''), activePassword = computed(() => passwords.data.value?.find(row => row.id === activePasswordId.value))
@@ -191,8 +208,8 @@ async function send() {
       for (let i=0;i<forward.source.messageIds.length;i+=100) await sharedRequest('/api/chats/forward',{method:'POST',body:{operationId:forward.operationId,source:{...forward.source,messageIds:forward.source.messageIds.slice(i,i+100)},target:{projectId:props.personal?null:props.project.id,chatId:chat}}})
       if (hub.forwardDrafts[key]?.operationId===forward.operationId) delete hub.forwardDrafts[key]
     }
-    if (target.text.trim() || target.files.length || target.passwordIds.length || target.poll || target.todo || target.tasks.length) await sharedRequest(`${base.value}/${chat}/messages`, { method: 'POST', body: { id: target.nonce, text: target.text, fileIds: target.files.map(file => file.id), passwordIds: [...target.passwordIds], poll: target.poll, todo: target.todo, tasks: target.tasks.map(task=>({taskId:task.taskId,boardId:task.boardId})) } })
-    target.tasks = []; target.poll = undefined; target.todo = undefined; target.text = ''; target.files = []; target.passwordIds = []; target.nonce = ''; target.retry = false
+    if (target.text.trim() || target.files.length || target.passwordIds.length || target.poll || target.todo || target.tasks.length || target.bookings.length) await sharedRequest(`${base.value}/${chat}/messages`, { method: 'POST', body: { id: target.nonce, text: target.text, fileIds: target.files.map(file => file.id), passwordIds: [...target.passwordIds], poll: target.poll, todo: target.todo, tasks: target.tasks.map(task=>({taskId:task.taskId,boardId:task.boardId})), bookingIds: target.bookings.map(booking => booking.id) } })
+    target.tasks = []; target.bookings = []; target.poll = undefined; target.todo = undefined; target.text = ''; target.files = []; target.passwordIds = []; target.nonce = ''; target.retry = false
     atBottom.value = true; await refresh()
   } catch (failure: any) { target.retry = true; error.value = failure?.data?.message || 'Сообщение не отправлено. Повторите отправку.'; await refresh() }
   finally { target.sending = false }
@@ -299,7 +316,7 @@ function scrollToAnchor() {
   pendingJump.value = null
 }
 function latest() { messageAnchor.value = null; atBottom.value = true; writeRoute({ query: { ...route.query, message: undefined } }) }
-const summary = (message: ProjectChatMessage) => message.text || message.poll?.question || message.todo?.title || message.tasks[0]?.title || (message.files.length ? message.files.map(file => file.name).join(', ') : 'Пароль проекта')
+const summary = (message: ProjectChatMessage) => message.text || message.poll?.question || message.todo?.title || message.tasks[0]?.title || message.bookings?.[0]?.title || (message.files.length ? message.files.map(file => file.name).join(', ') : 'Пароль проекта')
 const headerActions = computed(() => [
   { label: 'Закреплённые сообщения', icon: 'i-lucide-pin', onSelect: togglePins },
   { label: selectionMode.value ? 'Выйти из режима выбора' : 'Выбрать мои сообщения', icon: 'i-lucide-list-checks', onSelect: () => { if (selectionMode.value) closeSelection(); else selectionMode.value = true } },
@@ -524,6 +541,11 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
                     <small v-if="message.forwardedFrom" class="chat-forwarded">Переслано от {{message.forwardedFrom.authorName}}</small>
                     <p v-if="message.text" class="chat-text"><span v-for="(part,i) in messageParts(message)" :key="i" :class="{'chat-mention':part.mention}">{{part.text}}</span></p>
                     <button v-for="task in message.tasks" :key="task.taskId" class="chat-task-card" :disabled="!task.available" @click="openTask(task)"><UIcon name="i-lucide-columns-3"/><span><strong>{{task.title}}</strong><small>{{!task.available?'Нет доступа к задаче':task.completed?'Кабан · Завершена':'Кабан · Открыть задачу'}}</small></span></button>
+                    <button v-for="booking in message.bookings" :key="booking.id" type="button" class="chat-task-card"
+                      :class="{ 'chat-booking-completed': booking.available && meetingRoomCompleted(booking.date, booking.end, bookingClock) }"
+                      :disabled="!booking.available" @click="openBooking(booking)">
+                      <UIcon name="i-lucide-calendar-clock"/><span><strong>{{ booking.title }}</strong><small>{{ booking.available ? `${dateLabel(booking.date)} · ${booking.start}–${booking.end}` : 'Бронь отменена' }}</small></span>
+                    </button>
                     <button v-for="(password,i) in message.passwordCopies" :key="`${password.id}:${i}`" class="chat-password" @click="inlinePassword=password"><UIcon name="i-lucide-key-round"/><span><strong>{{password.title}}</strong><small>Пересланный пароль · открыть</small></span></button>
                     <ProjectChatActivities :message="message" :user-id="auth.user?.id" :busy="actionBusy" @interact="body=>interact(message,body)"/>
                     <ProjectChatAttachment v-for="file in message.files" :key="file.id" :project-id="project.id" :chat-id="current.id" :file="file"/>
@@ -550,12 +572,18 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
           <UAlert v-if="error&&!managing&&!picker&&!editingMessage&&!deletingMessage&&!activityDialog&&!deletingBatch" color="error" :description="error"/>
           <div v-if="forwardDraft" class="chat-forward-draft"><UIcon name="i-lucide-forward"/><span><strong>Пересылаемых сообщений: {{forwardDraft.source.messageIds.length}}</strong><small>Добавьте комментарий или отправьте без него.</small></span><UButton icon="i-lucide-x" aria-label="Отменить пересылку" color="neutral" variant="ghost" :disabled="sending" @click="delete hub.forwardDrafts[forwardKey]"/></div>
           <div v-if="draft.tasks.length" class="chat-draft-activities"><span v-for="task in draft.tasks" :key="task.taskId"><UIcon name="i-lucide-columns-3"/>{{task.title}}<UButton icon="i-lucide-x" aria-label="Убрать задачу" color="neutral" variant="ghost" size="xs" :disabled="sending||draft.retry" @click="draft.tasks=draft.tasks.filter(item=>item.taskId!==task.taskId)"/></span></div>
+          <div v-if="draft.bookings.length" class="chat-draft-activities">
+            <span v-for="booking in draft.bookings" :key="booking.id"><UIcon name="i-lucide-calendar-clock"/>{{ booking.title }}
+              <UButton icon="i-lucide-x" aria-label="Убрать бронь" color="neutral" variant="ghost" size="xs" :disabled="sending || draft.retry"
+                @click="draft.bookings = draft.bookings.filter(item => item.id !== booking.id)" />
+            </span>
+          </div>
           <div v-if="draft.poll||draft.todo" class="chat-draft-activities"><span v-if="draft.poll"><UIcon name="i-lucide-chart-bar"/>Голосование: {{draft.poll.question}}<UButton icon="i-lucide-x" aria-label="Убрать голосование" color="neutral" variant="ghost" size="xs" :disabled="sending||draft.retry" @click="draft.poll=undefined"/></span><span v-if="draft.todo"><UIcon name="i-lucide-list-todo"/>Список дел: {{draft.todo.title}}<UButton icon="i-lucide-x" aria-label="Убрать список дел" color="neutral" variant="ghost" size="xs" :disabled="sending||draft.retry" @click="draft.todo=undefined"/></span></div>
           <div v-if="suggestedMentions.length" class="chat-mention-picker" role="listbox" aria-label="Упомянуть участника"><button v-for="member in suggestedMentions" :key="member.id" type="button" role="option" :aria-selected="false" @mousedown.prevent @click="insertMention(member.handle)"><PersonAvatar :name="member.name"/><span>{{member.name}}<small>@{{member.handle}}</small></span></button></div>
           <div v-if="attachmentCount" class="chat-draft-files"><span v-for="file in draft.files" :key="file.id"><UIcon name="i-lucide-paperclip"/>{{file.name}}<UButton icon="i-lucide-x" :aria-label="`Убрать вложение: ${file.name}`" color="neutral" variant="ghost" size="xs" :disabled="busy||sending||draft.retry" @click="removeFile(file)"/></span><span v-for="id in draft.passwordIds" :key="id"><UIcon name="i-lucide-key-round"/>{{passwordTitle(id)}}<UButton icon="i-lucide-x" :aria-label="`Убрать пароль: ${passwordTitle(id)}`" color="neutral" variant="ghost" size="xs" :disabled="sending||draft.retry" @click="draft.passwordIds=draft.passwordIds.filter(value=>value!==id)"/></span></div>
           <UButton v-if="draft.retry&&!sending" label="Изменить черновик" color="neutral" variant="ghost" @click="draft.retry=false;draft.nonce=''"/>
           <div class="chat-compose-row">
-            <UDropdownMenu :items="[{label:'Загрузить файл или изображение',icon:'i-lucide-upload',onSelect:()=>showPicker('upload')},...(canViewDocuments?[{label:'Из документов проекта',icon:'i-lucide-folder-open',onSelect:()=>showPicker('documents')}]:[]),...(!personal?[{label:'Пароль проекта',icon:'i-lucide-key-round',onSelect:()=>showPicker('passwords')}]:[]),{label:'Задача Кабана',icon:'i-lucide-columns-3',onSelect:()=>taskPicker=true},{label:'Голосование',icon:'i-lucide-chart-bar',onSelect:()=>createActivity('poll')},{label:'Список дел',icon:'i-lucide-list-todo',onSelect:()=>createActivity('todo')}]"><UButton type="button" class="chat-compose-attach" icon="i-lucide-paperclip" aria-label="Добавить вложение" color="neutral" variant="outline" :disabled="busy||sending||draft.retry"/></UDropdownMenu>
+            <UDropdownMenu :items="[{label:'Загрузить файл или изображение',icon:'i-lucide-upload',onSelect:()=>showPicker('upload')},...(canViewDocuments?[{label:'Из документов проекта',icon:'i-lucide-folder-open',onSelect:()=>showPicker('documents')}]:[]),...(!personal?[{label:'Пароль проекта',icon:'i-lucide-key-round',onSelect:()=>showPicker('passwords')}]:[]),{label:'Задача Кабана',icon:'i-lucide-columns-3',onSelect:()=>taskPicker=true},{label:'Переговорная комната',icon:'i-lucide-calendar-clock',disabled:draft.bookings.length>=10,onSelect:()=>bookingPicker=true},{label:'Голосование',icon:'i-lucide-chart-bar',onSelect:()=>createActivity('poll')},{label:'Список дел',icon:'i-lucide-list-todo',onSelect:()=>createActivity('todo')}]"><UButton type="button" class="chat-compose-attach" icon="i-lucide-paperclip" aria-label="Добавить вложение" color="neutral" variant="outline" :disabled="busy||sending||draft.retry"/></UDropdownMenu>
             <UTextarea
               ref="chatInput"
               v-model="draft.text"
@@ -638,6 +666,7 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
                 </span>
                 <ProjectChatAttachment v-for="file in message.files" :key="`${file.id}:${file.revision}`" :file="file" :project-id="project.id" :chat-id="current.id" preview-mode="pinned"/>
                 <span v-for="task in message.tasks" :key="task.taskId" class="chat-pinned-reference"><UIcon name="i-lucide-columns-3"/>{{ task.title }}</span>
+                <span v-for="booking in message.bookings" :key="booking.id" class="chat-pinned-reference"><UIcon name="i-lucide-calendar-clock"/>{{ booking.title }}</span>
                 <span v-if="message.passwordIds.length || message.passwordCopies.length" class="chat-pinned-reference"><UIcon name="i-lucide-key-round"/>Пароль проекта</span>
                 <span class="chat-pinned-meta"><UIcon name="i-lucide-pin" aria-label="Закреплено"/><time :datetime="message.createdAt">{{ time(message.createdAt) }}</time></span>
               </button>
@@ -678,6 +707,7 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
     <UModal :open="!!activityDialog" :title="activityDialog==='poll'?'Добавить голосование':'Добавить список дел'" description="После добавления нажмите «Отправить» в беседе." @update:open="value=>{if(!value)activityDialog=null}"><template #body><form class="chat-modal-form" @submit.prevent="addActivity"><UFormField :label="activityDialog==='poll'?'Вопрос':'Название списка'" required><UInput v-model="activityTitle" required :maxlength="activityDialog==='poll'?300:200" class="w-full"/></UFormField><div v-for="(_,i) in activityItems" :key="i" class="chat-activity-item"><UInput v-model="activityItems[i]" :aria-label="`Пункт ${i+1}`" :placeholder="activityDialog==='poll'?'Вариант ответа':'Что нужно сделать'" required :maxlength="activityDialog==='poll'?160:300" class="flex-1"/><UButton v-if="activityItems.length>(activityDialog==='poll'?2:1)" icon="i-lucide-x" :aria-label="`Убрать пункт ${i+1}`" color="neutral" variant="ghost" @click="activityItems.splice(i,1)"/></div><UButton label="Добавить пункт" icon="i-lucide-plus" color="neutral" variant="outline" :disabled="activityItems.length>=(activityDialog==='poll'?20:100)" @click="activityItems.push('')"/><UAlert v-if="error" color="error" :description="error"/><UButton type="submit" label="Добавить в сообщение"/></form></template></UModal>
     <UModal :open="!!deletingBatch" title="Удалить выбранные сообщения?" :description="`Сообщений: ${deletingBatch?.length||0}. Они исчезнут из переписки для всех участников.`" :dismissible="!actionBusy" @update:open="value=>{if(!value)deletingBatch=null}"><template #body><p class="chat-hint">Можно удалять только свои сообщения.</p><UAlert v-if="error" color="error" :description="error"/></template><template #footer><UButton label="Отмена" color="neutral" variant="outline" :disabled="actionBusy" @click="deletingBatch=null"/><UButton label="Удалить выбранные" color="error" :loading="actionBusy" @click="deleteSelected"/></template></UModal>
     <ChatForwardModal v-if="forwarding" :source="forwarding" :in-page="!embedded" @close="forwarding=null" @prepared="closeSelection"/>
+    <BookingPicker v-if="bookingPicker" allow-create @choose="addBooking" @close="bookingPicker = false" />
     <ChatTaskPicker v-if="taskPicker" :project-id="personal?undefined:project.id" @close="taskPicker=false" @choose="addTask"/>
     <CredentialDetails :entry="passwordDetail" :open="!!passwordDetail" :categories="[]" :links="[]" :busy="false" readonly @close="activePasswordId='';inlinePassword=null" @copy="copy"/>
   </section>
@@ -842,4 +872,8 @@ button.chat-service-note:focus-visible { outline:2px solid #356c9e; outline-offs
 .chat-compose-attach:not(:disabled):hover { background: #e8edf6; }
 .chat-compose-send { background: #356c9e; color: #fff; }
 .chat-compose-send:not(:disabled):hover { background: #285782; }
+</style>
+
+<style scoped>
+.chat-task-card.chat-booking-completed{background:color-mix(in srgb,var(--ui-success) 14%,var(--ui-bg))}
 </style>

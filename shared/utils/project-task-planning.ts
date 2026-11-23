@@ -11,7 +11,7 @@ export function projectTaskView(value: unknown) {
   return value === 'calendar' || value === 'gantt' ? value : 'board'
 }
 
-export type TaskPeriod = 'month' | '1' | '2' | '3' | '4' | '8'
+export type TaskPeriod = 'day' | 'month' | '1' | '2' | '3' | '4' | '8'
 export interface TaskDateRange { start: string; end: string }
 export type TaskDateEdge = 'start' | 'end'
 export type GanttTaskSort = `${'start' | 'due' | 'title'}-${'asc' | 'desc'}`
@@ -42,6 +42,7 @@ function monday(date: string) {
 }
 
 export function taskPlanningDays(anchor: string, period: TaskPeriod) {
+  if (period === 'day') return [anchor]
   const first = anchor.slice(0, 7) + '-01'
   const start = monday(period === 'month' ? first : anchor)
   const next = addPeriod(first, 1, 'month')
@@ -50,7 +51,8 @@ export function taskPlanningDays(anchor: string, period: TaskPeriod) {
 }
 
 export function shiftTaskPlanningPeriod(anchor: string, period: TaskPeriod, direction: number) {
-  return addPeriod(anchor, direction * (period === 'month' ? 1 : Number(period) * 7), period === 'month' ? 'month' : 'day') || anchor
+  const steps = period === 'month' || period === 'day' ? 1 : Number(period) * 7
+  return addPeriod(anchor, direction * steps, period === 'month' ? 'month' : 'day') || anchor
 }
 
 export function taskDateRange(task: Pick<KabanTaskData, 'startOn' | 'dueOn'>): TaskDateRange | null {

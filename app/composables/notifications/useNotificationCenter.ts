@@ -1,7 +1,7 @@
 import type { NotificationSettings, AppNotification } from '~~/shared/types/subscriptions'
 export function useNotificationCenter(openEntry:(notification:AppNotification)=>void){
  const store=useNotificationsStore(),open=ref(false),settingsOpen=ref(false),draft=reactive<NotificationSettings>(JSON.parse(JSON.stringify(store.settings)))
- async function showInbox(){open.value=true;await store.refresh()}
+ async function showInbox(){open.value=true;await store.refresh(true)}
  function showSettings(){Object.assign(draft,JSON.parse(JSON.stringify(store.settings)));settingsOpen.value=true}
  async function save(){if(await store.saveSettings(JSON.parse(JSON.stringify(draft)))){settingsOpen.value=false;await store.refresh()}}
  function addLead(){if(draft.leadDays.length<12)draft.leadDays.push(1)}
@@ -17,6 +17,13 @@ export function useNotificationCenter(openEntry:(notification:AppNotification)=>
    if(notification.available&&notification.taskId){
     open.value=false
     await navigateTo({path:'/kaban',query:{task:notification.taskId,vault:notification.vaultId||'all'}})
+   }
+   return
+  }
+  if(notification.kind==='meeting-room'){
+   if(notification.available&&notification.bookingId){
+    open.value=false
+    await navigateTo({path:'/meeting-room',query:{booking:notification.bookingId}})
    }
    return
   }

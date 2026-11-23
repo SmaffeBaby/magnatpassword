@@ -45,6 +45,7 @@ export function describeService(path: string) {
     return editor ? { slug: `office-${editor.key}`, name: editor.label } : null
   }
   if (root === 'spaces') return { slug: 'spaces', name: 'Пространства' }
+  if (root === 'meeting-room') return { slug: 'meeting-room', name: 'Переговорная комната' }
   if (root === 'profile' || root === 'settings') return { slug: 'account', name: 'Профиль' }
   return applicationForPath(path)
 }
