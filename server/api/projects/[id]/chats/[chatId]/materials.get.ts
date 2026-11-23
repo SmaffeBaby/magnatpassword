@@ -27,7 +27,7 @@ export default defineEventHandler(async (event): Promise<ChatMaterialPage> => {
     const result = await chatRpc(context, 'project_chat_feed', { p_project: project, p_chat: chat, p_before: cursor })
     const items: ChatMaterial[] = []
     for (const row of [...result.messages].reverse()) {
-      if (row.deletedAt) continue
+      if (row.deletedAt || row.activity) continue
       if (tab === 'links') {
         const { text } = decodeChatContent(event, project, chat, row.id, row.encryptedData)
         const urls = new Set((text.match(/https?:\/\/[^\s<>"']+/gi) ?? []).map(link => link.replace(/[.,!?;:\])}]+$/, '')))

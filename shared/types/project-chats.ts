@@ -36,7 +36,14 @@ export interface ChatMessageDraft {
   todo?: ProjectChatTodo
 }
 export interface ChatDirectoryItem extends ProjectChat { lastMessagePreview?: string; projectId: string | null; projectName?: string; people: { userId: string; fullName: string; avatarUrl: string }[] }
+export type ProjectChatActivity =
+  | { kind: 'created' | 'avatar-changed' | 'avatar-removed' }
+  | { kind: 'pinned' | 'unpinned'; messageSeq: number }
+  | { kind: 'members-added' | 'members-removed'; memberNames: string[]; memberCount: number }
+  | { kind: 'renamed'; name: string }
+
 export interface ProjectChatMessage {
+  activity?: ProjectChatActivity
   id: string; seq: number; authorId: string | null; authorName?: string; authorAvatarUrl?: string; createdAt: string
   revision: number; editedAt: string | null; deletedAt: string | null; pinned: boolean
   text: string; passwordIds: string[]; files: ProjectChatFile[]; mentionIds: string[]

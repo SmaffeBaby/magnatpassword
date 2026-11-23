@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import type { EncryptedData } from '../../shared/types/vault'
 import type { ProjectDocumentMetadata } from '../../shared/types/project-documents'
-import type { ProjectChatFile } from '../../shared/types/project-chats'
+import type { ProjectChatActivity, ProjectChatFile } from '../../shared/types/project-chats'
 import { documentMaxSize, documentMetadataSchema } from '../../shared/utils/project-documents'
 
 export const chatManageSchema = z.object({ name: z.string().trim().min(1).max(120), members: z.array(z.uuid()).max(100) }).strict()
@@ -107,19 +107,37 @@ export async function chatMentions(context: Awaited<ReturnType<typeof requirePro
   if (error) throw createError({ statusCode: 503, message: 'Не удалось проверить упоминания' })
   return chatMentionIds(text, data.map(person => ({ id: person.user_id, name: person.full_name || 'Участник' })))
 }
+const chatActivitySchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.enum(['created', 'avatar-changed', 'avatar-removed']) }),
+  z.object({ kind: z.enum(['pinned', 'unpinned']), messageSeq: z.number().int().positive() }),
+  z.object({ kind: z.enum(['members-added', 'members-removed']), memberIds: z.array(z.uuid()).min(1).max(100) }),
+  z.object({ kind: z.literal('renamed'), name: z.string().min(1).max(120) })
+])
+
 export async function decodeChatMessages(event: H3Event, current: Awaited<ReturnType<typeof projectChatContext>>, rows: any[]) {
-  const ids = [...new Set<string>(rows.map(row => row.authorId).filter(Boolean))]
-  const { data, error } = ids.length ? await current.context.client.from('team_profiles').select('*').in('user_id', ids) : { data: [], error: null }
-  if (error) throw createError({ statusCode: 503, message: 'Не удалось загрузить авторов сообщений' })
-  const people = await teamPeople(current.context, data ?? [])
-  return Promise.all(rows.map(async row => {
-    const { encryptedData, files, ...message } = row
-    const author = people.find(person => person.id === row.authorId)
-    const content = row.deletedAt ? { text: '', passwordIds: [], tasks: [], passwordCopies: [] } : decodeChatContent(event, current.project, current.chat, row.id, encryptedData)
+  const parsed = rows.map(row => ({ row, activity: chatActivitySchema.safeParse(row.activity).data }))
+  const authors = new Set<string>(rows.map(row => row.authorId).filter(Boolean))
+  const ids = [...new Set([...authors, ...parsed.flatMap(({activity}) =>
+    activity && 'memberIds' in activity ? activity.memberIds.slice(0, 3) : [])])]
+  const profiles = []
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const { data, error } = await current.context.client.from('team_profiles').select('user_id,full_name,avatar_path').in('user_id', ids.slice(offset, offset + 100))
+    if (error) throw createError({ statusCode: 503, message: 'Не удалось загрузить участников беседы' })
+    profiles.push(...data)
+  }
+  const people = new Map((await teamPeople(current.context, profiles.filter(profile => authors.has(profile.user_id)))).map(person => [person.id, person]))
+  const names = new Map(profiles.map(profile => [profile.user_id, profile.full_name]))
+  return Promise.all(parsed.map(async ({ row, activity }) => {
+    const { encryptedData, files, activity: storedActivity, ...message } = row
+    const author = people.get(row.authorId)
+    const content = row.deletedAt || storedActivity ? { text: '', passwordIds: [], tasks: [], passwordCopies: [] } : decodeChatContent(event, current.project, current.chat, row.id, encryptedData)
+    const action: ProjectChatActivity | undefined = activity && 'memberIds' in activity
+      ? { kind: activity.kind, memberCount: activity.memberIds.length, memberNames: activity.memberIds.slice(0, 3).map(id => names.get(id) || 'Участник') }
+      : activity
     const tasks = await resolveChatTasks(event, current.context, content.tasks, false)
-    return { ...message, ...content, tasks,
-      authorName: author?.fullName || 'Участник проекта', authorAvatarUrl: author?.avatarUrl || '',
-      files: row.deletedAt ? [] : files.map((file: any) => decodeChatFile(event, current.project, current.chat, file, current.context.user.id)) }
+    return { ...message, ...content, tasks, activity: action,
+      authorName: author?.fullName || 'Участник', authorAvatarUrl: author?.avatarUrl || '',
+      files: row.deletedAt || storedActivity ? [] : files.map((file: any) => decodeChatFile(event, current.project, current.chat, file, current.context.user.id)) }
   })) as Promise<import('../../shared/types/project-chats').ProjectChatMessage[]>
 }
 export async function readChatPage(event: H3Event, current: Awaited<ReturnType<typeof projectChatContext>>, before: number | null, pinned = false, search = '') {
@@ -131,7 +149,7 @@ export async function readChatPage(event: H3Event, current: Awaited<ReturnType<t
     if (!search) return { messages: await decodeChatMessages(event, current, result.messages), nextBefore: result.nextBefore }
     const term = search.normalize('NFKC').toLocaleLowerCase('ru')
     for (const row of [...result.messages].reverse()) {
-      if (row.deletedAt) continue
+      if (row.deletedAt || row.activity) continue
       const data = decodeChatContent(event, current.project, current.chat, row.id, row.encryptedData)
       const text = [data.text, data.poll?.question, ...(data.poll?.options.map(option => option.label) ?? []), data.todo?.title, ...(data.todo?.items.map(item => item.label) ?? []), ...data.tasks.map(task=>task.title), ...data.passwordCopies.map(password=>password.title)].join(' ').normalize('NFKC').toLocaleLowerCase('ru')
       if (text.includes(term)) matches.push(row)
