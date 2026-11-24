@@ -19,7 +19,7 @@ const tabSchema = z.object({
   label: z.string().optional(),
   editor: editorSchema.optional()
 })
-const savedTabsSchema = z.object({ tabs: z.array(tabSchema), activeId: z.uuid() })
+const savedTabsSchema = z.object({ tabs: z.array(tabSchema), activeId: z.uuid().nullable() })
 type ServiceTab = z.infer<typeof tabSchema>
 type SavedTabs = z.infer<typeof savedTabsSchema>
 type TabStorage = 'sessionStorage' | 'localStorage'
@@ -123,7 +123,10 @@ export const useServiceTabsStore = defineStore('service-tabs', () => {
 
   function restorable(tab: ServiceTab) {
     if (/^\/auth(?:[/?#]|$)/.test(tab.path)) return false
-    try { return router.resolve(tab.path).matched.length > 0 }
+    try {
+      const route = router.resolve(tab.path)
+      return route.path !== '/' && route.matched.length > 0
+    }
     catch { return false }
   }
 
@@ -131,8 +134,7 @@ export const useServiceTabsStore = defineStore('service-tabs', () => {
     if (!import.meta.client || !accountId) return
     const saved = tabs.value.filter(restorable)
     const current = saved.find(tab => tab.id === activeId.value) ?? saved.at(-1)
-    if (!current) return
-    const snapshot = JSON.stringify({ tabs: saved, activeId: current.id })
+    const snapshot = JSON.stringify({ tabs: saved, activeId: current?.id ?? null })
     if (snapshot === lastSnapshot) return
     const key = storagePrefix + accountId
     writeSnapshot('sessionStorage', key, snapshot)
@@ -171,7 +173,7 @@ export const useServiceTabsStore = defineStore('service-tabs', () => {
       const previous = tabs.value.find(tab => tab.id === saved.activeId)
       const restoreRoute = () => {
         const restoredTab = historyTab ?? matching.find(tab => tab.id === saved.activeId) ?? matching[0]
-        activeId.value = (restoredTab ?? (route.path === '/' ? previous : undefined))?.id ?? ''
+        activeId.value = restoredTab?.id ?? ''
         window.history.replaceState({ ...window.history.state, [stateKey]: restoredTab?.id ?? null }, '')
         sync(route)
       }
@@ -193,8 +195,9 @@ export const useServiceTabsStore = defineStore('service-tabs', () => {
   function sync(to: RouteLocationNormalized, from?: RouteLocationNormalized) {
     if (!import.meta.client) return
     const state = window.history.state?.[stateKey]
-    if (to.path === '/' && typeof state !== 'string') {
-      if (from && from.path !== '/' && state !== null) {
+    if (to.path === '/') {
+      activeId.value = ''
+      if (state !== null && (typeof state === 'string' || (from && from.path !== '/'))) {
         window.history.replaceState({ ...window.history.state, [stateKey]: null }, '')
       }
       return
@@ -233,15 +236,17 @@ export const useServiceTabsStore = defineStore('service-tabs', () => {
     window.addEventListener('pagehide', persist)
   }
 
-  async function visit(to: RouteLocationRaw, id: string, replace = false) {
+  async function visit(to: RouteLocationRaw, id: string | null, replace = false) {
     const target = router.resolve(to)
-    const options = { path: target.path, query: target.query, hash: target.hash, state: { [stateKey]: id }, force: true }
+    const options = { path: target.path, query: target.query, hash: target.hash, state: { [stateKey]: target.path === '/' ? null : id }, force: true }
     const failure = await (replace ? router.replace(options) : router.push(options))
     return !failure
   }
 
   function open(to: RouteLocationRaw, label?: string, id: string = crypto.randomUUID(), editor?: ServiceTabEditor) {
-    const tab = { id, path: router.resolve(to).fullPath, label, editor }
+    const target = router.resolve(to)
+    if (target.path === '/') return visit(to, null)
+    const tab = { id, path: target.fullPath, label, editor }
     pending.set(id, tab)
     return visit(to, id).finally(() => pending.delete(id))
   }
@@ -252,6 +257,7 @@ export const useServiceTabsStore = defineStore('service-tabs', () => {
   }
 
   async function replace(to: RouteLocationRaw) {
+    if (router.resolve(to).path === '/') return visit(to, null)
     const id = activeId.value || crypto.randomUUID()
     const handler = closeHandlers.get(id)
     if (handler) {
@@ -278,7 +284,7 @@ export const useServiceTabsStore = defineStore('service-tabs', () => {
     }
     if (activeId.value === id) {
       const next = tabs.value[index + 1] ?? tabs.value[index - 1]
-      if (!await visit(next?.path ?? '/', next?.id ?? crypto.randomUUID(), true)) return false
+      if (!await visit(next?.path ?? '/', next?.id ?? null, true)) return false
     }
     tabs.value = tabs.value.filter(tab => tab.id !== id)
     savedViews.delete(id)

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { servicePageTitle } from '~/stores/serviceTabs'
+import { isNativeShell } from '~/utils/native-shell'
 import ServicePicker from './ServicePicker.vue'
 
 const route = useRoute(), tabs = useServiceTabsStore()
@@ -7,7 +8,8 @@ const switcher = ref<HTMLElement | null>(null)
 const strip = ref<HTMLElement | null>(null)
 const addButton = ref<HTMLButtonElement | null>(null)
 const overflowing = ref(false)
-const displayedTabs = computed(() => tabs.tabs.length ? tabs.tabs : [{ id: '', path: route.fullPath, label: undefined, editor: undefined }])
+const webShortcuts = ref(false), addOpen = ref(false)
+const displayedTabs = computed(() => tabs.tabs.length || route.path === '/' ? tabs.tabs : [{ id: '', path: route.fullPath, label: undefined, editor: undefined }])
 const tabName = (tab: typeof displayedTabs.value[number]) => tab.label || servicePageTitle(tab.path)
 const listOpen = ref(false), tabSearch = ref('')
 const listedTabs = computed(() => {
@@ -157,6 +159,33 @@ function guardClick(event: MouseEvent) {
   }
 }
 
+function handleTabShortcut(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.isComposing || event.repeat
+    || !event.shiftKey || event.altKey || event.metaKey === event.ctrlKey) return
+  if (event.code !== 'Period' && event.code !== 'Comma') return
+
+  const trigger = addButton.value
+  if (!trigger?.getClientRects().length || pointer
+    || (document.fullscreenElement && !document.fullscreenElement.contains(trigger))
+    || document.querySelector('[aria-modal="true"]')) return
+
+  if (event.code === 'Period') {
+    event.preventDefault()
+    if (addOpen.value) return
+    listOpen.value = false
+    trigger.focus({ preventScroll: true })
+    addOpen.value = true
+  } else if (tabs.activeId) {
+    event.preventDefault()
+    void tabs.close(tabs.activeId)
+  }
+}
+
+onMounted(() => {
+  webShortcuts.value = !isNativeShell()
+  if (webShortcuts.value) window.addEventListener('keydown', handleTabShortcut)
+})
+
 watch(() => displayedTabs.value.length, measureOverflow, { flush: 'post' })
 watch([() => tabs.activeId, overflowing], ([id]) => showTab(id), { flush: 'post' })
 watch([switcher, strip, addButton], ([bar, list, add], _, onCleanup) => {
@@ -170,7 +199,11 @@ watch([switcher, strip, addButton], ([bar, list, add], _, onCleanup) => {
     window.removeEventListener('resize', measureOverflow)
   })
 }, { flush: 'post' })
-onBeforeUnmount(() => { stopDrag(); clearTimeout(clickTimer) })
+onBeforeUnmount(() => {
+  if (webShortcuts.value) window.removeEventListener('keydown', handleTabShortcut)
+  stopDrag()
+  clearTimeout(clickTimer)
+})
 </script>
 
 <template>
@@ -237,14 +270,29 @@ onBeforeUnmount(() => { stopDrag(); clearTimeout(clickTimer) })
           <span class="service-grip" data-tab-grip aria-hidden="true"><UIcon name="i-lucide-grip-vertical"/></span>
           <span class="service-tab-label">{{ tabName(tab) }}</span>
         </button>
-        <button v-if="displayedTabs.length > 1" type="button" class="service-close" :aria-label="`Закрыть вкладку ${tabName(tab)}`" @click="tabs.close(tab.id)">
+        <button
+          v-if="tab.id"
+          type="button"
+          class="service-close"
+          :aria-label="`Закрыть вкладку ${tabName(tab)}`"
+          :aria-keyshortcuts="webShortcuts && tab.id === tabs.activeId ? 'Meta+Shift+, Control+Shift+,' : undefined"
+          :title="webShortcuts && tab.id === tabs.activeId ? 'Закрыть вкладку (⌘/Ctrl+Shift+,)' : undefined"
+          @click="tabs.close(tab.id)"
+        >
           <UIcon name="i-lucide-x"/>
         </button>
       </li>
       <li v-if="dropMarker === 'end'" class="drop-end" aria-hidden="true"/>
     </ul>
-    <ServicePicker mode="new" :dragging="!!dragging || sliding" @choose="path => tabs.open(path)">
-      <button ref="addButton" type="button" class="service-icon-button" aria-label="Открыть сервис в новой вкладке" title="Открыть сервис в новой вкладке">
+    <ServicePicker v-model:open="addOpen" mode="new" :dragging="!!dragging || sliding" @choose="path => tabs.open(path)">
+      <button
+        ref="addButton"
+        type="button"
+        class="service-icon-button"
+        aria-label="Открыть сервис в новой вкладке"
+        :aria-keyshortcuts="webShortcuts ? 'Meta+Shift+. Control+Shift+.' : undefined"
+        :title="webShortcuts ? 'Открыть сервис в новой вкладке (⌘/Ctrl+Shift+.)' : 'Открыть сервис в новой вкладке'"
+      >
         <UIcon name="i-lucide-plus"/>
       </button>
     </ServicePicker>

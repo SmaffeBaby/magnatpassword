@@ -6,7 +6,8 @@ import ServiceShortcutCards from './ServiceShortcutCards.vue'
 const props = defineProps<{ mode: 'replace' | 'new'; dragging?: boolean }>()
 const emit = defineEmits<{ choose: [path: string] }>()
 const home = useHomeLayoutStore(), auth = useAuthStore(), route = useRoute()
-const open = ref(false), service = ref<HomeAppId | null>(null)
+const open = defineModel<boolean>('open', { default: false })
+const service = ref<HomeAppId | null>(null)
 const panel = ref<HTMLElement>()
 function label(id: HomeAppId) { return id === 'applications' ? 'Редакторы' : homeApps[id].label }
 watch(service, async (current, previous) => {
