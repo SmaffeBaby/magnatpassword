@@ -5,6 +5,20 @@ export function createId(): string {
   const hex = Array.from(value, byte => byte.toString(16).padStart(2, '0')).join('')
   return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`
 }
+export function clipboardFiles(event: ClipboardEvent): File[] {
+  const clipboard = event.clipboardData
+  if (!clipboard) return []
+
+  const files = Array.from(clipboard.files)
+  if (files.length) return files
+
+  for (const item of clipboard.items) {
+    const file = item.kind === 'file' ? item.getAsFile() : null
+    if (file) files.push(file)
+  }
+  return files
+}
+
 export async function copyText(value: string, trigger?: HTMLElement): Promise<void> {
   if (navigator.clipboard?.writeText) { try { await navigator.clipboard.writeText(value); return } catch {} }
   const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null

@@ -20,7 +20,7 @@ import { groupSpaceLayers, moveSpaceLayer, moveSpaceLayers, spaceHiddenLayers, s
 import { documentEditor, spaceSpreadsheetPreviewDefaults, spaceSpreadsheetPreviewLimits } from '~~/shared/utils/project-documents'
 import { spaceWebLinkMaxLength, spaceWebLinkUrl } from '~~/shared/utils/space-web-link'
 import { saveFile } from '~/utils/file-download'
-import { copyText } from '~/utils/browser'
+import { clipboardFiles, copyText, createId } from '~/utils/browser'
 import { canPreviewProjectImage, projectImagePreview } from '~/utils/project-image-preview'
 const props=defineProps<{project:Project}>()
 type Space={id:string;name:string;description:string;created_by:string;permission:string;object_count:number;members:{user_id:string;permission:string}[]}
@@ -341,7 +341,12 @@ async function loadImages() {
   }
 }
 watch(docs.query.data,()=>void loadImages())
-async function upload(e:Event){pendingFile.value=(e.target as HTMLInputElement).files?.[0]||null;(e.target as HTMLInputElement).value=''; }
+function upload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) queueUploads([file], { x: 200, y: 150 })
+}
 const attaching=ref(false)
 
 const assets=ref<ProjectDocument[]>([]),passwords=ref<ProjectPassword[]>([]),passwordChoices=ref<ProjectPasswordChoice[]>([]),chats=ref<ProjectChat[]>([]),taskResources=ref<Record<string,{title:string;completed:boolean;projectId?:string;vaultId?:string}>>({}),revealed=reactive<Record<string,boolean>>({})
@@ -356,7 +361,49 @@ function addBookingPlanning(kind: 'booking-calendar' | 'booking-gantt') {
   if (space.value && editable.value) void add(kind)
 }
 const resourcePanel=ref<'password'|'chat'|'person'|'shape'|'subscription'|null>(null),resourceSearch=ref(''),newPassword=ref(false),passwordForm=reactive({title:'',url:'',username:'',password:'',notes:''}),personRole=ref(''),personDuty=ref(''),taskPicker=ref(false)
-const pendingFile=shallowRef<File|null>(null),saveToDocuments=ref(false),folderDestination=ref(''),taskResume=ref(false)
+type PendingUpload = {
+  id: string
+  file: File
+  x: number
+  y: number
+  attachment?: { fileId: string } | { assetId: string }
+}
+const pendingUploads = shallowRef<PendingUpload[]>([])
+const saveToDocuments=ref(false),folderDestination=ref(''),taskResume=ref(false)
+const uploadDestinationLocked = computed(() => !!pendingUploads.value[0]?.attachment)
+watch([space, () => auth.user?.id, () => props.project.id], () => { pendingUploads.value = [] }, { flush: 'sync' })
+
+function queueUploads(files: File[], position: { x: number; y: number }, spacing = 0) {
+  error.value = ''
+  pendingUploads.value = files.map((file, index) => ({
+    id: createId(),
+    file,
+    x: position.x + spacing * index,
+    y: position.y + spacing * index
+  }))
+}
+
+function pasteFiles(event: ClipboardEvent) {
+  if (event.defaultPrevented || !canvas.value || !root.value?.getClientRects().length
+    || serviceTabs.activeId !== workspaceTabId || !currentSpace.value || !editable.value || busy.value
+    || pendingUploads.value.length || settingsOpen.value || groupDialog.value || calendarEditing.value
+    || resourcePanel.value || taskPicker.value || bookingPicker.value || webLinkEditor.value
+    || imagePreview.value || officePreview.value || typingTarget(event.target)) return
+
+  const target = event.target
+  if (!(target instanceof Element) || target.closest('[role="dialog"], [role="alertdialog"], [contenteditable]')) return
+  if (!root.value.contains(target) && target !== document.body && target !== document.documentElement) return
+  if (document.querySelector('[aria-modal="true"]')) return
+
+  const files = clipboardFiles(event)
+  if (!files.length) return
+
+  event.preventDefault()
+  queueUploads(files, {
+    x: (Math.min(350, canvas.value.clientWidth / 3) - offset.x) / zoom.value,
+    y: (Math.min(220, canvas.value.clientHeight / 3) - offset.y) / zoom.value
+  }, 32)
+}
 async function loadResources(){const id=space.value;if(!id){assets.value=[];return}const results=await Promise.allSettled([sharedRequest<ProjectDocument[]>(`${base}/${id}/files`),sharedRequest<Record<string,any>>(`${base}/resources?space=${id}`),sharedRequest<ProjectPassword[]>(`/api/projects/${props.project.id}/passwords`),sharedRequest<ProjectChat[]>(`/api/projects/${props.project.id}/chats`)]);if(id!==space.value||disposed)return;assets.value=results[0]!.status==='fulfilled'?results[0]!.value:[];taskResources.value=results[1]!.status==='fulfilled'?results[1]!.value:{};passwords.value=results[2]!.status==='fulfilled'?results[2]!.value:[];chats.value=results[3]!.status==='fulfilled'?results[3]!.value:[]}
 function passwordFor(item:Item){return passwords.value.find(p=>p.id===item.data.passwordId)}
 async function copyCredential(item: Item, field: 'username' | 'password', event: MouseEvent) {
@@ -378,7 +425,38 @@ async function attachTask(task:{taskId:string;boardId:string}){await add('task',
 async function showPanel(panel:typeof resourcePanel.value){resourcePanel.value=panel;resourceSearch.value='';newPassword.value=false;if(panel==='subscription')await loadSubscriptions();if(panel==='password'){try{passwordChoices.value=await sharedRequest<ProjectPasswordChoice[]>(`/api/projects/${props.project.id}/passwords/choices`)}catch{passwordChoices.value=[]}}}
 async function attachPassword(source?:ProjectPasswordChoice['source']){await run(async()=>{const result=await sharedRequest<{id:string}>(`/api/projects/${props.project.id}/passwords`,{method:'POST',body:source?{source}:{fields:{...passwordForm}}});const id=crypto.randomUUID();await send('put',id,{kind:'password',x:200,y:200,passwordId:result.id});resourcePanel.value=null;Object.assign(passwordForm,{title:'',url:'',username:'',password:'',notes:''})})}
 function folderPath(id:string):string{const names:string[]=[],seen=new Set<string>();let current:string|null=id;while(current&&!seen.has(current)){seen.add(current);const folder=docs.folders.data.value?.find(f=>f.id===current);if(!folder)break;names.unshift(folder.name);current=folder.parentId}return '/'+names.join('/')}
-async function confirmUpload(){const f=pendingFile.value;if(!f)return;await run(async()=>{const body=new FormData();body.append('file',f);if(saveToDocuments.value&&folderDestination.value)body.append('folderId',folderDestination.value);const result=await sharedRequest<{id:string}>(saveToDocuments.value?docs.base.value:`${base}/${space.value}/files`,{method:'POST',body});if(saveToDocuments.value)await docs.refresh();await send('put',crypto.randomUUID(),{kind:f.type.startsWith('image/')?'image':'document',x:200,y:150,...(saveToDocuments.value?{fileId:result.id}:{assetId:result.id})});pendingFile.value=null})}
+async function confirmUpload() {
+  if (!space.value || !editable.value || busy.value || !pendingUploads.value.length) return
+
+  const save = saveToDocuments.value
+  const folder = folderDestination.value
+  const endpoint = save ? docs.base.value : `${base}/${space.value}/files`
+  await run(async () => {
+    for (const upload of pendingUploads.value) {
+      if (disposed || pendingUploads.value[0] !== upload || !editable.value) return
+      const { id, file, x, y } = upload
+      if (!upload.attachment) {
+        const body = new FormData()
+        body.append('file', file)
+        if (save && folder) body.append('folderId', folder)
+        const result = await sharedRequest<{ id: string }>(endpoint, { method: 'POST', body })
+        if (disposed || pendingUploads.value[0] !== upload || !editable.value) return
+        upload.attachment = save ? { fileId: result.id } : { assetId: result.id }
+        pendingUploads.value = [...pendingUploads.value]
+        if (save) void docs.refresh()
+      }
+
+      if (!objects.value.some(item => item.id === id)) {
+        await send('put', id, {
+          kind: file.type.startsWith('image/') ? 'image' : 'document',
+          x, y, ...upload.attachment
+        })
+      }
+      if (pendingUploads.value[0] !== upload) return
+      pendingUploads.value = pendingUploads.value.slice(1)
+    }
+  })
+}
 
 
 const settingsOpen=ref(false),deleteConfirm=ref(false),spaceName=ref(''),spaceDescription=ref(''),portalOpen=ref(false),replyDrafts=reactive<Record<string,string>>({}),markdownInput=ref<HTMLInputElement>()
@@ -573,7 +651,7 @@ function keyUp(e:KeyboardEvent){if(e.code==='Space')spaceHeld.value=false}
 function keyboard(e:KeyboardEvent){
  if(e.defaultPrevented||imagePreview.value||officePreview.value||webLinkEditor.value)return
  if(e.code==='Tab'&&fullscreen.value&&!settingsOpen.value&&!groupDialog.value){headerArmed=true;headerOpen.value=true}
- if(groupDialog.value||taskPicker.value||bookingPicker.value||resourcePanel.value||calendarEditing.value||pendingFile.value||settingsOpen.value)return
+ if(groupDialog.value||taskPicker.value||bookingPicker.value||resourcePanel.value||calendarEditing.value||pendingUploads.value.length||settingsOpen.value)return
  if(space.value&&(e.ctrlKey||e.metaKey)&&e.code==='KeyF'){e.preventDefault();layerPanel.value?.focusSearch();return}
  if(typingTarget(e.target))return
  if (space.value && e.code === 'KeyZ' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey
@@ -886,6 +964,7 @@ async function finishLayerDrag(item: Item, previous: BoardPosition[]) {
   await saveLayers(changes, positionChanges, new Map(previous.map(position => [position.id, position])))
 }
 onMounted(async()=>{
+ document.addEventListener('paste', pasteFiles)
  document.addEventListener('fullscreenchange',fullscreenChanged);document.addEventListener('keydown',keyboard);document.addEventListener('keyup',keyUp);window.addEventListener('blur',resetKeys)
  const initial = route.query.space
  const saved = serviceTabs.readView<{ project: string; space: string; x: number; y: number; zoom: number; history: typeof history.value }>(workspaceTabId)
@@ -901,6 +980,7 @@ onMounted(async()=>{
  .subscribe(status=>{connected.value=status==='SUBSCRIBED';if(connected.value)queue()})
  let ticks=0;timer=setInterval(()=>{now.value=Date.now();heartbeat();cursors.value=cursors.value.filter(c=>now.value-new Date(c.updated_at).getTime()<15000);if(++ticks%3===0&&!connected.value&&!drag&&!editing.value&&document.visibilityState==='visible')queue()},5000)
 })
+onBeforeUnmount(() => document.removeEventListener('paste', pasteFiles))
 onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.project.id, space: space.value, x: offset.x, y: offset.y, zoom: zoom.value, history: [...history.value] });stopCameraTransition();disposed=true;epoch++;cursorEpoch++;stopCursorWatch?.();clearInterval(timer);clearTimeout(refreshTimer);clearTimeout(cursorTimer);document.removeEventListener('fullscreenchange',fullscreenChanged);document.removeEventListener('keydown',keyboard);document.removeEventListener('keyup',keyUp);window.removeEventListener('blur',resetKeys);clearTimeout(commentHide);clearTimeout(nudgeTimer);if(cursorChannel){void cursorChannel.send({type:'broadcast',event:'leave',payload:{id:session}});void supabase.removeChannel(cursorChannel)}if(channel)void supabase.removeChannel(channel);Object.values(images.value).filter(Boolean).forEach(URL.revokeObjectURL)})
 </script>
 <template>
@@ -1106,7 +1186,29 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
  </UPopover><button data-tip="Карточка пространства" aria-label="Карточка пространства" @click="portalOpen=!portalOpen;attaching=false"><UIcon name="i-lucide-orbit"/></button><span class="hud-divider"></span><button data-tip="Задача Кабана" aria-label="Задача Кабана" @click="showTaskPicker"><UIcon name="i-lucide-columns-3"/></button><button data-tip="Пароль" aria-label="Пароль" @click="showPanel('password')"><UIcon name="i-lucide-key-round"/></button><button data-tip="Чат проекта" aria-label="Чат проекта" @click="showPanel('chat')"><UIcon name="i-lucide-messages-square"/></button><button data-tip="Участник проекта" aria-label="Участник проекта" @click="showPanel('person')"><UIcon name="i-lucide-user-round"/></button><button data-tip="Загрузить изображение или документ" aria-label="Загрузить файл" @click="fileInput?.click()"><UIcon name="i-lucide-paperclip"/></button><button data-tip="Документы проекта" aria-label="Документы проекта" @click="attaching=!attaching;portalOpen=false"><UIcon name="i-lucide-folder-open"/></button><button data-tip="Удалить выбранный объект" aria-label="Удалить выбранный объект" :disabled="!selection.size||busy" @click="groupAction('delete')"><UIcon name="i-lucide-trash-2"/></button></template><span class="hud-divider"></span><button class="zoom-tool" data-tip="Сбросить масштаб" @click="zoom=1;offset.x=150;offset.y=100">{{Math.round(zoom*100)}}%</button></nav>
  </div></template>
  <div v-if="settingsOpen" class="settings-overlay" @click.self="settingsOpen=false"><section class="space-settings" role="dialog" aria-modal="true" aria-label="Настройки пространства"><header><h3>Настройки пространства</h3><button @click="settingsOpen=false">Закрыть</button></header><form @submit.prevent="saveSettings"><label>Название<input v-model="spaceName" maxlength="120" required></label><label>Описание<textarea v-model="spaceDescription" maxlength="2000" rows="3"/></label><button class="primary" :disabled="busy">Применить</button></form><h4>Участники</h4><div v-for="member in project.members.filter(m=>m.hasAccess&&m.permission!=='hidden')" :key="member.userId" class="member-row"><span>{{member.fullName||member.email}}</span><strong v-if="member.userId===currentSpace?.created_by">Создатель</strong><select v-else :value="participantPermission(member.userId)" :disabled="busy" @change="run(()=>send('access',session,{userId:member.userId,permission:($event.target as HTMLSelectElement).value}))"><option value="viewer">Просмотр</option><option value="editor">Редактирование</option></select></div><div class="delete-space"><p v-if="deleteConfirm">Удалить пространство и все его объекты? Это действие нельзя отменить.</p><button v-if="!deleteConfirm" class="danger" @click="deleteConfirm=true">Удалить пространство</button><template v-else><button @click="deleteConfirm=false">Отмена</button><button class="danger" :disabled="busy" @click="removeSpace">Удалить навсегда</button></template></div><p v-if="error" class="text-red-500">{{error}}</p></section></div>
- <div v-if="pendingFile" class="settings-overlay"><section class="space-settings" role="dialog" aria-modal="true" aria-label="Загрузка файла"><header><h3>Загрузка файла</h3><button @click="pendingFile=null">Отмена</button></header><p>{{pendingFile.name}}</p><label class="upload-choice"><input v-model="saveToDocuments" type="checkbox">Также сохранить в документы проекта</label><p v-if="!saveToDocuments" class="upload-hint">Файл останется только в этом пространстве.</p><label v-else>Папка назначения<select v-model="folderDestination"><option value="">/ — корень документов</option><option v-for="folder in docs.folders.data.value" :key="folder.id" :value="folder.id">{{folderPath(folder.id)}}</option></select></label><p v-if="error">{{error}}</p><button class="primary" :disabled="busy" @click="confirmUpload">Загрузить и прикрепить</button></section></div>
+ <div v-if="pendingUploads.length" class="settings-overlay">
+  <section class="space-settings" role="dialog" aria-modal="true" aria-labelledby="space-upload-heading">
+   <header>
+    <h3 id="space-upload-heading">{{ pendingUploads.length === 1 ? 'Загрузка файла' : 'Загрузка файлов' }}</h3>
+    <button :disabled="busy" @click="pendingUploads=[]">Отмена</button>
+   </header>
+   <ul class="break-all">
+    <li v-for="upload in pendingUploads" :key="upload.id">{{ upload.file.name }}</li>
+   </ul>
+   <label class="upload-choice"><input v-model="saveToDocuments" type="checkbox" :disabled="busy || uploadDestinationLocked">Также сохранить в документы проекта</label>
+   <p v-if="!saveToDocuments" class="upload-hint">
+    {{ pendingUploads.length === 1 ? 'Файл останется только в этом пространстве.' : 'Файлы останутся только в этом пространстве.' }}
+   </p>
+   <label v-else>Папка назначения
+    <select v-model="folderDestination" :disabled="busy || uploadDestinationLocked">
+     <option value="">/ — корень документов</option>
+     <option v-for="folder in docs.folders.data.value" :key="folder.id" :value="folder.id">{{ folderPath(folder.id) }}</option>
+    </select>
+   </label>
+   <p v-if="error" role="alert">{{ error }}</p>
+   <button class="primary" :disabled="busy || !editable" @click="confirmUpload">Загрузить и прикрепить</button>
+  </section>
+ </div>
  <div v-if="resourcePanel" class="settings-overlay" @click.self="resourcePanel=null"><section class="space-settings resource-picker" role="dialog" aria-modal="true"><header><h3>{{resourcePanel==='shape'?'Фигуры':resourcePanel==='person'?'Участник проекта':resourcePanel==='chat'?'Чаты проекта':resourcePanel==='subscription'?'Подписки':'Пароли'}}</h3><button @click="resourcePanel=null">Закрыть</button></header><input v-if="resourcePanel!=='shape'" v-model="resourceSearch" placeholder="Поиск…"><template v-if="resourcePanel==='shape'"><button v-for="shape in [{id:'rectangle',name:'Прямоугольник'},{id:'ellipse',name:'Круг / овал'},{id:'diamond',name:'Ромб'},{id:'triangle',name:'Треугольник'},{id:'hexagon',name:'Шестиугольник'},{id:'pill',name:'Скруглённый блок'}]" :key="shape.id" @click="add('shape',undefined,{shape:shape.id});resourcePanel=null">{{shape.name}}</button></template>
  <template v-else-if="resourcePanel==='person'"><label>Роль на доске<input v-model="personRole" maxlength="200" placeholder="Например, дизайнер"></label><label>Что будет делать<textarea v-model="personDuty" maxlength="2000" rows="3"/></label><button v-for="member in project.members.filter(m=>m.hasAccess&&m.permission!=='hidden'&&(m.fullName||m.email).toLowerCase().includes(resourceSearch.toLowerCase()))" :key="member.userId" @click="add('person',undefined,{personId:member.userId,role:personRole,duty:personDuty});resourcePanel=null">{{member.fullName||member.email}}</button></template>
  <template v-else-if="resourcePanel==='chat'"><button v-for="chat in chats.filter(c=>c.name.toLowerCase().includes(resourceSearch.toLowerCase()))" :key="chat.id" @click="add('chat',undefined,{chatId:chat.id});resourcePanel=null">{{chat.name}}</button><p v-if="!chats.length">Нет доступных бесед проекта.</p></template>

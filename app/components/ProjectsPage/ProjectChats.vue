@@ -9,7 +9,7 @@ import { canEditProjectSection, canViewProjectSection } from '~~/shared/utils/pr
 import { shouldSendChatKey, chatMentionOptions, firstUnreadChatSeq, chatSelectionRange } from '~~/shared/utils/project-chat-input'
 import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
 import { documentMaxSize, documentSize } from '~~/shared/utils/project-documents'
-import { copyText } from '~/utils/browser'
+import { clipboardFiles, copyText } from '~/utils/browser'
 import FileUpload from '~/components/Shared/FileUpload.vue'
 import CredentialDetails from '~/components/PasswordPage/CredentialDetails.vue'
 import { useChatMessageMenu } from '~/composables/chats/useChatMessageMenu'
@@ -218,15 +218,7 @@ function upload(event: Event) {
   void uploadFiles(files, true)
 }
 function pasteFiles(event: ClipboardEvent) {
-  const clipboard = event.clipboardData
-  if (!clipboard) return
-  const files = Array.from(clipboard.files)
-  if (!files.length) {
-    for (const item of clipboard.items) {
-      const file = item.kind === 'file' ? item.getAsFile() : null
-      if (file) files.push(file)
-    }
-  }
+  const files = clipboardFiles(event)
   if (!files.length) return
   event.preventDefault()
   void uploadFiles(files)
