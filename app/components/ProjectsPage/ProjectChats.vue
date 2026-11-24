@@ -8,7 +8,7 @@ import type { ProjectPassword } from '~~/shared/types/project-passwords'
 import { canEditProjectSection, canViewProjectSection } from '~~/shared/utils/project-permissions'
 import { shouldSendChatKey, chatMentionOptions, firstUnreadChatSeq, chatSelectionRange } from '~~/shared/utils/project-chat-input'
 import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
-import { documentSize } from '~~/shared/utils/project-documents'
+import { documentMaxSize, documentSize } from '~~/shared/utils/project-documents'
 import { copyText } from '~/utils/browser'
 import FileUpload from '~/components/Shared/FileUpload.vue'
 import CredentialDetails from '~/components/PasswordPage/CredentialDetails.vue'
@@ -149,9 +149,12 @@ const draft = computed(() => {
   return entries[key]!
 })
 const sending = computed(() => draft.value.sending)
+const attachmentBusy = computed(() => busy.value || draft.value.uploadingFiles)
+const canAttachFiles = computed(() => !!current.value && !attachmentBusy.value && !sending.value && !draft.value.retry)
+const fileDragDepth = ref(0)
 const attachmentCount = computed(() => draft.value.files.length + draft.value.passwordIds.length)
 const hasMessageContent = computed(() => !!(draft.value.text.trim() || attachmentCount.value || draft.value.poll || draft.value.todo || draft.value.tasks.length || draft.value.bookings.length || forwardDraft.value))
-const canSend = computed(() => !!current.value && !sending.value && !busy.value && hasMessageContent.value)
+const canSend = computed(() => !!current.value && !sending.value && !attachmentBusy.value && hasMessageContent.value)
 const inlinePassword = ref<Credential|null>(null)
 const activePasswordId = ref(''), activePassword = computed(() => passwords.data.value?.find(row => row.id === activePasswordId.value))
 const passwordDetail = computed(() => inlinePassword.value ? {...inlinePassword.value,vaultId:props.project.id,vaultName:current.value?.name||props.project.name} : activePassword.value ? { ...activePassword.value.entry, vaultId: props.project.id, vaultName: props.project.name } : null)
@@ -170,21 +173,84 @@ async function saveChat() {
   catch (failure: any) { error.value = failure?.data?.message || 'Не удалось сохранить беседу'; if ([403, 404, 409].includes(failure?.statusCode)) await refresh() }
   finally { busy.value = false }
 }
-function showPicker(value: typeof picker.value) { if (!current.value || draft.value.retry) return; picker.value = value; pickerSearch.value = ''; error.value = '' }
-async function upload(event: Event) {
-  const input = event.target as HTMLInputElement, files = Array.from(input.files ?? []), chat = selectedId.value, target = draft.value
-  if (!files.length || busy.value) return
-  if (target.files.length + files.length > 10) { error.value = 'В одном сообщении можно прикрепить до 10 файлов'; input.value = ''; return }
-  busy.value = true; error.value = ''
+function showPicker(value: typeof picker.value) { if (!canAttachFiles.value) return; picker.value = value; pickerSearch.value = ''; error.value = '' }
+async function uploadFiles(files: File[], fromPicker = false) {
+  if (!files.length || !canAttachFiles.value) return
+  const target = draft.value
+  if (target.files.length + files.length > 10) {
+    error.value = 'В одном сообщении можно прикрепить до 10 файлов'
+    return
+  }
+  if (files.some(file => !file.size || file.size > documentMaxSize)) {
+    error.value = 'Прикрепите непустые файлы размером до 20 МБ каждый'
+    return
+  }
+  const endpoint = `${base.value}/${selectedId.value}/files`
+  const account = auth.user?.id, projectId = props.project.id
+  const save = fromPicker && saveToDocuments.value && canSaveDocuments.value
+  const folderId = save && uploadFolder.value !== 'root' ? uploadFolder.value : null
+  let savedToDocuments = false
+  target.uploadingFiles = true
+  busy.value = true
+  error.value = ''
   try {
-    for (const file of files) { const body = new FormData(); body.append('file', file); body.append('saveToDocuments', String(saveToDocuments.value && canSaveDocuments.value)); if (uploadFolder.value !== 'root') body.append('folderId', uploadFolder.value); const uploaded = await sharedRequest<ProjectChatFile>(`${base.value}/${chat}/files`, { method: 'POST', body }); target.files.push(uploaded) }
-    if (saveToDocuments.value && canSaveDocuments.value) await queryClient.invalidateQueries({ queryKey: ['account', auth.user?.id, 'project-documents', props.project.id] })
-    picker.value = null
+    for (const file of files) {
+      if (auth.user?.id !== account) return
+      const body = new FormData()
+      body.append('file', file)
+      body.append('saveToDocuments', String(save))
+      if (folderId) body.append('folderId', folderId)
+      target.files.push(await sharedRequest<ProjectChatFile>(endpoint, { method: 'POST', body }))
+      savedToDocuments ||= save
+    }
+    if (fromPicker) picker.value = null
   } catch (failure: any) { error.value = failure?.data?.message || 'Не удалось загрузить вложение' }
-  finally { busy.value = false; input.value = '' }
+  finally {
+    if (savedToDocuments) void queryClient.invalidateQueries({ queryKey: ['account', account, 'project-documents', projectId] })
+    target.uploadingFiles = false
+    busy.value = false
+  }
+}
+function upload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  void uploadFiles(files, true)
+}
+function pasteFiles(event: ClipboardEvent) {
+  const clipboard = event.clipboardData
+  if (!clipboard) return
+  const files = Array.from(clipboard.files)
+  if (!files.length) {
+    for (const item of clipboard.items) {
+      const file = item.kind === 'file' ? item.getAsFile() : null
+      if (file) files.push(file)
+    }
+  }
+  if (!files.length) return
+  event.preventDefault()
+  void uploadFiles(files)
+}
+function enterFileDrop(event: DragEvent) {
+  if (event.dataTransfer?.types.includes('Files')) fileDragDepth.value++
+}
+function overFileDrop(event: DragEvent) {
+  if (!event.dataTransfer?.types.includes('Files')) return
+  event.preventDefault()
+  event.dataTransfer.dropEffect = canAttachFiles.value ? 'copy' : 'none'
+}
+function leaveFileDrop() {
+  fileDragDepth.value = Math.max(0, fileDragDepth.value - 1)
+}
+function dropFiles(event: DragEvent) {
+  fileDragDepth.value = 0
+  const transfer = event.dataTransfer
+  if (!transfer || (!transfer.files.length && !transfer.types.includes('Files'))) return
+  event.preventDefault()
+  void uploadFiles(Array.from(transfer.files))
 }
 async function attachDocument(file: ProjectDocument) {
-  if (busy.value || draft.value.files.length >= 10) return
+  if (!canAttachFiles.value || draft.value.files.length >= 10) return
   busy.value = true; error.value = ''
   try { draft.value.files.push(await sharedRequest<ProjectChatFile>(`${base.value}/${selectedId.value}/files/from-project`, { method: 'POST', body: { fileId: file.id, revision: file.revision } })); picker.value = null }
   catch (failure: any) { error.value = failure?.data?.message || 'Не удалось прикрепить документ' }
@@ -192,7 +258,7 @@ async function attachDocument(file: ProjectDocument) {
 }
 function attachPassword(id: string) { if (draft.value.passwordIds.length >= 10) return; if (!draft.value.passwordIds.includes(id)) draft.value.passwordIds.push(id); picker.value = null }
 async function removeFile(file: ProjectChatFile) {
-  if (busy.value || sending.value || draft.value.retry) return
+  if (!canAttachFiles.value) return
   busy.value = true; error.value = ''
   try { await sharedRequest(`${base.value}/${selectedId.value}/files/${file.id}`, { method: 'DELETE' }); draft.value.files = draft.value.files.filter(item => item.id !== file.id) }
   catch (failure: any) { error.value = failure?.data?.message || 'Не удалось убрать вложение' }
@@ -248,6 +314,7 @@ function addTask(task:{taskId:string;boardId:string;title:string}){if(!draft.val
 function openTask(task:ProjectChatMessage['tasks'][number]) { if(!task.available)return;useChatHubStore().opened=false;void useServiceTabsStore().open({path:task.projectId?`/projects/${task.projectId}/tasks`:'/kaban',query:{task:task.taskId,...(!task.projectId?{vault:task.vaultId||'personal'}:{})}}) }
 const panel = ref<'info' | 'pins' | 'search' | null>(null), messageSearch = ref(''), searchTerm = ref('')
 const conversationVisible = computed(() => panel.value !== 'pins' && panel.value !== 'info')
+watch([selectedId, conversationVisible, mobileConversation], () => { fileDragDepth.value = 0 })
 const infoTrigger = ref<HTMLButtonElement | null>(null)
 let pinsOpenedFromInfo = false
 function closeInfo() {
@@ -464,7 +531,11 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
     <UAlert v-if="chats.error.value" color="error" title="Не удалось загрузить беседы" :actions="[{label:'Повторить',onClick:()=>refresh()}]"/>
     <div v-else class="chats-shell" :class="{'chat-mobile-conversation':mobileConversation,'chats-with-panel':panel === 'search' && !!current}">
       <aside class="chats-sidebar"><header><h2>Чаты проекта</h2><UButton icon="i-lucide-square-pen" aria-label="Создать беседу" color="neutral" variant="ghost" @click="manage()"/></header><UInput v-model="chatSearch" icon="i-lucide-search" placeholder="Поиск беседы" aria-label="Поиск беседы" class="chat-search"/><p v-if="chats.isPending.value" class="chat-hint">Загружаем беседы…</p><nav v-else aria-label="Беседы проекта"><button v-for="chat in visibleChats" :key="chat.id" class="chat-list-item" :class="{'is-active':selectedId===chat.id}" :disabled="busy||sending" @click="selectChat(chat.id)"><span class="chat-avatar"><UIcon name="i-lucide-messages-square"/></span><span class="chat-list-label"><strong>{{chat.name}}</strong><small>{{chat.members.length}} участн. · {{time(chat.updatedAt)}}</small></span><UIcon v-if="chat.muted" name="i-lucide-bell-off" class="chat-muted-icon"/><UBadge v-if="chat.unreadCount" color="primary" variant="solid" size="sm">{{chat.unreadCount}}</UBadge></button><p v-if="!visibleChats.length" class="chat-hint">{{chatSearch?'Беседы не найдены':'Создайте первую беседу и пригласите участников.'}}</p></nav></aside>
-      <div v-if="current" v-show="conversationVisible" class="chat-conversation">
+      <div v-if="current" v-show="conversationVisible" class="chat-conversation"
+        @dragenter="enterFileDrop" @dragover="overFileDrop" @dragleave="leaveFileDrop" @drop="dropFiles">
+        <div v-if="fileDragDepth > 0 && canAttachFiles" class="chat-file-drop" aria-hidden="true">
+          <span><UIcon name="i-lucide-paperclip" /> Перетащите файлы в сообщение</span>
+        </div>
         <header class="chat-header">
           <div class="chat-header-row">
             <div class="chat-identity">
@@ -569,6 +640,7 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
         />
         <div class="chat-typing" aria-live="polite"><Transition name="chat-typing"><span v-if="typingNames"><i class="typing-dots" aria-hidden="true"><b/><b/><b/></i>{{typingNames}} печатает</span></Transition></div>
         <form class="chat-composer" @submit.prevent="send">
+          <p v-if="draft.uploadingFiles" class="chat-hint" role="status">Загружаем файлы…</p>
           <UAlert v-if="error&&!managing&&!picker&&!editingMessage&&!deletingMessage&&!activityDialog&&!deletingBatch" color="error" :description="error"/>
           <div v-if="forwardDraft" class="chat-forward-draft"><UIcon name="i-lucide-forward"/><span><strong>Пересылаемых сообщений: {{forwardDraft.source.messageIds.length}}</strong><small>Добавьте комментарий или отправьте без него.</small></span><UButton icon="i-lucide-x" aria-label="Отменить пересылку" color="neutral" variant="ghost" :disabled="sending" @click="delete hub.forwardDrafts[forwardKey]"/></div>
           <div v-if="draft.tasks.length" class="chat-draft-activities"><span v-for="task in draft.tasks" :key="task.taskId"><UIcon name="i-lucide-columns-3"/>{{task.title}}<UButton icon="i-lucide-x" aria-label="Убрать задачу" color="neutral" variant="ghost" size="xs" :disabled="sending||draft.retry" @click="draft.tasks=draft.tasks.filter(item=>item.taskId!==task.taskId)"/></span></div>
@@ -580,10 +652,10 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
           </div>
           <div v-if="draft.poll||draft.todo" class="chat-draft-activities"><span v-if="draft.poll"><UIcon name="i-lucide-chart-bar"/>Голосование: {{draft.poll.question}}<UButton icon="i-lucide-x" aria-label="Убрать голосование" color="neutral" variant="ghost" size="xs" :disabled="sending||draft.retry" @click="draft.poll=undefined"/></span><span v-if="draft.todo"><UIcon name="i-lucide-list-todo"/>Список дел: {{draft.todo.title}}<UButton icon="i-lucide-x" aria-label="Убрать список дел" color="neutral" variant="ghost" size="xs" :disabled="sending||draft.retry" @click="draft.todo=undefined"/></span></div>
           <div v-if="suggestedMentions.length" class="chat-mention-picker" role="listbox" aria-label="Упомянуть участника"><button v-for="member in suggestedMentions" :key="member.id" type="button" role="option" :aria-selected="false" @mousedown.prevent @click="insertMention(member.handle)"><PersonAvatar :name="member.name"/><span>{{member.name}}<small>@{{member.handle}}</small></span></button></div>
-          <div v-if="attachmentCount" class="chat-draft-files"><span v-for="file in draft.files" :key="file.id"><UIcon name="i-lucide-paperclip"/>{{file.name}}<UButton icon="i-lucide-x" :aria-label="`Убрать вложение: ${file.name}`" color="neutral" variant="ghost" size="xs" :disabled="busy||sending||draft.retry" @click="removeFile(file)"/></span><span v-for="id in draft.passwordIds" :key="id"><UIcon name="i-lucide-key-round"/>{{passwordTitle(id)}}<UButton icon="i-lucide-x" :aria-label="`Убрать пароль: ${passwordTitle(id)}`" color="neutral" variant="ghost" size="xs" :disabled="sending||draft.retry" @click="draft.passwordIds=draft.passwordIds.filter(value=>value!==id)"/></span></div>
+          <div v-if="attachmentCount" class="chat-draft-files"><span v-for="file in draft.files" :key="file.id"><UIcon name="i-lucide-paperclip"/>{{file.name}}<UButton icon="i-lucide-x" :aria-label="`Убрать вложение: ${file.name}`" color="neutral" variant="ghost" size="xs" :disabled="!canAttachFiles" @click="removeFile(file)"/></span><span v-for="id in draft.passwordIds" :key="id"><UIcon name="i-lucide-key-round"/>{{passwordTitle(id)}}<UButton icon="i-lucide-x" :aria-label="`Убрать пароль: ${passwordTitle(id)}`" color="neutral" variant="ghost" size="xs" :disabled="sending||draft.retry" @click="draft.passwordIds=draft.passwordIds.filter(value=>value!==id)"/></span></div>
           <UButton v-if="draft.retry&&!sending" label="Изменить черновик" color="neutral" variant="ghost" @click="draft.retry=false;draft.nonce=''"/>
           <div class="chat-compose-row">
-            <UDropdownMenu :items="[{label:'Загрузить файл или изображение',icon:'i-lucide-upload',onSelect:()=>showPicker('upload')},...(canViewDocuments?[{label:'Из документов проекта',icon:'i-lucide-folder-open',onSelect:()=>showPicker('documents')}]:[]),...(!personal?[{label:'Пароль проекта',icon:'i-lucide-key-round',onSelect:()=>showPicker('passwords')}]:[]),{label:'Задача Кабана',icon:'i-lucide-columns-3',onSelect:()=>taskPicker=true},{label:'Переговорная комната',icon:'i-lucide-calendar-clock',disabled:draft.bookings.length>=10,onSelect:()=>bookingPicker=true},{label:'Голосование',icon:'i-lucide-chart-bar',onSelect:()=>createActivity('poll')},{label:'Список дел',icon:'i-lucide-list-todo',onSelect:()=>createActivity('todo')}]"><UButton type="button" class="chat-compose-attach" icon="i-lucide-paperclip" aria-label="Добавить вложение" color="neutral" variant="outline" :disabled="busy||sending||draft.retry"/></UDropdownMenu>
+            <UDropdownMenu :items="[{label:'Загрузить файл или изображение',icon:'i-lucide-upload',onSelect:()=>showPicker('upload')},...(canViewDocuments?[{label:'Из документов проекта',icon:'i-lucide-folder-open',onSelect:()=>showPicker('documents')}]:[]),...(!personal?[{label:'Пароль проекта',icon:'i-lucide-key-round',onSelect:()=>showPicker('passwords')}]:[]),{label:'Задача Кабана',icon:'i-lucide-columns-3',onSelect:()=>taskPicker=true},{label:'Переговорная комната',icon:'i-lucide-calendar-clock',disabled:draft.bookings.length>=10,onSelect:()=>bookingPicker=true},{label:'Голосование',icon:'i-lucide-chart-bar',onSelect:()=>createActivity('poll')},{label:'Список дел',icon:'i-lucide-list-todo',onSelect:()=>createActivity('todo')}]"><UButton type="button" class="chat-compose-attach" icon="i-lucide-paperclip" aria-label="Добавить вложение" color="neutral" variant="outline" :disabled="!canAttachFiles"/></UDropdownMenu>
             <UTextarea
               ref="chatInput"
               v-model="draft.text"
@@ -596,6 +668,7 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
               class="chat-input"
               :disabled="sending || draft.retry"
               @keydown="enter"
+              @paste="pasteFiles"
               @input="trackCaret($event); typing.input(!!draft.text.trim())"
               @keyup="trackCaret"
               @click="trackCaret"
@@ -829,6 +902,21 @@ button.chat-service-note:focus-visible { outline:2px solid #356c9e; outline-offs
 .chat-pinned-reference > .iconify { flex-shrink: 0; }
 .chat-pinned-meta { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 10px; color: #526781; }
 .chat-avatar-preview { width: 64px; height: 64px; font-size: 20px; border-radius: 50%; }
+
+.chat-conversation { position: relative; }
+.chat-file-drop {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  border: 2px dashed #7c3aed;
+  border-radius: 12px;
+  background: #f5f3fff2;
+  color: #5b21b6;
+  pointer-events: none;
+}
+.chat-file-drop span { display: flex; align-items: center; gap: 8px; padding: 12px; font-weight: 600; }
 
 .chat-composer {
   position: relative;

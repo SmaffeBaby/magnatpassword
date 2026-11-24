@@ -81,6 +81,7 @@ export default defineNuxtConfig({
     '/api/projects/*/documents': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
     '/api/projects/*/spaces/import': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 104988672, maxUploadFileRequestInBytes: 104988672 } } },
     '/api/projects/*/spaces/*/files': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
+    '/api/projects/*/chats/*/files': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
     '/api/projects/*/documents/import': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 104988672, maxUploadFileRequestInBytes: 104988672 } } },
     '/api/projects/*/documents/*/content': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },
     '/api/projects/*/input-data/upload': { security: { requestSizeLimiter: { maxRequestSizeInBytes: 21135360, maxUploadFileRequestInBytes: 21135360 } } },

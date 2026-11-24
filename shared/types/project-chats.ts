@@ -32,6 +32,7 @@ export interface ChatMessageDraft {
   nonce: string
   retry: boolean
   sending: boolean
+  uploadingFiles?: boolean
   tasks: Pick<ChatTaskReference, 'taskId' | 'boardId' | 'title'>[]
   bookings: MeetingRoomReference[]
   poll?: ProjectChatPoll

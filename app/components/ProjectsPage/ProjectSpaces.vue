@@ -20,13 +20,14 @@ import { groupSpaceLayers, moveSpaceLayer, moveSpaceLayers, spaceHiddenLayers, s
 import { documentEditor, spaceSpreadsheetPreviewDefaults, spaceSpreadsheetPreviewLimits } from '~~/shared/utils/project-documents'
 import { spaceWebLinkMaxLength, spaceWebLinkUrl } from '~~/shared/utils/space-web-link'
 import { saveFile } from '~/utils/file-download'
+import { copyText } from '~/utils/browser'
 import { canPreviewProjectImage, projectImagePreview } from '~/utils/project-image-preview'
 const props=defineProps<{project:Project}>()
 type Space={id:string;name:string;description:string;created_by:string;permission:string;object_count:number;members:{user_id:string;permission:string}[]}
 type Message={id:string;author:string;text:string;createdAt:string}
 type Item={id:string;revision:number;data:{kind:string;layerHidden?:boolean;layerGroup?:true;parentId?:string;layerOrder?:number;fontSize?:number;fontFamily?:'system'|'serif'|'mono';fontWeight?:'normal'|'bold';titlePosition?:string;titleColor?:string;showContent?:boolean;imageOnly?:boolean;contentOnly?:boolean;spreadsheetPreview?:SpaceSpreadsheetPreview;subscriptionSource?:any;calendarEvents?:{id:string;title:string;start:string;end:string;color:string;type:'event'|'range'}[];contours?:number;shape?:string;taskId?:string;boardId?:string;bookingId?:string;passwordId?:string;chatId?:string;personId?:string;role?:string;duty?:string;assetId?:string;points?:[number,number][];strokeWidth?:number;opacity?:number;description?:string;targetSpace?:string;borderColor?:string;borderWidth?:number;width?:number;height?:number;rows?:string[][];resolved?:boolean;messages?:Message[];name?:string;url?:string;text?:string;x:number;y:number;fileId?:string;from?:string;to?:string;color?:string;textColor?:string;lineStyle?:'straight'|'dashed'|'wavy';arrow?:'none'|'forward'|'backward'|'both'}}
 type Cursor={id:string;user_id:string;name:string;x:number;y:number;updated_at:string}
-const accountQueries=useAccountQueries(),auth=useAuthStore(),supabase=useNuxtApp().$supabase
+const accountQueries=useAccountQueries(),auth=useAuthStore(),supabase=useNuxtApp().$supabase,toast=useToast()
 const base=`/api/projects/${props.project.id}/spaces`,space=ref(''),spaces=ref<Space[]>([]),objects=ref<Item[]>([]),cursors=ref<Cursor[]>([])
 const cursorStatus=ref('Подключение курсоров…')
 const error=ref(''),connected=ref(false),busy=ref(false),title=ref(''),selected=ref(''),tool=ref('select'),editing=ref(''),draft=ref('')
@@ -358,6 +359,17 @@ const resourcePanel=ref<'password'|'chat'|'person'|'shape'|'subscription'|null>(
 const pendingFile=shallowRef<File|null>(null),saveToDocuments=ref(false),folderDestination=ref(''),taskResume=ref(false)
 async function loadResources(){const id=space.value;if(!id){assets.value=[];return}const results=await Promise.allSettled([sharedRequest<ProjectDocument[]>(`${base}/${id}/files`),sharedRequest<Record<string,any>>(`${base}/resources?space=${id}`),sharedRequest<ProjectPassword[]>(`/api/projects/${props.project.id}/passwords`),sharedRequest<ProjectChat[]>(`/api/projects/${props.project.id}/chats`)]);if(id!==space.value||disposed)return;assets.value=results[0]!.status==='fulfilled'?results[0]!.value:[];taskResources.value=results[1]!.status==='fulfilled'?results[1]!.value:{};passwords.value=results[2]!.status==='fulfilled'?results[2]!.value:[];chats.value=results[3]!.status==='fulfilled'?results[3]!.value:[]}
 function passwordFor(item:Item){return passwords.value.find(p=>p.id===item.data.passwordId)}
+async function copyCredential(item: Item, field: 'username' | 'password', event: MouseEvent) {
+  const value = passwordFor(item)?.entry[field]
+  if (!value) return
+  const trigger = event.currentTarget as HTMLButtonElement
+  try {
+    await copyText(value, trigger)
+    toast.add({ title: field === 'username' ? 'Логин скопирован' : 'Пароль скопирован', color: 'success' })
+  } catch {
+    toast.add({ title: 'Не удалось скопировать', color: 'error' })
+  }
+}
 function chatFor(item:Item){return chats.value.find(c=>c.id===item.data.chatId)}
 function taskUrl(item:Item){const task=taskResources.value[item.id];return task?.projectId?`/projects/${task.projectId}/tasks?task=${item.data.taskId}`:`/kaban?vault=${task?.vaultId||'personal'}&task=${item.data.taskId}`}
 async function showTaskPicker(){taskResume.value=fullscreen.value;if(document.fullscreenElement===root.value)await document.exitFullscreen();fullscreen.value=false;taskPicker.value=true}
@@ -1035,7 +1047,29 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
  <SpaceBookingPlanning v-else-if="item.data.kind === 'booking-calendar' || item.data.kind === 'booking-gantt'"
   :mode="item.data.kind === 'booking-calendar' ? 'calendar' : 'gantt'" :scope="`space-bookings:${item.id}`" :portal="fullscreen ? root : undefined" />
  <div v-else-if="item.data.kind==='task'" class="resource-card"><UIcon name="i-lucide-columns-3"/><small>КАБАН</small><h3>{{taskResources[item.id]?.title||'Задача недоступна'}}</h3><p v-if="taskResources[item.id]">{{taskResources[item.id]?.completed?'Завершена':'В работе'}}</p><LayoutServiceTabLink v-if="taskResources[item.id]" :to="taskUrl(item)" :tab-label="taskResources[item.id]?.title" @pointerdown.stop>Открыть задачу ↗</LayoutServiceTabLink></div>
- <div v-else-if="item.data.kind==='password'" class="resource-card"><UIcon name="i-lucide-key-round"/><small>ПАРОЛЬ</small><h3>{{passwordFor(item)?.entry.title||'Пароль недоступен'}}</h3><template v-if="passwordFor(item)"><p>{{passwordFor(item)?.entry.username}}</p><code>{{revealed[item.id]?passwordFor(item)?.entry.password:'••••••••'}}</code><button @pointerdown.stop @click="revealed[item.id]=!revealed[item.id]">{{revealed[item.id]?'Скрыть':'Показать пароль'}}</button></template></div>
+ <div v-else-if="item.data.kind === 'password'" class="resource-card">
+   <UIcon name="i-lucide-key-round" /><small>ПАРОЛЬ</small>
+   <h3>{{ passwordFor(item)?.entry.title || 'Пароль недоступен' }}</h3>
+   <template v-if="passwordFor(item)">
+     <div class="credential-field">
+       <p>{{ passwordFor(item)?.entry.username || 'Логин не указан' }}</p>
+       <button type="button" aria-label="Скопировать логин" title="Скопировать логин" :disabled="!passwordFor(item)?.entry.username"
+         @pointerdown.stop @keydown.enter.stop @keydown.space.stop @click="copyCredential(item, 'username', $event)">
+         <UIcon name="i-lucide-copy" aria-hidden="true" />
+       </button>
+     </div>
+     <div class="credential-field">
+       <code>{{ revealed[item.id] ? passwordFor(item)?.entry.password : '••••••••' }}</code>
+       <button type="button" aria-label="Скопировать пароль" title="Скопировать пароль" :disabled="!passwordFor(item)?.entry.password"
+         @pointerdown.stop @keydown.enter.stop @keydown.space.stop @click="copyCredential(item, 'password', $event)">
+         <UIcon name="i-lucide-copy" aria-hidden="true" />
+       </button>
+     </div>
+     <button type="button" @pointerdown.stop @keydown.enter.stop @keydown.space.stop @click="revealed[item.id] = !revealed[item.id]">
+       {{ revealed[item.id] ? 'Скрыть' : 'Показать пароль' }}
+     </button>
+   </template>
+ </div>
  <div v-else-if="item.data.kind==='chat'" class="resource-card"><UIcon name="i-lucide-messages-square"/><small>ЧАТ ПРОЕКТА</small><h3>{{chatFor(item)?.name||'Чат недоступен'}}</h3><p v-if="chatFor(item)">{{chatFor(item)?.members.length}} участников</p><LayoutServiceTabLink v-if="chatFor(item)" :to="`/projects/${project.id}/chats?chat=${item.data.chatId}`" :tab-label="chatFor(item)?.name" @pointerdown.stop>Открыть чат ↗</LayoutServiceTabLink></div>
  <div v-else-if="item.data.kind==='person'" class="resource-card person-card"><span class="person-avatar">{{author(item.data.personId!).slice(0,1)}}</span><h3>{{author(item.data.personId!)}}</h3><p class="person-role">{{item.data.role||'Участник проекта'}}</p><p>{{item.data.duty||'Обязанности пока не указаны'}}</p></div>
  <div v-else-if="item.data.kind==='space'" class="portal-card"><UIcon name="i-lucide-orbit"/><h3>{{spaces.find(s=>s.id===item.data.targetSpace)?.name||'Пространство удалено'}}</h3><p>{{spaces.find(s=>s.id===item.data.targetSpace)?.description||'Связанное пространство проекта'}}</p><button :disabled="!spaces.some(s=>s.id===item.data.targetSpace)" @pointerdown.stop @click.stop="choose(item.data.targetSpace!,true)">Открыть пространство <UIcon name="i-lucide-arrow-up-right"/></button></div>
@@ -1102,7 +1136,7 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
        <p v-if="webLinkError" role="alert" class="text-sm text-error">{{ webLinkError }}</p>
        <div class="flex justify-end gap-2">
          <UButton label="Отмена" type="button" variant="ghost" color="neutral" :disabled="busy" @click="webLinkEditor=null" />
-         <UButton type="submit" :label="webLinkEditor?.id ? 'Сохранить' : 'Добавить'" :loading="busy" />
+         <button type="submit" class="primary" :disabled="busy">{{ webLinkEditor?.id ? 'Сохранить' : 'Добавить' }}</button>
        </div>
      </form>
    </template>
@@ -1243,6 +1277,10 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
 .web-link-card .web-link-address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .web-link-card a { display: inline-flex; align-items: center; gap: 5px; text-decoration: underline; }
 .web-link-card a:focus-visible { outline: 2px solid #7c3aed; outline-offset: 3px; }
+.credential-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.resource-card .credential-field p, .resource-card .credential-field code { min-width: 0; margin: 0; }
+.credential-field button { display: inline-flex; flex: none; padding: 5px; }
+.credential-field button:hover:not(:disabled) { background: #f5f3ff; color: #6d28d9; }
 .frame-label{left:auto;right:0;top:-46px;font-size:26px;font-weight:650;text-align:right;max-width:100%;line-height:1.3}.extra-contour{position:absolute;border-style:dashed;border-radius:6px;pointer-events:none}.resource-card>.iconify{font-size:26px;color:#8b5cf6}.resource-card small{display:block;font-size:9px;letter-spacing:.12em;color:#94a3b8;margin:10px 0}.resource-card h3{font-size:15px;font-weight:650;margin:10px 0;overflow-wrap:anywhere}.resource-card p{font-size:12px;color:#64748b;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}.resource-card a{font-size:12px;color:#7c3aed}.resource-card code{display:block;overflow-wrap:anywhere;margin:12px 0;font-size:12px}.person-avatar{display:flex;align-items:center;justify-content:center;width:42px;height:42px;background:#ede9fe;color:#7c3aed;border-radius:50%;font-weight:600;font-size:20px}.person-role{font-weight:600}.resource-picker{display:flex;flex-direction:column;gap:10px}.resource-picker>button{text-align:left}.resource-picker label{display:grid;gap:6px}.upload-choice{display:flex!important;flex-direction:row!important;align-items:center;gap:8px;margin:18px 0}.upload-hint{font-size:12px;line-height:1.6;color:#94a3b8;margin:12px 0}.space-settings select{border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin:10px 0}.space-object.shape-ellipse{border-radius:50%;min-height:150px;display:flex;align-items:center;justify-content:center}.space-object.shape-pill{border-radius:60px}.space-object.shape-diamond{clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);border:0;padding:45px 35px;min-height:180px;}.space-object.shape-triangle{clip-path:polygon(50% 0,100% 100%,0 100%);border:0;padding:75px 38px 25px;min-height:180px;}.space-object.shape-hexagon{clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);border:0;padding:40px;min-height:150px;}
 .ink-layer{position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none;z-index:2}.ink-hit{pointer-events:stroke;cursor:crosshair}
 
