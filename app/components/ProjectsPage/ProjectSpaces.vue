@@ -76,10 +76,13 @@ function updateBox(){const box=boxSelection.value;if(!box)return;const ids=box.a
 const selectedItem=computed(()=>objects.value.find(item=>item.id===selected.value))
 const lineDefaults=reactive({lineStyle:'straight' as 'straight'|'dashed'|'wavy',arrow:'forward' as 'none'|'forward'|'backward'|'both',color:'#64748b'})
 const originalStyles=new Map<string,Item['data']>()
+const pendingLayerSaves = new Set<string>()
+let layerSave: Promise<void> | undefined
+let savingLayerId = ''
 type UndoTarget = { id: string; beforeRevision: number; expectedRevision: number }
 type UndoStep =
   | { kind: 'update'; targets: [UndoTarget]; before: Item['data'] }
-  | { kind: 'create'; targets: [UndoTarget] }
+  | { kind: 'create'; targets: UndoTarget[] }
   | { kind: 'layers'; targets: UndoTarget[]; before: SpaceLayerChange[] }
 
 const undoSteps: UndoStep[] = []
@@ -88,6 +91,8 @@ const undoScope = computed(() => [auth.user?.id, props.project.id, space.value].
 watch(undoScope, () => {
   undoLimitReached = false
   undoSteps.length = 0
+  originalStyles.clear()
+  pendingLayerSaves.clear()
 }, { flush: 'sync' })
 function stopUndoHistory() {
   undoLimitReached = true
@@ -119,8 +124,9 @@ async function undoBoardChange() {
     return
   }
   const target = step.targets[0]!
-  if (step.kind === 'create' && objects.value.some(({ data }) =>
-    data.parentId === target.id || data.from === target.id || data.to === target.id)) {
+  const ids = new Set(step.targets.map(item => item.id))
+  if (step.kind === 'create' && objects.value.some(({ id, data }) => !ids.has(id)
+    && [data.parentId, data.from, data.to].some(reference => reference && ids.has(reference)))) {
     undoSteps.pop()
     error.value = 'С этим объектом уже связаны другие элементы. Отменить его создание нельзя.'
     return
@@ -134,7 +140,12 @@ async function undoBoardChange() {
   }
   const done = await run(async () => {
     if (step.kind === 'update') await send('put', target.id, step.before, target.expectedRevision)
-    else if (step.kind === 'create') await send('delete', target.id, {}, target.expectedRevision)
+    else if (step.kind === 'create') {
+      if (step.targets.length === 1) await send('delete', target.id, {}, target.expectedRevision)
+      else await sharedRequest(`${base}/group?space=${space.value}`, { method: 'POST', body: {
+        mode: 'delete', items: step.targets.map(({ id, expectedRevision }) => ({ id, revision: expectedRevision }))
+      } })
+    }
     else await writeLayers(step.before.map((change, index) => ({
       ...change, revision: step.targets[index]!.expectedRevision
     })))
@@ -147,10 +158,67 @@ async function undoBoardChange() {
     if (earlier?.expectedRevision === target.beforeRevision) earlier.expectedRevision = target.expectedRevision + 1
   }
 }
-function stage(item:Item,patch:Partial<Item['data']>){selected.value=item.id;if(!originalStyles.has(item.id))originalStyles.set(item.id,structuredClone(toRaw(item.data)));Object.assign(item.data,patch)}
+function stage(item:Item,patch:Partial<Item['data']>){if(!originalStyles.has(item.id))originalStyles.set(item.id,structuredClone(toRaw(item.data)));Object.assign(item.data,patch)}
 function styleSelected(patch:Partial<Item['data']>){const item=selectedItem.value;if(item&&!busy.value)stage(item,patch)}
-async function applySelected(){const item=selectedItem.value;if(!item)return;await put(item,{...item.data});if(!error.value){originalStyles.delete(item.id);await load()}}
-function cancelSelected(){const item=selectedItem.value,original=item&&originalStyles.get(item.id);if(item&&original){item.data=original;originalStyles.delete(item.id)}}
+function styleNumber(key: 'width' | 'height' | 'fontSize' | 'borderWidth', event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.validity.valid && Number.isFinite(input.valueAsNumber)) styleSelected({ [key]: input.valueAsNumber })
+}
+function cancelSelected(){const item=selectedItem.value,original=item&&originalStyles.get(item.id);if(item&&original){item.data=original;originalStyles.delete(item.id);pendingLayerSaves.delete(item.id)}}
+
+function saveLayer(id: string) {
+  if (!id || !editable.value) return
+  const item = objects.value.find(row => row.id === id)
+  if (!item) return
+  if (editing.value === id) {
+    const text = item.data.kind === 'todo'
+      ? draftTodos.value.map(row => (row.done ? '[x] ' : '[ ] ') + row.text).join('\n')
+      : draft.value
+    if (text !== (item.data.text ?? '')) stage(item, { text })
+    editing.value = ''
+  }
+  if (originalStyles.has(id) && savingLayerId !== id) pendingLayerSaves.add(id)
+  return flushLayerSaves()
+}
+
+function flushLayerSaves() {
+  if (layerSave || busy.value || drag || resizing || nudgePositions.size || !editable.value || disposed || !pendingLayerSaves.size) return layerSave
+  const scope = undoScope.value
+  layerSave = (async () => {
+    while (scope === undoScope.value && !busy.value && !drag && !resizing && !disposed && editable.value && pendingLayerSaves.size) {
+      const id = pendingLayerSaves.values().next().value!
+      pendingLayerSaves.delete(id)
+      const item = objects.value.find(row => row.id === id)
+      if (item && originalStyles.has(id)) {
+        savingLayerId = id
+        await put(item, { ...item.data })
+        savingLayerId = ''
+      }
+    }
+  })().finally(() => {
+    layerSave = undefined
+    void flushLayerSaves()
+  })
+  return layerSave
+}
+
+watch(busy, active => { if (!active) void flushLayerSaves() })
+watch(selected, (_, previous) => void saveLayer(previous))
+
+function saveOnOutsideClick(event: MouseEvent) {
+  if (event.button !== 0 || !space.value || serviceTabs.activeId !== workspaceTabId || !root.value?.getClientRects().length) return
+  const id = editing.value || selected.value
+  const target = event.target
+  if (!id || !(target instanceof Element) || target.closest('.card-properties') && root.value.contains(target)) return
+  const layer = target.closest('[data-object-id], [data-space-layer]')
+  if (layer?.getAttribute('data-object-id') === id || layer?.getAttribute('data-space-layer') === id) return
+  if (!root.value.contains(target)) {
+    void saveLayer(id)
+    return
+  }
+  const scope = undoScope.value
+  void nextTick(() => { if (!disposed && scope === undoScope.value) void saveLayer(id) })
+}
 let fullscreenPending = false
 async function toggleFullscreen() {
   if (!root.value || fullscreenPending) return
@@ -179,8 +247,20 @@ async function load(){const current=space.value,version=++epoch;try{const result
 function queue(){if(!refreshTimer)refreshTimer=setTimeout(()=>{refreshTimer=undefined;void load()},250)}
 async function send(action:string,id:string=session,data:Record<string,unknown>={},revision=0){return sharedRequest(base,{method:'POST',body:{space:space.value,id,action,revision,data:Object.fromEntries(Object.entries(data).filter(([key])=>key!=='messages'))}})}
 async function run(fn:()=>Promise<unknown>){error.value='';busy.value=true;try{await fn();await load();return true}catch(e:any){error.value=e.data?.message||'Не удалось сохранить изменения';await load();return false}finally{busy.value=false}}
-async function create(){if(!title.value.trim())return;const id=crypto.randomUUID();await run(async()=>{await sharedRequest(base,{method:'POST',body:{space:id,id,action:'create',data:{name:title.value.trim()}}});await choose(id);title.value=''})}
-async function choose(id:string,remember=false,view?:{x:number;y:number;zoom:number}){if(id===space.value)return;await flushNudge();if(remember&&space.value)history.value.push({id:space.value,x:offset.x,y:offset.y,zoom:zoom.value});else if(!remember&&!view)history.value=[];objects.value=[];space.value=id;cursorPoint=null;replaceSelection([]);editing.value='';pinnedComment.value='';hoveredComment.value='';offset.x=view?.x??150;offset.y=view?.y??100;zoom.value=view?.zoom??1;await load()}
+async function create(){if(!title.value.trim())return;const id=crypto.randomUUID();if(await run(()=>sharedRequest(base,{method:'POST',body:{space:id,id,action:'create',data:{name:title.value.trim()}}}))){title.value='';await choose(id)}}
+async function choose(id:string,remember=false,view?:{x:number;y:number;zoom:number}){
+  if(id===space.value)return
+  const scope = undoScope.value
+  if (busy.value) await new Promise<void>(resolve => {
+    const stop = watch(busy, active => { if (!active) { stop(); resolve() } }, { flush: 'sync' })
+  })
+  if (disposed || scope !== undoScope.value) return
+  await flushNudge()
+  await saveLayer(editing.value || selected.value)
+  if (disposed || scope !== undoScope.value) return
+  if(remember&&space.value)history.value.push({id:space.value,x:offset.x,y:offset.y,zoom:zoom.value});else if(!remember&&!view)history.value=[]
+  objects.value=[];space.value=id;cursorPoint=null;replaceSelection([]);editing.value='';pinnedComment.value='';hoveredComment.value='';offset.x=view?.x??150;offset.y=view?.y??100;zoom.value=view?.zoom??1;await load()
+}
 async function goBack(){let previous=history.value.pop();while(previous&&!spaces.value.some(s=>s.id===previous!.id))previous=history.value.pop();if(previous)await choose(previous.id,false,previous)}
 function point(e:PointerEvent|WheelEvent){const r=canvas.value!.getBoundingClientRect();return{x:(e.clientX-r.left-offset.x)/zoom.value,y:(e.clientY-r.top-offset.y)/zoom.value}}
 async function add(kind:string,fileId?:string,extra:Partial<Item['data']>={}){const id=crypto.randomUUID();const saved=await createBoardItem(id,{kind,x:(350-offset.x)/zoom.value,y:(220-offset.y)/zoom.value,text:kind==='todo'?'[ ] Первая задача':kind==='spec'?'# Без названия\n\nНачните описывать требования…':kind==='comment'?'Комментарий':kind==='text'?'Текст':kind==='frame'?'Контурный блок':kind==='shape'?'Новый блок':'Новая заметка',...(kind==='table'?{rows:[['Столбец 1','Столбец 2','Столбец 3'],['','',''],['','','']],width:440}:{}),...(kind==='spec'?{width:520,height:420}:{}),...(kind==='frame'?{borderColor:'#7c3aed',borderWidth:2,width:320,height:200}:{}),...(fileId?{fileId}:{}),...(kind==='calendar'?{calendarEvents:[],width:560,height:430}:{}),...(kind==='task-calendar'?{width:620,height:410}:kind==='task-gantt'||kind==='booking-gantt'?{width:1040,height:420}:kind==='booking-calendar'?{width:660,height:430}:{}),...extra});if(objects.value.some(i=>i.id===id))selected.value=id;return saved?id:undefined}
@@ -196,9 +276,14 @@ async function put(item: Item, data: Item['data'], previous = item.data) {
   const scope = undoScope.value
   const before = structuredClone(toRaw(originalStyles.get(item.id) ?? previous))
   const target = changedTarget(item.id, item.revision)
-  originalStyles.delete(item.id)
-  if (JSON.stringify(before) === JSON.stringify(data)) return true
-  if (await run(() => send('put', item.id, data, target.beforeRevision))) {
+  if (JSON.stringify(before) === JSON.stringify(data)) {
+    originalStyles.delete(item.id)
+    return true
+  }
+  if (await run(async () => {
+    await send('put', item.id, data, target.beforeRevision)
+    if (scope === undoScope.value) originalStyles.delete(item.id)
+  })) {
     rememberUndo({ kind: 'update', targets: [target], before }, scope)
     return true
   }
@@ -252,13 +337,17 @@ async function openCursors(id:string){
 }
 function heartbeat(){if(!space.value||!cursorPoint||document.visibilityState!=='visible'||cursorChannel?.state!=='joined')return;const name=props.project.members.find(m=>m.userId===auth.user?.id)?.fullName||auth.user?.email||'Участник';void cursorChannel.send({type:'broadcast',event:'cursor',payload:{...cursorPoint,id:session,user_id:auth.user?.id,name}})}
 let drag:{id:string;x:number;y:number;ox:number;oy:number;moved:boolean;children?:{id:string;x:number;y:number}[]}|null=null,lastCursor=0,cursorTimer:ReturnType<typeof setTimeout>|undefined
-function down(e:PointerEvent,item?:Item){stopCameraTransition();if(!typingTarget(e.target)){e.preventDefault();window.getSelection()?.removeAllRanges()}if(item&&tool.value==='select'&&!e.altKey)item=outerLayerGroup(item);if(e.button!==0&&e.button!==1)return;if(!spaceHeld.value&&['pen','highlighter','eraser'].includes(tool.value)){startInk(e);return}if(!spaceHeld.value&&e.button===0&&editable.value&&['comment','text'].includes(tool.value)){const kind=tool.value,p=point(e);tool.value='select';void add(kind,undefined,p).then(id=>{if(!id)return;if(kind==='comment')pinnedComment.value=id;else{editing.value=id;draft.value='Текст'}});return}if(!item){pinnedComment.value='';hoveredComment.value=''};if(!item&&tool.value==='select'&&!spaceHeld.value&&e.button===0){const p=point(e);boxSelection.value={x:p.x,y:p.y,endX:p.x,endY:p.y,add:e.shiftKey,base:e.shiftKey?[...selection.value]:[]};if(!e.shiftKey)replaceSelection([]);(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);return}if(item&&tool.value!=='hand'&&!spaceHeld.value&&e.button!==1){if(tool.value==='select'){clickSelect(item,e.shiftKey);if(e.shiftKey)return}else select(item);if(!editable.value||busy.value||tool.value==='hand'||editing.value===item.id||tool.value==='link')return;if(nudgePositions.size){void flushNudge();return}}else if(!spaceHeld.value&&tool.value!=='hand'&&e.button!==1)selected.value='';drag={id:tool.value==='hand'||spaceHeld.value||e.button===1?'':item?.id||'',x:e.clientX,y:e.clientY,ox:tool.value==='hand'||spaceHeld.value||e.button===1?offset.x:item?.data.x??offset.x,oy:tool.value==='hand'||spaceHeld.value||e.button===1?offset.y:item?.data.y??offset.y,moved:false};if(item?.data.kind==='frame'&&drag.id)drag.children=layerDescendants(item.id).map(child=>({id:child.id,x:child.data.x,y:child.data.y}));(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)}
+function down(e:PointerEvent,item?:Item){stopCameraTransition();if(!typingTarget(e.target)){e.preventDefault();canvas.value?.focus({preventScroll:true});window.getSelection()?.removeAllRanges()}if(item&&tool.value==='select'&&!e.altKey)item=outerLayerGroup(item);if(e.button!==0&&e.button!==1)return;if(!spaceHeld.value&&['pen','highlighter','eraser'].includes(tool.value)){startInk(e);return}if(!spaceHeld.value&&e.button===0&&editable.value&&['comment','text'].includes(tool.value)){const kind=tool.value,p=point(e);tool.value='select';void add(kind,undefined,p).then(id=>{if(!id)return;if(kind==='comment')pinnedComment.value=id;else{editing.value=id;draft.value='Текст'}});return}if(!item){pinnedComment.value='';hoveredComment.value=''};if(!item&&tool.value==='select'&&!spaceHeld.value&&e.button===0){const p=point(e);boxSelection.value={x:p.x,y:p.y,endX:p.x,endY:p.y,add:e.shiftKey,base:e.shiftKey?[...selection.value]:[]};if(!e.shiftKey)replaceSelection([]);(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);return}if(item&&tool.value!=='hand'&&!spaceHeld.value&&e.button!==1){if(tool.value==='select'){clickSelect(item,e.shiftKey);if(e.shiftKey)return}else select(item);if(!editable.value||busy.value||tool.value==='hand'||editing.value===item.id||tool.value==='link')return;if(nudgePositions.size){void flushNudge();return}}else if(!spaceHeld.value&&tool.value!=='hand'&&e.button!==1)selected.value='';drag={id:tool.value==='hand'||spaceHeld.value||e.button===1?'':item?.id||'',x:e.clientX,y:e.clientY,ox:tool.value==='hand'||spaceHeld.value||e.button===1?offset.x:item?.data.x??offset.x,oy:tool.value==='hand'||spaceHeld.value||e.button===1?offset.y:item?.data.y??offset.y,moved:false};if(item?.data.kind==='frame'&&drag.id)drag.children=layerDescendants(item.id).map(child=>({id:child.id,x:child.data.x,y:child.data.y}));(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)}
 function move(e:PointerEvent){if(!space.value)return;const p=point(e);cursorPoint=p;if(Date.now()-lastCursor>60){lastCursor=Date.now();heartbeat()}else if(!cursorTimer){cursorTimer=setTimeout(()=>{cursorTimer=undefined;lastCursor=Date.now();heartbeat()},60)}if(boxSelection.value){boxSelection.value.endX=p.x;boxSelection.value.endY=p.y;updateBox();return}if(inkDraft.value){const data=inkDraft.value,points=data.points!,last=points[points.length-1]!,next:[number,number]=[p.x-data.x,p.y-data.y];if(points.length<3000&&Math.hypot(next[0]-last[0],next[1]-last[1])>1/zoom.value)points.push(next);return}if(erasing.value){eraseAt(p);return}if(resizing){resizeMove(e);return}if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.moved ||= Math.abs(dx)+Math.abs(dy)>3;if(drag.id){const item=objects.value.find(i=>i.id===drag!.id);if(item){item.data.x=drag.ox+dx/zoom.value;item.data.y=drag.oy+dy/zoom.value;for(const start of drag.children||[]){const child=layers.value.byId.get(start.id);if(child){child.data.x=start.x+dx/zoom.value;child.data.y=start.y+dy/zoom.value}}}}else{offset.x=drag.ox+dx;offset.y=drag.oy+dy}}
-function up(){if(boxSelection.value){updateBox();boxSelection.value=null;return}if(inkDraft.value||erasing.value){void finishInk();return}if(resizing){const r=resizing;resizing=null;const item=objects.value.find(i=>i.id===r.id);if(item&&r.moved)void put(item,{...item.data},r.before);return}const d=drag;drag=null;if(d?.moved)lastDragEnd=Date.now();if(d?.id&&d.moved){const item=objects.value.find(i=>i.id===d.id);if(item)void finishLayerDrag(item, [{id:item.id,x:d.ox,y:d.oy}, ...(d.children||[])])}}
+function up(){void nextTick(flushLayerSaves);if(boxSelection.value){updateBox();boxSelection.value=null;return}if(inkDraft.value||erasing.value){void finishInk();return}if(resizing){const r=resizing;resizing=null;const item=objects.value.find(i=>i.id===r.id);if(item&&r.moved)void put(item,{...item.data},r.before);return}const d=drag;drag=null;if(d?.moved)lastDragEnd=Date.now();if(d?.id&&d.moved){const item=objects.value.find(i=>i.id===d.id);if(item)void finishLayerDrag(item, [{id:item.id,x:d.ox,y:d.oy}, ...(d.children||[])])}}
 function wheel(e:WheelEvent){stopCameraTransition();const p=point(e),r=canvas.value!.getBoundingClientRect();zoom.value=Math.max(.15,Math.min(3,zoom.value*Math.exp(-e.deltaY*.001)));offset.x=e.clientX-r.left-p.x*zoom.value;offset.y=e.clientY-r.top-p.y*zoom.value}
 const draftTodos=ref<{text:string;done:boolean}[]>([])
-function edit(item:Item){if(item.data.kind==='web-link'){openWebLinkEditor(item);return}if(item.data.kind==='space'){if(spaces.value.some(s=>s.id===item.data.targetSpace))void choose(item.data.targetSpace!,true);return}if(!editable.value||['image','document','table','comment','task','password','chat','person','stroke','subscription','calendar','task-calendar','task-gantt','booking','booking-calendar','booking-gantt'].includes(item.data.kind))return;editing.value=item.id;draft.value=item.data.text||'';if(item.data.kind==='todo')draftTodos.value=(item.data.text||'').split('\n').map(line=>({text:line.replace(/^\[[ x]\]\s*/,''),done:line.startsWith('[x]')}))}
-async function saveEdit(item:Item){const text=item.data.kind==='todo'?draftTodos.value.map(row=>(row.done?'[x] ':'[ ] ')+row.text).join('\n'):draft.value;editing.value='';await put(item,{...item.data,text})}
+watch(editing, id => {
+  if (id) canvas.value?.querySelector<HTMLElement>(
+    `[data-object-id="${id}"] .inline-editor :is(textarea, input[type="text"], input:not([type]))`
+  )?.focus({ preventScroll: true })
+}, { flush: 'post' })
+function edit(item:Item){if(editing.value===item.id)return;if(editing.value)void saveLayer(editing.value);if(item.data.kind==='web-link'){openWebLinkEditor(item);return}if(item.data.kind==='space'){if(spaces.value.some(s=>s.id===item.data.targetSpace))void choose(item.data.targetSpace!,true);return}if(!editable.value||busy.value||['image','document','table','comment','task','password','chat','person','stroke','subscription','calendar','task-calendar','task-gantt','booking','booking-calendar','booking-gantt'].includes(item.data.kind))return;editing.value=item.id;draft.value=item.data.text||'';if(item.data.kind==='todo')draftTodos.value=(item.data.text||'').split('\n').map(line=>({text:line.replace(/^\[[ x]\]\s*/,''),done:line.startsWith('[x]')}))}
 function file(item:Item){return item.data.assetId?assets.value.find(f=>f.id===item.data.assetId):docs.query.data.value?.find(f=>f.id===item.data.fileId)}
 async function fileContent(f:ProjectDocument){return assets.value.some(a=>a.id===f.id)?sharedRequest<Blob>(`${base}/${space.value}/files/${f.id}`,{responseType:'blob'}):docs.content(f)}
 async function open(item: Item, download = false, inEditor = false) {
@@ -315,13 +404,11 @@ function hasFileDisplayOptions(item: Item) {
 function fileContentOnly(item: Item) {
   return item.data.showContent !== false && (item.data.contentOnly ?? item.data.imageOnly === true)
 }
-function fileDisplay(item: Item) {
-  if (item.data.showContent === false) return 'filename'
-  return fileContentOnly(item) ? 'content' : 'card'
-}
-function setFileDisplay(mode: string) {
-  styleSelected({ showContent: mode !== 'filename', contentOnly: mode === 'content' })
-  if (mode !== 'filename') void loadThumbnails()
+function setFileDisplay(item: Item, field: 'content' | 'name', checked: boolean) {
+  const showContent = field === 'content' ? checked : item.data.showContent !== false
+  const showName = field === 'name' ? checked : !fileContentOnly(item)
+  styleSelected({ showContent, contentOnly: !showName })
+  if (showContent) void loadThumbnails()
 }
 const loadingImages = new Set<string>()
 async function loadImages() {
@@ -383,26 +470,77 @@ function queueUploads(files: File[], position: { x: number; y: number }, spacing
   }))
 }
 
-function pasteFiles(event: ClipboardEvent) {
+const layerClipboardType = 'application/x-magnat-space-layers'
+
+function isBoardClipboardEvent(event: ClipboardEvent) {
   if (event.defaultPrevented || !canvas.value || !root.value?.getClientRects().length
-    || serviceTabs.activeId !== workspaceTabId || !currentSpace.value || !editable.value || busy.value
+    || serviceTabs.activeId !== workspaceTabId || !currentSpace.value
     || pendingUploads.value.length || settingsOpen.value || groupDialog.value || calendarEditing.value
     || resourcePanel.value || taskPicker.value || bookingPicker.value || webLinkEditor.value
-    || imagePreview.value || officePreview.value || typingTarget(event.target)) return
+    || imagePreview.value || officePreview.value || typingTarget(event.target)) return false
 
   const target = event.target
-  if (!(target instanceof Element) || target.closest('[role="dialog"], [role="alertdialog"], [contenteditable]')) return
-  if (!root.value.contains(target) && target !== document.body && target !== document.documentElement) return
-  if (document.querySelector('[aria-modal="true"]')) return
+  return target instanceof Element && !target.closest('[role="dialog"], [role="alertdialog"], [contenteditable]')
+    && (root.value.contains(target) || target === document.body || target === document.documentElement)
+    && !document.querySelector('[aria-modal="true"]')
+}
 
-  const files = clipboardFiles(event)
-  if (!files.length) return
-
+function copyLayers(event: ClipboardEvent) {
+  if (!isBoardClipboardEvent(event) || !event.clipboardData || !selectedRows.value.length
+    || window.getSelection()?.isCollapsed === false) return
+  const ids = new Set(selectedRows.value.flatMap(item => item.data.kind === 'frame'
+    ? [item.id, ...layerDescendants(item.id).map(child => child.id)] : [item.id]))
+  if (ids.size > 500) {
+    error.value = 'За один раз можно скопировать до 500 слоёв'
+    return
+  }
+  event.clipboardData.setData(layerClipboardType, JSON.stringify({
+    project: props.project.id, source: space.value, ids: [...ids]
+  }))
   event.preventDefault()
-  queueUploads(files, {
-    x: (Math.min(350, canvas.value.clientWidth / 3) - offset.x) / zoom.value,
-    y: (Math.min(220, canvas.value.clientHeight / 3) - offset.y) / zoom.value
-  }, 32)
+}
+
+async function pasteLayers(source: string, ids: string[]) {
+  const scope = undoScope.value
+  await flushNudge()
+  await saveLayer(editing.value || selected.value)
+  if (scope !== undoScope.value || disposed || !editable.value || busy.value) return
+  let copies: string[] = []
+  if (await run(async () => {
+    const result = await sharedRequest<{ ids: string[] }>(`${base}/group?space=${source}`, {
+      method: 'POST', body: { mode: 'paste', target: space.value, ids }
+    })
+    copies = result.ids
+  }) && scope === undoScope.value && !disposed && copies.length) {
+    replaceSelection(copies)
+    rememberUndo({ kind: 'create', targets: copies.map(id => changedTarget(id, 0)) }, scope)
+  }
+}
+
+function pasteBoard(event: ClipboardEvent) {
+  const board = canvas.value
+  if (!board || !isBoardClipboardEvent(event) || !editable.value || busy.value) return
+  const files = clipboardFiles(event)
+  if (files.length) {
+    event.preventDefault()
+    queueUploads(files, {
+      x: (Math.min(350, board.clientWidth / 3) - offset.x) / zoom.value,
+      y: (Math.min(220, board.clientHeight / 3) - offset.y) / zoom.value
+    }, 32)
+    return
+  }
+  const payload = event.clipboardData?.getData(layerClipboardType)
+  if (!payload) return
+  try {
+    const clipboard = JSON.parse(payload)
+    if (clipboard?.project !== props.project.id || typeof clipboard.source !== 'string'
+      || !Array.isArray(clipboard.ids) || !clipboard.ids.length || clipboard.ids.length > 500
+      || ![clipboard.source, ...clipboard.ids].every(id => typeof id === 'string' && /^[a-f\d-]{36}$/i.test(id))) return
+    event.preventDefault()
+    void pasteLayers(clipboard.source, clipboard.ids)
+  } catch {
+    // Data from another app can use the same clipboard type.
+  }
 }
 async function loadResources(){const id=space.value;if(!id){assets.value=[];return}const results=await Promise.allSettled([sharedRequest<ProjectDocument[]>(`${base}/${id}/files`),sharedRequest<Record<string,any>>(`${base}/resources?space=${id}`),sharedRequest<ProjectPassword[]>(`/api/projects/${props.project.id}/passwords`),sharedRequest<ProjectChat[]>(`/api/projects/${props.project.id}/chats`)]);if(id!==space.value||disposed)return;assets.value=results[0]!.status==='fulfilled'?results[0]!.value:[];taskResources.value=results[1]!.status==='fulfilled'?results[1]!.value:{};passwords.value=results[2]!.status==='fulfilled'?results[2]!.value:[];chats.value=results[3]!.status==='fulfilled'?results[3]!.value:[]}
 function passwordFor(item:Item){return passwords.value.find(p=>p.id===item.data.passwordId)}
@@ -466,7 +604,13 @@ async function removeSpace(){await run(async()=>{await send('delete-space');spac
 function participantPermission(id:string){return currentSpace.value?.members.find(m=>m.user_id===id)?.permission||props.project.members.find(m=>m.userId===id)?.permission||'viewer'}
 function author(id:string){return props.project.members.find(m=>m.userId===id)?.fullName||props.project.members.find(m=>m.userId===id)?.email||'Участник'}
 async function reply(item:Item){const text=replyDrafts[item.id]?.trim();if(!text)return;await run(()=>send('reply',item.id,{text}));if(!error.value)replyDrafts[item.id]=''}
-async function cell(item:Item,row:number,col:number,value:string){const rows=(item.data.rows||[]).map(r=>[...r]);rows[row]![col]=value;if(value!==(item.data.rows||[])[row]?.[col])stage(item,{rows})}
+function cell(item: Item, row: number, col: number, value: string) {
+  if (!editable.value || busy.value || value === item.data.rows?.[row]?.[col]) return
+  const rows = item.data.rows!.map(cells => [...cells])
+  rows[row]![col] = value
+  stage(item, { rows })
+  selected.value = item.id
+}
 async function resizeTable(item:Item,axis:'row'|'column',remove=false){const rows=(item.data.rows||[['']]).map(r=>[...r]);if(axis==='row'){if(remove&&rows.length>1)rows.pop();else if(!remove&&rows.length<50)rows.push(Array(rows[0]!.length).fill(''))}else{for(const row of rows){if(remove&&row.length>1)row.pop();else if(!remove&&row.length<20)row.push('')}}stage(item,{rows})}
 async function importMarkdown(e:Event){const f=(e.target as HTMLInputElement).files?.[0];if(!f)return;if(f.size>100000){error.value='Markdown должен быть не больше 100 КБ';return}const text=await f.text();if(text.length>50000){error.value='Текст должен содержать не больше 50 000 символов';return}const item=selectedItem.value;if(item?.data.kind==='spec')await put(item,{...item.data,text});else await add('spec',undefined,{text});(e.target as HTMLInputElement).value=''}
 const inkColor=ref('#334155'),inkWidth=ref(3),inkDraft=ref<Item['data']|null>(null),erased=ref(new Set<string>()),erasing=ref(false)
@@ -625,7 +769,19 @@ watch(officePreview, async (preview, _, onCleanup) => {
   }
 })
 async function exportSpace(){await run(async()=>{const blob=await sharedRequest<Blob>(`${base}/export?space=${space.value}`,{responseType:'blob'});await saveFile(blob,`${currentSpace.value?.name||'space'}.zip`)})}
-async function importSpace(e:Event){const f=(e.target as HTMLInputElement).files?.[0];if(!f)return;await run(async()=>{const body=new FormData();body.append('file',f);const result=await sharedRequest<{id:string}>(`${base}/import${space.value?'?space='+space.value:''}`,{method:'POST',body});if(result.id!==space.value)await choose(result.id);else await load()});(e.target as HTMLInputElement).value=''}
+async function importSpace(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const body = new FormData()
+  body.append('file', file)
+  let importedId = ''
+  if (await run(async () => {
+    const result = await sharedRequest<{ id: string }>(`${base}/import${space.value ? '?space=' + space.value : ''}`, { method: 'POST', body })
+    importedId = result.id
+  }) && importedId !== space.value) await choose(importedId)
+  input.value = ''
+}
 const tooltip=ref<{text:string;left:number;bottom:number}|null>(null)
 function hudHover(e:Event){const button=(e.target as HTMLElement).closest<HTMLButtonElement>('button[data-tip]');if(!button||button.disabled){tooltip.value=null;return}const rect=button.getBoundingClientRect(),shell=canvas.value?.parentElement?.getBoundingClientRect();if(shell)tooltip.value={text:button.dataset.tip||'',left:Math.max(80,Math.min(rect.left-shell.left+rect.width/2,shell.width-80)),bottom:shell.bottom-rect.top+12}}
 let resizing:{id:string;corner:string;pointerX:number;pointerY:number;x:number;y:number;width:number;height:number;moved:boolean;before:Item['data']}|null=null
@@ -644,6 +800,7 @@ async function flushNudge() {
     return position && (position.x !== data.x || position.y !== data.y)
   }).map(({ id, revision, data: { x, y } }) => ({ id, revision, x, y }))
   await saveLayers([], moved, before)
+  void flushLayerSaves()
 }
 function typingTarget(target:EventTarget|null){return target instanceof HTMLElement&&!!target.closest('input,textarea,select,[contenteditable=true],[role=textbox]')}
 function resetKeys(){spaceHeld.value=false}
@@ -964,7 +1121,9 @@ async function finishLayerDrag(item: Item, previous: BoardPosition[]) {
   await saveLayers(changes, positionChanges, new Map(previous.map(position => [position.id, position])))
 }
 onMounted(async()=>{
- document.addEventListener('paste', pasteFiles)
+ document.addEventListener('copy', copyLayers)
+ document.addEventListener('paste', pasteBoard)
+ document.addEventListener('click', saveOnOutsideClick, true)
  document.addEventListener('fullscreenchange',fullscreenChanged);document.addEventListener('keydown',keyboard);document.addEventListener('keyup',keyUp);window.addEventListener('blur',resetKeys)
  const initial = route.query.space
  const saved = serviceTabs.readView<{ project: string; space: string; x: number; y: number; zoom: number; history: typeof history.value }>(workspaceTabId)
@@ -980,7 +1139,11 @@ onMounted(async()=>{
  .subscribe(status=>{connected.value=status==='SUBSCRIBED';if(connected.value)queue()})
  let ticks=0;timer=setInterval(()=>{now.value=Date.now();heartbeat();cursors.value=cursors.value.filter(c=>now.value-new Date(c.updated_at).getTime()<15000);if(++ticks%3===0&&!connected.value&&!drag&&!editing.value&&document.visibilityState==='visible')queue()},5000)
 })
-onBeforeUnmount(() => document.removeEventListener('paste', pasteFiles))
+onBeforeUnmount(() => {
+  document.removeEventListener('copy', copyLayers)
+  document.removeEventListener('paste', pasteBoard)
+  document.removeEventListener('click', saveOnOutsideClick, true)
+})
 onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.project.id, space: space.value, x: offset.x, y: offset.y, zoom: zoom.value, history: [...history.value] });stopCameraTransition();disposed=true;epoch++;cursorEpoch++;stopCursorWatch?.();clearInterval(timer);clearTimeout(refreshTimer);clearTimeout(cursorTimer);document.removeEventListener('fullscreenchange',fullscreenChanged);document.removeEventListener('keydown',keyboard);document.removeEventListener('keyup',keyUp);window.removeEventListener('blur',resetKeys);clearTimeout(commentHide);clearTimeout(nudgeTimer);if(cursorChannel){void cursorChannel.send({type:'broadcast',event:'leave',payload:{id:session}});void supabase.removeChannel(cursorChannel)}if(channel)void supabase.removeChannel(channel);Object.values(images.value).filter(Boolean).forEach(URL.revokeObjectURL)})
 </script>
 <template>
@@ -1000,19 +1163,25 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
  </div>
  <div v-if="editable && selectedItem && ['note','todo','shape','text'].includes(selectedItem.data.kind)" class="properties-section"><strong>Оформление</strong><label v-if="selectedItem.data.kind!=='text'">Фон <input type="color" :disabled="busy" :value="selectedItem.data.color||(selectedItem.data.kind==='note'?'#fff3ae':'#ffffff')" @change="styleSelected({color:($event.target as HTMLInputElement).value})"></label><label>Цвет текста <input type="color" :disabled="busy" :value="selectedItem.data.textColor||'#334155'" @change="styleSelected({textColor:($event.target as HTMLInputElement).value})"></label></div>
 
- <div v-if="editable && selectedItem?.data.kind==='frame'" class="properties-section"><strong>Контур</strong><label>Цвет <input type="color" :disabled="busy" :value="selectedItem.data.borderColor||'#7c3aed'" @change="styleSelected({borderColor:($event.target as HTMLInputElement).value})"></label><label>Толщина <input type="number" min="1" max="16" :disabled="busy" :value="selectedItem.data.borderWidth||2" @change="styleSelected({borderWidth:Number(($event.target as HTMLInputElement).value)})">px</label><label>Контуры <select :value="selectedItem.data.contours||1" :disabled="busy" @change="styleSelected({contours:Number(($event.target as HTMLSelectElement).value)})"><option v-for="n in 5" :key="n" :value="n">{{n}}</option></select></label></div>
- <div v-if="editable&&selectedItem?.data.kind==='person'" class="properties-section"><label>Роль<input :value="selectedItem.data.role" maxlength="200" @change="styleSelected({role:($event.target as HTMLInputElement).value})"></label><label>Обязанности<input :value="selectedItem.data.duty" maxlength="2000" @change="styleSelected({duty:($event.target as HTMLInputElement).value})"></label></div>
+ <div v-if="editable && selectedItem?.data.kind==='frame'" class="properties-section"><strong>Контур</strong><label>Цвет <input type="color" :disabled="busy" :value="selectedItem.data.borderColor||'#7c3aed'" @change="styleSelected({borderColor:($event.target as HTMLInputElement).value})"></label><label>Толщина <input type="number" min="1" max="16" :disabled="busy" :value="selectedItem.data.borderWidth||2" @change="styleNumber('borderWidth', $event)">px</label><label>Контуры <select :value="selectedItem.data.contours||1" :disabled="busy" @change="styleSelected({contours:Number(($event.target as HTMLSelectElement).value)})"><option v-for="n in 5" :key="n" :value="n">{{n}}</option></select></label></div>
+ <div v-if="editable&&selectedItem?.data.kind==='person'" class="properties-section"><label>Роль<input :value="selectedItem.data.role" maxlength="200" :disabled="busy" @input="styleSelected({role:($event.target as HTMLInputElement).value})"></label><label>Обязанности<input :value="selectedItem.data.duty" maxlength="2000" :disabled="busy" @input="styleSelected({duty:($event.target as HTMLInputElement).value})"></label></div>
  <div v-if="editable&&['pen','highlighter','eraser'].includes(tool)" class="properties-section"><button :class="{chosen:tool==='pen'}" @click="tool='pen'">Маркер</button><button :class="{chosen:tool==='highlighter'}" @click="tool='highlighter'">Фломастер</button><button :class="{chosen:tool==='eraser'}" @click="tool='eraser'">Ластик</button><label v-if="tool!=='eraser'">Цвет<input v-model="inkColor" type="color"></label><label v-if="tool!=='eraser'">Толщина<input v-model.number="inkWidth" type="range" min="1" max="10"></label><span v-else>Стирает только нарисованные линии</span></div>
-<div v-if="editable&&selectedItem&&!selectedItem.data.layerGroup&&!['link','stroke'].includes(selectedItem.data.kind)" class="properties-section"><strong>Карточка</strong><label>Ширина <input type="number" min="160" :max="selectedItem.data.kind==='frame'?undefined:2000" :value="selectedItem.data.width||220" @input="styleSelected({width:Number(($event.target as HTMLInputElement).value)})"></label><label>Высота <input type="number" min="100" :max="selectedItem.data.kind==='frame'?undefined:2000" :value="selectedItem.data.height||110" @input="styleSelected({height:Number(($event.target as HTMLInputElement).value)})"></label><label>Размер шрифта <input type="number" min="8" max="72" :value="selectedItem.data.fontSize||(selectedItem.data.kind==='frame'?26:14)" @input="styleSelected({fontSize:Number(($event.target as HTMLInputElement).value)})"></label><label>Шрифт <select :value="selectedItem.data.fontFamily||'system'" @change="styleSelected({fontFamily:($event.target as HTMLSelectElement).value as any})"><option value="system">Системный</option><option value="serif">С засечками</option><option value="mono">Моноширинный</option></select></label><label>Начертание <select :value="selectedItem.data.fontWeight||'normal'" @change="styleSelected({fontWeight:($event.target as HTMLSelectElement).value as any})"><option value="normal">Обычное</option><option value="bold">Полужирное</option></select></label></div>
+<div v-if="editable&&selectedItem&&!selectedItem.data.layerGroup&&!['link','stroke'].includes(selectedItem.data.kind)" class="properties-section"><strong>Карточка</strong><label>Ширина <input type="number" min="160" :max="selectedItem.data.kind==='frame'?undefined:2000" :value="selectedItem.data.width||220" @input="styleNumber('width', $event)"></label><label>Высота <input type="number" min="100" :max="selectedItem.data.kind==='frame'?undefined:2000" :value="selectedItem.data.height||110" @input="styleNumber('height', $event)"></label><label>Размер шрифта <input type="number" min="8" max="72" :value="selectedItem.data.fontSize||(selectedItem.data.kind==='frame'?26:14)" @input="styleNumber('fontSize', $event)"></label><label>Шрифт <select :value="selectedItem.data.fontFamily||'system'" @change="styleSelected({fontFamily:($event.target as HTMLSelectElement).value as any})"><option value="system">Системный</option><option value="serif">С засечками</option><option value="mono">Моноширинный</option></select></label><label>Начертание <select :value="selectedItem.data.fontWeight||'normal'" @change="styleSelected({fontWeight:($event.target as HTMLSelectElement).value as any})"><option value="normal">Обычное</option><option value="bold">Полужирное</option></select></label></div>
 <div v-if="editable&&selectedItem?.data.kind==='frame'&&!selectedItem.data.layerGroup" class="properties-section"><label>Заголовок <select :value="selectedItem.data.titlePosition||'top-right'" @change="styleSelected({titlePosition:($event.target as HTMLSelectElement).value})"><option v-for="p in [{id:'top-left',name:'Сверху слева'},{id:'top-center',name:'Сверху по центру'},{id:'top-right',name:'Сверху справа'},{id:'bottom-left',name:'Снизу слева'},{id:'bottom-center',name:'Снизу по центру'},{id:'bottom-right',name:'Снизу справа'}]" :key="p.id" :value="p.id">{{p.name}}</option></select></label><label>Цвет заголовка <input type="color" :value="selectedItem.data.titleColor||'#334155'" @input="styleSelected({titleColor:($event.target as HTMLInputElement).value})"></label></div>
 <div v-if="editable && selectedItem && hasFileDisplayOptions(selectedItem)" class="properties-section">
-  <label>На доске
-    <select :value="fileDisplay(selectedItem)" :disabled="busy" @change="setFileDisplay(($event.target as HTMLSelectElement).value)">
-      <option value="card">{{isImage(selectedItem) ? 'Изображение и название' : 'Содержимое и название'}}</option>
-      <option value="content">{{isImage(selectedItem) ? 'Только изображение' : 'Только содержимое'}}</option>
-      <option value="filename">Только название</option>
-    </select>
-  </label>
+  <fieldset class="file-display-options">
+    <legend>На доске</legend>
+    <label>
+      <input type="checkbox" :checked="selectedItem.data.showContent !== false" :disabled="busy || fileContentOnly(selectedItem)"
+        @change="setFileDisplay(selectedItem, 'content', ($event.target as HTMLInputElement).checked)">
+      {{ isImage(selectedItem) ? 'Изображение' : 'Содержимое' }}
+    </label>
+    <label>
+      <input type="checkbox" :checked="!fileContentOnly(selectedItem)" :disabled="busy || selectedItem.data.showContent === false"
+        @change="setFileDisplay(selectedItem, 'name', ($event.target as HTMLInputElement).checked)">
+      Название
+    </label>
+  </fieldset>
 </div>
 <div v-else-if="editable&&selectedItem&&selectedItem.data.kind==='document'" class="properties-section"><label><input type="checkbox" :checked="selectedItem.data.showContent!==false" @change="styleSelected({showContent:($event.target as HTMLInputElement).checked});loadThumbnails()">Показывать содержимое</label></div>
 <div v-if="editable && selectedItem && spreadsheetOptions(selectedItem)" class="properties-section">
@@ -1034,24 +1203,24 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
       :value="spreadsheetOptions(selectedItem)?.columns" :disabled="busy" @change="setSpreadsheetSize(selectedItem, 'columns', $event)">
   </label>
 </div>
-<div v-if="editable&&selectedItem" class="inspector-apply"><button class="primary" :disabled="busy" @click="applySelected">Применить</button><button @click="cancelSelected">Отмена</button></div></aside>
+<div v-if="editable&&selectedItem" class="inspector-apply"><button class="primary" :disabled="busy" @click="saveLayer(selectedItem.id)">Применить</button><button :disabled="busy" @click="cancelSelected">Отмена</button></div></aside>
  <input ref="fileInput" type="file" hidden @change="upload"><input ref="markdownInput" type="file" accept=".md,.markdown,text/markdown,text/plain" hidden @change="importMarkdown">
  <div v-if="attaching" class="floating-picker"><header><strong>Документы проекта</strong><button @click="attaching=false">Закрыть</button></header><button v-for="f in docs.query.data.value" :key="f.id" @click="add(f.type.startsWith('image/')?'image':'document',f.id);attaching=false">{{f.name}}</button><p v-if="!docs.query.data.value?.length">Пока нет доступных документов</p></div>
  <div v-if="portalOpen" class="floating-picker"><header><strong>Ссылка на пространство</strong><button @click="portalOpen=false">Закрыть</button></header><button v-for="s in spaces.filter(s=>s.id!==space)" :key="s.id" @click="add('space',undefined,{targetSpace:s.id});portalOpen=false"><UIcon name="i-lucide-orbit"/>{{s.name}}</button><p v-if="spaces.length<2">Сначала создайте ещё одно пространство</p></div>
  <div ref="canvas" tabindex="-1" class="space-canvas" :class="{panning:spaceHeld||tool==='hand',placing:['comment','text','pen','highlighter','eraser'].includes(tool)}" @pointerdown.self="down($event)" @pointermove="move" @pointerup="up" @pointercancel="up" @wheel.prevent="wheel">
  <div class="space-world" :class="{'camera-moving':cameraMoving}" :style="{transform:`translate(${offset.x}px,${offset.y}px) scale(${zoom})`}">
- <svg v-for="item in visibleObjects.filter(i=>i.data.kind==='link')" :key="item.id" class="connections" :style="{zIndex:layers.z.get(item.id)}">
+ <svg v-for="item in visibleObjects.filter(i=>i.data.kind==='link')" :key="item.id" class="connections" :data-space-layer="item.id" :style="{zIndex:layers.z.get(item.id)}">
   <defs><marker :id="`arrow-${item.id}`" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" :fill="item.data.color||'#64748b'"/></marker></defs>
   <path v-if="selection.has(item.id)" :d="linkPath(item)" fill="none" stroke="#c4b5fd" stroke-width="8"/>
   <path :d="linkPath(item)" fill="none" :stroke="item.data.color||'#64748b'" stroke-width="2" :stroke-dasharray="item.data.lineStyle==='dashed'?'9 6':undefined" :marker-start="['backward','both'].includes(item.data.arrow||'forward')?`url(#arrow-${item.id})`:undefined" :marker-end="['forward','both'].includes(item.data.arrow||'forward')?`url(#arrow-${item.id})`:undefined"/>
   <path :d="linkPath(item)" fill="none" stroke="transparent" stroke-width="16" class="edge" @pointerdown.stop="spaceHeld || tool==='hand' ? down($event) : clickSelect($event.altKey ? item : outerLayerGroup(item), $event.shiftKey)"/>
  </svg>
- <svg v-for="item in visibleObjects.filter(i=>i.data.kind==='stroke'&&!erased.has(i.id))" :key="item.id" class="ink-layer" :style="{zIndex:layers.z.get(item.id)}">
+ <svg v-for="item in visibleObjects.filter(i=>i.data.kind==='stroke'&&!erased.has(i.id))" :key="item.id" class="ink-layer" :data-space-layer="item.id" :style="{zIndex:layers.z.get(item.id)}">
   <path :transform="`translate(${item.data.x},${item.data.y})`" :d="inkPath(item.data)" fill="none" :stroke="selection.has(item.id)?'#8b5cf6':item.data.color||'#334155'" :stroke-width="item.data.strokeWidth||3" :opacity="item.data.opacity||1" stroke-linecap="round" stroke-linejoin="round" class="ink-hit" @pointerdown.stop="down($event,item)"/>
  </svg>
  <svg v-if="inkDraft" class="ink-layer" :style="{zIndex:objects.length+1}"><path :d="inkPath(inkDraft)" :transform="`translate(${inkDraft.x},${inkDraft.y})`" fill="none" :stroke="inkDraft.color" :stroke-width="inkDraft.strokeWidth" :opacity="inkDraft.opacity" stroke-linecap="round" stroke-linejoin="round"/></svg>
  <article v-for="item in visibleObjects.filter(i=>!['link','stroke'].includes(i.data.kind))" :key="item.id" class="space-object" :data-object-id="item.id" :class="[item.data.kind,item.data.kind==='shape'?'shape-'+(item.data.shape||'rectangle'):'',{chosen:selection.has(item.id),'layer-group':item.data.layerGroup, 'file-preview':hasFileDisplayOptions(item) && hasBoardFileContent(item), 'file-preview-sized':!!item.data.height, 'content-only':fileContentOnly(item) && hasBoardFileContent(item)}]" :style="nodeStyle(item)" @pointerdown.stop="down($event,item)" @dblclick="edit(item)">
- <template v-if="item.data.kind==='frame'"><span v-for="edge in ['top','right','bottom','left']" :key="edge" class="frame-hit" :class="edge"></span><div :class="['frame-label','title-'+(item.data.titlePosition||'top-right')]" :style="{color:item.data.titleColor||item.data.textColor,fontSize:(item.data.fontSize||26)+'px'}" @dblclick.stop="edit(item)"><div v-if="editing===item.id" class="inline-editor" @pointerdown.stop><textarea v-model="draft" autofocus @keydown.esc="editing=''"/><button class="primary" :disabled="busy" @click="saveEdit(item)">Применить</button><button @click="editing=''">Отмена</button></div><span v-else>{{item.data.text}}</span></div><span v-for="n in Math.max(0,(item.data.contours||1)-1)" :key="n" class="extra-contour" :style="{inset:(n*7)+'px',borderColor:item.data.borderColor||'#7c3aed',borderWidth:(item.data.borderWidth||2)+'px'}"></span><button v-for="corner in editable&&selected===item.id&&!item.data.layerGroup?['nw','ne','sw','se']:[]" :key="corner" class="resize-handle" :class="corner" :aria-label="`Изменить размер ${corner}`" @pointerdown.stop="resizeStart($event,item,corner)"></button></template>
+ <template v-if="item.data.kind==='frame'"><span v-for="edge in ['top','right','bottom','left']" :key="edge" class="frame-hit" :class="edge"></span><div :class="['frame-label','title-'+(item.data.titlePosition||'top-right')]" :style="{color:item.data.titleColor||item.data.textColor,fontSize:(item.data.fontSize||26)+'px'}" @dblclick.stop="edit(item)"><div v-if="editing===item.id" class="inline-editor" @pointerdown.stop @keydown.esc.stop="editing=''"><textarea v-model="draft" autofocus/><button class="primary" :disabled="busy" @click="saveLayer(item.id)">Применить</button><button @click="editing=''">Отмена</button></div><span v-else>{{item.data.text}}</span></div><span v-for="n in Math.max(0,(item.data.contours||1)-1)" :key="n" class="extra-contour" :style="{inset:(n*7)+'px',borderColor:item.data.borderColor||'#7c3aed',borderWidth:(item.data.borderWidth||2)+'px'}"></span><button v-for="corner in editable&&selected===item.id&&!item.data.layerGroup?['nw','ne','sw','se']:[]" :key="corner" class="resize-handle" :class="corner" :aria-label="`Изменить размер ${corner}`" @pointerdown.stop="resizeStart($event,item,corner)"></button></template>
  <template v-else-if="['document','image'].includes(item.data.kind)">
    <div v-if="hasBoardFileContent(item)" class="board-file-content">
      <img
@@ -1090,6 +1259,11 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
    <strong v-if="!fileContentOnly(item) || !hasBoardFileContent(item)" class="board-file-name" :title="file(item)?.name">
      {{file(item)?.name || 'Файл недоступен'}}
    </strong>
+   <textarea v-if="isImage(item) && editable && selected === item.id && selection.size === 1"
+     class="board-file-comment" :value="item.data.description ?? ''" :readonly="busy" rows="2" maxlength="2000"
+     aria-label="Комментарий к фото" placeholder="Комментарий к фото" @pointerdown.stop @dblclick.stop
+     @input="styleSelected({ description: ($event.target as HTMLTextAreaElement).value })" />
+   <p v-else-if="isImage(item) && item.data.description?.trim()" class="board-file-comment">{{ item.data.description }}</p>
    <div
      v-if="!hasFileDisplayOptions(item) || (selected === item.id && selection.size === 1 && file(item))"
      :class="{ 'board-file-actions': hasFileDisplayOptions(item) }"
@@ -1153,10 +1327,10 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
  <div v-else-if="item.data.kind==='chat'" class="resource-card"><UIcon name="i-lucide-messages-square"/><small>ЧАТ ПРОЕКТА</small><h3>{{chatFor(item)?.name||'Чат недоступен'}}</h3><p v-if="chatFor(item)">{{chatFor(item)?.members.length}} участников</p><LayoutServiceTabLink v-if="chatFor(item)" :to="`/projects/${project.id}/chats?chat=${item.data.chatId}`" :tab-label="chatFor(item)?.name" @pointerdown.stop>Открыть чат ↗</LayoutServiceTabLink></div>
  <div v-else-if="item.data.kind==='person'" class="resource-card person-card"><span class="person-avatar">{{author(item.data.personId!).slice(0,1)}}</span><h3>{{author(item.data.personId!)}}</h3><p class="person-role">{{item.data.role||'Участник проекта'}}</p><p>{{item.data.duty||'Обязанности пока не указаны'}}</p></div>
  <div v-else-if="item.data.kind==='space'" class="portal-card"><UIcon name="i-lucide-orbit"/><h3>{{spaces.find(s=>s.id===item.data.targetSpace)?.name||'Пространство удалено'}}</h3><p>{{spaces.find(s=>s.id===item.data.targetSpace)?.description||'Связанное пространство проекта'}}</p><button :disabled="!spaces.some(s=>s.id===item.data.targetSpace)" @pointerdown.stop @click.stop="choose(item.data.targetSpace!,true)">Открыть пространство <UIcon name="i-lucide-arrow-up-right"/></button></div>
- <div v-else-if="item.data.kind==='table'" class="board-table"><div class="object-caption"><UIcon name="i-lucide-table-2"/>Таблица</div><table><tbody><tr v-for="(row,r) in item.data.rows" :key="r"><td v-for="(value,c) in row" :key="c"><input :value="value" :readonly="!editable" maxlength="2000" @pointerdown.stop @input="cell(item,r,c,($event.target as HTMLInputElement).value)"></td></tr></tbody></table><div v-if="editable" class="table-actions" @pointerdown.stop><button :disabled="busy" @click="resizeTable(item,'row')">+ Строка</button><button :disabled="busy" @click="resizeTable(item,'column')">+ Столбец</button><button :disabled="busy" @click="resizeTable(item,'row',true)">− Строка</button><button :disabled="busy" @click="resizeTable(item,'column',true)">− Столбец</button></div></div>
+ <div v-else-if="item.data.kind==='table'" class="board-table"><div class="object-caption"><UIcon name="i-lucide-table-2"/>Таблица</div><table><tbody><tr v-for="(row,r) in item.data.rows" :key="r"><td v-for="(value,c) in row" :key="c"><input :value="value" :readonly="!editable || busy" maxlength="2000" @pointerdown.stop @input="cell(item,r,c,($event.target as HTMLInputElement).value)"></td></tr></tbody></table><div v-if="editable" class="table-actions" @pointerdown.stop><button :disabled="busy" @click="resizeTable(item,'row')">+ Строка</button><button :disabled="busy" @click="resizeTable(item,'column')">+ Столбец</button><button :disabled="busy" @click="resizeTable(item,'row',true)">− Строка</button><button :disabled="busy" @click="resizeTable(item,'column',true)">− Столбец</button></div></div>
  <button v-else-if="item.data.kind==='comment'" class="comment-pin" :class="{resolved:item.data.resolved,opened:popupComment?.id===item.id}" :aria-label="item.data.text||'Комментарий'" @pointerdown.stop="down($event,item)" :aria-expanded="popupComment?.id===item.id" @pointerenter="hoverComment(item.id)" @pointerleave="leaveComment" @focus="hoverComment(item.id)" @blur="leaveComment" @click.stop="pinComment(item)"><UIcon :name="item.data.resolved?'i-lucide-check':'i-lucide-message-circle'"/><small v-if="item.data.messages?.length">{{item.data.messages.length}}</small></button>
- <div v-else-if="item.data.kind==='spec'" class="spec-document"><div class="object-caption"><UIcon name="i-lucide-clipboard-list"/>Spec<button v-if="editable" @pointerdown.stop @click="selected=item.id;markdownInput?.click()">Импорт Markdown</button></div><div v-if="editing===item.id" class="inline-editor" @pointerdown.stop><textarea v-model="draft" autofocus @keydown.esc="editing=''"/><button class="primary" :disabled="busy" @click="saveEdit(item)">Применить</button><button @click="editing=''">Отмена</button></div><template v-else><template v-for="(line,index) in (item.data.text||'').split('\n')" :key="index"><h1 v-if="line.startsWith('# ')">{{line.slice(2)}}</h1><h2 v-else-if="line.startsWith('## ')">{{line.slice(3)}}</h2><h3 v-else-if="line.startsWith('### ')">{{line.slice(4)}}</h3><p v-else>{{line||'\u00a0'}}</p></template></template><button v-if="editable && editing!==item.id" @pointerdown.stop @click="edit(item)">Редактировать Spec</button></div>
- <div v-else-if="editing===item.id" class="inline-editor" @pointerdown.stop><template v-if="item.data.kind==='todo'"><h3>Список дел</h3><div v-for="(row,index) in draftTodos" :key="index" class="todo-edit-row"><input v-model="row.done" type="checkbox"><input v-model="row.text" placeholder="Новая задача" maxlength="500"><button @click="draftTodos.splice(index,1)">×</button></div><button @click="draftTodos.push({text:'',done:false})">+ Добавить пункт</button></template><textarea v-else v-model="draft" autofocus @keydown.esc="editing=''"/><div class="inline-actions"><button class="primary" :disabled="busy" @click="saveEdit(item)">Применить</button><button @click="editing=''">Отмена</button></div></div>
+ <div v-else-if="item.data.kind==='spec'" class="spec-document"><div class="object-caption"><UIcon name="i-lucide-clipboard-list"/>Spec<button v-if="editable" @pointerdown.stop @click="selected=item.id;markdownInput?.click()">Импорт Markdown</button></div><div v-if="editing===item.id" class="inline-editor" @pointerdown.stop @keydown.esc.stop="editing=''"><textarea v-model="draft" autofocus/><button class="primary" :disabled="busy" @click="saveLayer(item.id)">Применить</button><button @click="editing=''">Отмена</button></div><template v-else><template v-for="(line,index) in (item.data.text||'').split('\n')" :key="index"><h1 v-if="line.startsWith('# ')">{{line.slice(2)}}</h1><h2 v-else-if="line.startsWith('## ')">{{line.slice(3)}}</h2><h3 v-else-if="line.startsWith('### ')">{{line.slice(4)}}</h3><p v-else>{{line||'\u00a0'}}</p></template></template><button v-if="editable && editing!==item.id" @pointerdown.stop @click="edit(item)">Редактировать Spec</button></div>
+ <div v-else-if="editing===item.id" class="inline-editor" @pointerdown.stop @keydown.esc.stop="editing=''"><template v-if="item.data.kind==='todo'"><h3>Список дел</h3><div v-for="(row,index) in draftTodos" :key="index" class="todo-edit-row"><input v-model="row.done" type="checkbox"><input v-model="row.text" placeholder="Новая задача" maxlength="500"><button @click="draftTodos.splice(index,1)">×</button></div><button @click="draftTodos.push({text:'',done:false})">+ Добавить пункт</button></template><textarea v-else v-model="draft" autofocus/><div class="inline-actions"><button class="primary" :disabled="busy" @click="saveLayer(item.id)">Применить</button><button @click="editing=''">Отмена</button></div></div>
  <div v-else-if="item.data.kind==='todo'" class="todos"><label v-for="(line,index) in (item.data.text||'').split('\n')" :key="index" @pointerdown.stop><input type="checkbox" :checked="line.startsWith('[x]')" :disabled="!editable" @change="put(item,{...item.data,text:(item.data.text||'').split('\n').map((l,n)=>n===index?(l.startsWith('[x]')?'[ ] ':'[x] ')+l.replace(/^\[[ x]\]\s*/,''):l).join('\n')})">{{line.replace(/^\[[ x]\]\s*/,'')}}</label></div><div v-else class="object-text">{{item.data.text}}</div>
  <template v-if="editable&&selected===item.id&&!['frame','comment'].includes(item.data.kind)"><button v-for="corner in ['nw','ne','sw','se']" :key="corner" class="resize-handle" :class="corner" :aria-label="`Размер ${corner}`" @pointerdown.stop="resizeStart($event,item,corner)"></button></template></article>
  <div v-for="cursor in visibleCursors" :key="cursor.id" class="remote-cursor" :style="{transform:`translate3d(${cursor.x}px,${cursor.y}px,0) scale(${1/zoom})`,color:color(cursor.user_id),zIndex:objects.length+2}"><svg width="18" height="24" viewBox="0 0 18 24"><path d="M1 1L16 15L9 16L6 22Z" fill="currentColor" stroke="white"/></svg><span :style="{background:color(cursor.user_id)}">{{cursor.name}}</span></div>
@@ -1166,7 +1340,7 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
  <div v-if="boxSelection" class="selection-box" :style="boxStyle()"></div><div v-if="selection.size" class="group-toolbar"><strong>{{selection.size}} выбрано</strong><button v-if="editable&&selection.size>1" :disabled="busy" @click="changeLayerGroup(false)">Сгруппировать</button><button v-if="editable&&selectedRows.some(item=>item.data.layerGroup)" :disabled="busy" @click="changeLayerGroup(true)">Разгруппировать</button><button :disabled="busy" @click="groupDialog='copy';groupTarget=''">Копировать в…</button><button v-if="editable" :disabled="busy" @click="groupDialog='move';groupTarget=''">Перенести в…</button><button v-if="editable" :disabled="busy" @click="groupAction('delete')">Удалить</button><button @click="replaceSelection([])">Снять выделение</button></div>
  <section v-if="popupComment" class="comment-popover" :style="commentPosition()" role="dialog" aria-label="Обсуждение" @focusin="pinnedComment=popupComment.id" @pointerenter="hoverComment(popupComment.id)" @pointerleave="leaveComment" @keydown.esc.stop="pinnedComment='';hoveredComment=''"><button class="close-comment" aria-label="Закрыть обсуждение" @click="pinnedComment='';hoveredComment=''">×</button><div class="comment-thread"><div class="object-caption"><UIcon name="i-lucide-message-circle"/>Обсуждение <span v-if="popupComment.data.resolved">· Решено</span></div><textarea v-if="editing===popupComment.id" v-model="draft" autofocus @pointerdown.stop @keydown.esc="editing=''"/><h3 v-else>{{popupComment.data.text}}</h3><div class="comment-messages" @pointerdown.stop><article v-for="message in popupComment.data.messages" :key="message.id"><strong>{{author(message.author)}}</strong><p>{{message.text}}</p><time>{{new Date(message.createdAt).toLocaleString('ru-RU')}}</time></article></div><form v-if="editable" @pointerdown.stop @submit.prevent="reply(popupComment)"><input v-model="replyDrafts[popupComment.id]" placeholder="Написать комментарий…" maxlength="4000" required><button :disabled="busy">Отправить</button></form><button v-if="editable" @pointerdown.stop @click="put(popupComment,{...popupComment.data,resolved:!popupComment.data.resolved})">{{popupComment.data.resolved?'Открыть обсуждение':'Отметить решённым'}}</button></div>
 </section>
- <details class="keyboard-help" :open="controlsOpen" @toggle="controlsOpen=($event.target as HTMLDetailsElement).open"><summary><UIcon name="i-lucide-keyboard"/>Управление</summary><div class="keyboard-list"><p><kbd>⌘/Ctrl + Z</kbd><span>Отменить последнее действие на доске</span></p><p><kbd>F</kbd><span>Включить или закрыть полноэкранный режим</span></p><p><kbd>Space</kbd><span>Удерживать для перемещения доски</span></p><p><kbd>V</kbd><span>Выделение рамкой</span></p><p><kbd>Shift + клик</kbd><span>Добавить / убрать объект</span></p><p><kbd>H</kbd><span>Перемещение</span></p><p><kbd>Cmd/Ctrl + G</kbd><span>Сгруппировать или разгруппировать</span></p><p><kbd>Cmd/Ctrl + Shift + G</kbd><span>Разгруппировать слои</span></p><p><kbd>T</kbd><span>Текст: выбрать место на доске</span></p><p><kbd>C</kbd><span>Комментарий: выбрать место</span></p><p><kbd>N</kbd><span>Новая заметка</span></p><p><kbd>B / M / E</kbd><span>Маркер / фломастер / ластик</span></p><p><kbd>R</kbd><span>Контурная рамка</span></p><p><kbd>L</kbd><span>Связь двух объектов</span></p><p><kbd>Enter</kbd><span>Редактировать выбранный объект</span></p><p><kbd>⌘/Ctrl D</kbd><span>Дублировать объект</span></p><p><kbd>← ↑ → ↓</kbd><span>Сдвиг на 1, с Shift — на 10</span></p><p><kbd>Delete</kbd><span>Удалить выбранный объект</span></p><p><kbd>+ / −</kbd><span>Масштаб</span></p><p><kbd>0</kbd><span>Сбросить вид</span></p><p><kbd>Esc</kbd><span>Закрыть обсуждение, отменить инструмент</span></p></div></details>
+ <details class="keyboard-help" :open="controlsOpen" @toggle="controlsOpen=($event.target as HTMLDetailsElement).open"><summary><UIcon name="i-lucide-keyboard"/>Управление</summary><div class="keyboard-list"><p><kbd>⌘/Ctrl + C</kbd><span>Копировать выбранные слои</span></p><p><kbd>⌘/Ctrl + V</kbd><span>Вставить слои или файлы</span></p><p><kbd>⌘/Ctrl + Z</kbd><span>Отменить последнее действие на доске</span></p><p><kbd>F</kbd><span>Включить или закрыть полноэкранный режим</span></p><p><kbd>Space</kbd><span>Удерживать для перемещения доски</span></p><p><kbd>V</kbd><span>Выделение рамкой</span></p><p><kbd>Shift + клик</kbd><span>Добавить / убрать объект</span></p><p><kbd>H</kbd><span>Перемещение</span></p><p><kbd>Cmd/Ctrl + G</kbd><span>Сгруппировать или разгруппировать</span></p><p><kbd>Cmd/Ctrl + Shift + G</kbd><span>Разгруппировать слои</span></p><p><kbd>T</kbd><span>Текст: выбрать место на доске</span></p><p><kbd>C</kbd><span>Комментарий: выбрать место</span></p><p><kbd>N</kbd><span>Новая заметка</span></p><p><kbd>B / M / E</kbd><span>Маркер / фломастер / ластик</span></p><p><kbd>R</kbd><span>Контурная рамка</span></p><p><kbd>L</kbd><span>Связь двух объектов</span></p><p><kbd>Enter</kbd><span>Редактировать выбранный объект</span></p><p><kbd>⌘/Ctrl D</kbd><span>Дублировать объект</span></p><p><kbd>← ↑ → ↓</kbd><span>Сдвиг на 1, с Shift — на 10</span></p><p><kbd>Delete</kbd><span>Удалить выбранный объект</span></p><p><kbd>+ / −</kbd><span>Масштаб</span></p><p><kbd>0</kbd><span>Сбросить вид</span></p><p><kbd>Esc</kbd><span>Закрыть обсуждение, отменить инструмент</span></p></div></details>
  <div class="canvas-status"><span>{{editable?'Редактирование':'Только просмотр'}}</span></div>
  <div v-if="tooltip" class="hud-tooltip" :style="{left:tooltip.left+'px',bottom:tooltip.bottom+'px'}" role="tooltip">{{tooltip.text}}</div>
  <nav class="board-hud" aria-label="Инструменты доски" @pointerover="hudHover" @pointerleave="tooltip=null" @focusin="hudHover" @focusout="tooltip=null">
@@ -1290,6 +1464,28 @@ onBeforeUnmount(()=>{serviceTabs.saveView(workspaceTabId, { project: props.proje
 }
 .space-object.file-preview.file-preview-sized { height: var(--board-card-height); }
 .space-object.file-preview.content-only { grid-template-rows: minmax(0, 1fr); }
+.space-object.file-preview:has(> .board-file-comment) { grid-auto-rows: auto; }
+.space-object.file-preview.file-preview-sized:has(> .board-file-comment) {
+  height: auto;
+  grid-template-rows: var(--board-card-height);
+}
+.board-file-comment {
+  margin: 0;
+  padding: 6px 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.file-display-options { display: grid; gap: 8px; }
+.file-display-options legend { margin-bottom: 8px; }
+.file-display-options label { justify-content: flex-start; }
+.space-object textarea.board-file-comment {
+  min-height: 0;
+  font: inherit;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: white;
+  resize: vertical;
+}
 .space-object.content-only {
   border-color: transparent;
   background: transparent !important;
