@@ -52,7 +52,7 @@ updates its protected installed copy from the successfully deployed main commit.
 ## Docker storage maintenance
 
 The maintenance timer runs daily at 03:25 Moscow time. It shares the deploy lock
-and skips a run while deployment is in progress. It preserves the ten newest
+and skips a run while deployment is in progress. It preserves the three newest
 Magnat web images, the `latest` image and images referenced by any container.
 It prunes Docker build cache unused for at least 72 hours. Containers, volumes,
 published installers and backups are outside its cleanup scope.

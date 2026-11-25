@@ -9,7 +9,7 @@ import subprocess
 
 STATE = Path('/var/lib/magnat-deploy')
 WEB_IMAGE = 'magnat-password-app'
-KEEP_IMAGES = 10
+KEEP_IMAGES = 3
 DOCKER = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock']
 ENV = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'}
 
