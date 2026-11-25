@@ -68,20 +68,30 @@ useKabanRealtime(async () => {
 }, () => access.data.value?.allowed !== true)
 
 const allTasks=computed(()=>(boards.data.value?.boards??[]).flatMap(({project,workspace})=>workspace.tasks.filter(t=>!t.archived&&(mode.value!=='mine'||t.creatorId===auth.user?.id||t.participantIds.includes(auth.user?.id||''))).map(task=>({task,project,stage:workspace.board.stages.find(s=>s.id===task.stageId)}))).sort((a,b)=>b.task.updatedAt.localeCompare(a.task.updatedAt)))
-const taskFilters=useSavedFilters(() => `kaban-tasks:${mode.value}`,{search:'',project:'all',stage:'all',deadline:'all'})
+const defaultTaskFilters = { search: '', project: 'all', stage: 'all', deadline: 'all', showCompleted: false }
+const taskFilters = useSavedFilters(() => `kaban-tasks:${mode.value}`, { ...defaultTaskFilters })
+const hideCompleted = computed(() => mode.value === 'mine' && !taskFilters.showCompleted)
+const visibleTaskRows = computed(() => hideCompleted.value ? allTasks.value.filter(row => !row.stage?.done) : allTasks.value)
 const today=ref(todayDate())
 let dateTimer:ReturnType<typeof setInterval>|undefined
 onMounted(()=>{today.value=todayDate();dateTimer=setInterval(()=>{today.value=todayDate()},60000)})
 onBeforeUnmount(()=>clearInterval(dateTimer))
 const projectOptions=computed(()=>[{label:'Все проекты',value:'all'},...visible.value.map(p=>({label:p.name,value:p.id}))])
-const stageOptions=computed(()=>[{label:'Все стадии',value:'all'},...[...new Set(allTasks.value.filter(row=>taskFilters.project==='all'||row.project.id===taskFilters.project).flatMap(row=>row.stage?[row.stage.name]:[]))].sort((a,b)=>a.localeCompare(b,'ru')).map(name=>({label:name,value:name}))])
-const tasks=computed(()=>filterKabanTaskRows(allTasks.value,taskFilters,today.value))
-const hasTaskFilters=computed(()=>!!taskFilters.search.trim()||taskFilters.project!=='all'||taskFilters.stage!=='all'||taskFilters.deadline!=='all')
-function resetTaskFilters(){Object.assign(taskFilters,{search:'',project:'all',stage:'all',deadline:'all'})}
+const stageOptions=computed(()=>[{label:'Все стадии',value:'all'},...[...new Set(visibleTaskRows.value.filter(row=>taskFilters.project==='all'||row.project.id===taskFilters.project).flatMap(row=>row.stage?[row.stage.name]:[]))].sort((a,b)=>a.localeCompare(b,'ru')).map(name=>({label:name,value:name}))])
+const selectedStageHidden = computed(() => hideCompleted.value
+  && !stageOptions.value.some(option => option.value === taskFilters.stage)
+  && allTasks.value.some(row => row.stage?.done && row.stage.name === taskFilters.stage
+    && (taskFilters.project === 'all' || row.project.id === taskFilters.project)))
+watch(selectedStageHidden, hidden => {
+  if (hidden) taskFilters.stage = 'all'
+}, { immediate: true })
+const tasks=computed(()=>filterKabanTaskRows(visibleTaskRows.value,taskFilters,today.value))
+const hasTaskFilters=computed(()=>!!taskFilters.search.trim()||taskFilters.project!=='all'||taskFilters.stage!=='all'||taskFilters.deadline!=='all'||(mode.value==='mine'&&taskFilters.showCompleted))
+function resetTaskFilters(){Object.assign(taskFilters,defaultTaskFilters)}
 
 
 </script>
-<template><section class="projects-workspace"><header class="projects-heading"><div><h1>{{mode==='mine'?'Мои задачи':mode==='all'?'Все задачи':planningMode?projectTaskViews.find(view=>view.value===planningMode)?.label:'Задачи'}}<span class="title-dot">.</span></h1><p>{{mode==='projects'?'Доски задач ваших проектов.':'Открытые задачи из доступных проектов.'}}</p></div><UButton v-if="mode==='projects'" to="/projects?create=1" label="Добавить проект" icon="i-lucide-plus"/></header><p v-if="access.isPending.value||projects.isPending.value&&access.data.value?.allowed">Загружаем проекты…</p><UAlert v-else-if="access.error.value" color="error" title="Не удалось проверить доступ"/><UAlert v-else-if="!access.data.value?.allowed" color="neutral" title="Доступ к проектам закрыт"/><UAlert v-if="projects.error.value" color="error" title="Не удалось загрузить проекты" :actions="[{label:'Повторить',onClick:()=>projects.refetch()}]"/><template v-if="access.data.value?.allowed"><nav class="mb-5 flex flex-wrap items-center gap-2" aria-label="Представления задач">
+<template><section class="projects-workspace"><header class="projects-heading"><div><h1>{{mode==='mine'?'Мои задачи':mode==='all'?'Все задачи':planningMode?projectTaskViews.find(view=>view.value===planningMode)?.label:'Задачи'}}<span class="title-dot">.</span></h1><p>{{mode==='projects'?'Доски задач ваших проектов.':mode==='mine'&&taskFilters.showCompleted?'Задачи из доступных проектов.':'Открытые задачи из доступных проектов.'}}</p></div><UButton v-if="mode==='projects'" to="/projects?create=1" label="Добавить проект" icon="i-lucide-plus"/></header><p v-if="access.isPending.value||projects.isPending.value&&access.data.value?.allowed">Загружаем проекты…</p><UAlert v-else-if="access.error.value" color="error" title="Не удалось проверить доступ"/><UAlert v-else-if="!access.data.value?.allowed" color="neutral" title="Доступ к проектам закрыт"/><UAlert v-if="projects.error.value" color="error" title="Не удалось загрузить проекты" :actions="[{label:'Повторить',onClick:()=>projects.refetch()}]"/><template v-if="access.data.value?.allowed"><nav class="mb-5 flex flex-wrap items-center gap-2" aria-label="Представления задач">
   <UButton v-for="view in projectTaskViews" :key="view.value" :to="view.value==='board'?'/kaban':{path:'/kaban',query:{view:view.value}}"
     :label="view.label" :icon="view.icon" color="neutral" :variant="(view.value==='board'? mode==='projects': mode===view.value)?'soft':'outline'"
     :aria-current="(view.value==='board'? mode==='projects': mode===view.value)?'page':undefined"/>
@@ -106,7 +116,18 @@ function resetTaskFilters(){Object.assign(taskFilters,{search:'',project:'all',s
   <p v-if="!taskProjects.length && !projects.isPending.value && !projects.error.value">Нет доступных проектов с задачами.</p>
   <KabanProjectPlanning v-if="!projects.error.value && planningBoards.length" :mode="planningMode" :boards="planningBoards" :reload="refreshBoards"/>
 </template>
-<template v-else><div class="task-filters"><UInput v-model="taskFilters.search" icon="i-lucide-search" placeholder="Найти задачу…" aria-label="Поиск задач"/><USelect :model-value="taskFilters.project" @update:model-value="value=>{taskFilters.project=value;taskFilters.stage='all'}" :items="projectOptions" aria-label="Проект задачи"/><USelect v-model="taskFilters.stage" :items="stageOptions" aria-label="Стадия задачи"/><USelect v-model="taskFilters.deadline" :items="[{label:'Любой срок',value:'all'},{label:'Просроченные',value:'overdue'},{label:'На сегодня',value:'today'},{label:'Ближайшие 7 дней',value:'week'},{label:'Без срока',value:'none'}]" aria-label="Срок задачи"/><UButton v-if="hasTaskFilters" label="Сбросить" icon="i-lucide-x" color="neutral" variant="ghost" @click="resetTaskFilters"/></div><p v-if="!boards.isPending.value" class="task-result-count" role="status">Найдено задач: {{tasks.length}}</p><p v-if="boards.isPending.value">Загружаем задачи…</p><UAlert v-if="boards.error.value||boards.data.value?.failed" color="error" title="Часть досок не удалось загрузить" :actions="[{label:'Повторить',onClick:()=>boards.refetch()}]" class="mb-5"/>
+<template v-else>
+  <div class="task-filters">
+    <UInput v-model="taskFilters.search" icon="i-lucide-search" placeholder="Найти задачу…" aria-label="Поиск задач"/>
+    <USelect :model-value="taskFilters.project" @update:model-value="value=>{taskFilters.project=value;taskFilters.stage='all'}" :items="projectOptions" aria-label="Проект задачи"/>
+    <USelect v-model="taskFilters.stage" :items="stageOptions" aria-label="Стадия задачи"/>
+    <USelect v-model="taskFilters.deadline" :items="[{label:'Любой срок',value:'all'},{label:'Просроченные',value:'overdue'},{label:'На сегодня',value:'today'},{label:'Ближайшие 7 дней',value:'week'},{label:'Без срока',value:'none'}]" aria-label="Срок задачи"/>
+    <UCheckbox v-if="mode === 'mine'" v-model="taskFilters.showCompleted" label="Показывать завершенные" class="self-center" />
+    <UButton v-if="hasTaskFilters" label="Сбросить" icon="i-lucide-x" color="neutral" variant="ghost" @click="resetTaskFilters"/>
+  </div>
+  <p v-if="!boards.isPending.value" class="task-result-count" role="status">Найдено задач: {{tasks.length}}</p>
+  <p v-if="boards.isPending.value">Загружаем задачи…</p>
+  <UAlert v-if="boards.error.value||boards.data.value?.failed" color="error" title="Часть досок не удалось загрузить" :actions="[{label:'Повторить',onClick:()=>boards.refetch()}]" class="mb-5"/>
 <div class="kaban-task-list">
   <NuxtLink v-for="row in tasks" :key="`${row.project.id}:${row.task.id}`" :to="{path:`/projects/${row.project.id}/tasks`,query:{task:row.task.id}}">
     <span class="task-dot" :style="{background:row.stage?.color||'#94a3b8'}"/>
