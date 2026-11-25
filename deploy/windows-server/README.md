@@ -55,6 +55,11 @@ sudo docker compose -f docker-compose.yml -f docker-compose.server.yml ps
 Always include the server override. It keeps the backend port private and runs
 Caddy. Stop containers with `stop`; avoid `down -v`, which deletes persistent data.
 
+Ubuntu production uses a CPU-only Ollama image assembled from the pinned upstream
+release. Model files stay in the existing `ollama-models` volume. When changing
+the Dockerfile or upstream release, change the CPU image tag in both the
+`ollama` and `ollama-init` server overrides.
+
 The imported snapshot contains 28 migration files through `027_account_devices.sql`
 (there are two files numbered 011). Their names and hashes were registered in
 `magnat_internal.schema_migrations` after restoring the snapshot. The same metadata

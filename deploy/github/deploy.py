@@ -37,7 +37,7 @@ def plan(paths, initial=False):
     proxy = initial
     restart = set()
     for path in paths:
-        if path in {'docker-compose.yml', 'docker-compose.server.yml'} or (
+        if path in {'docker-compose.yml', 'docker-compose.server.yml', 'deploy/windows-server/ollama-cpu.Dockerfile'} or (
                 path.startswith('supabase/docker-compose') and path.endswith('.yml')):
             stack = True
         if path == 'Dockerfile' or path in {'package.json', 'package-lock.json', 'nuxt.config.ts',
@@ -187,10 +187,17 @@ def deploy(sha, dry_run=False):
                 raise RuntimeError('An explicit custom web image requires updating the deployment receiver.')
             for volume, expected in {'db-data': 'magnat-password_db-data',
                                      'storage-data': 'magnat-password_storage-data',
-                                     'magnat-tls-data': 'magnat-password_magnat-tls-data'}.items():
+                                     'magnat-tls-data': 'magnat-password_magnat-tls-data',
+                                     'ollama-models': 'magnat-password_ollama-models'}.items():
                 if config['volumes'][volume]['name'] != expected:
                     raise RuntimeError(f'Changing the persistent volume {volume} is not supported.')
             if actions['stack']:
+                ollama = config['services']['ollama']
+                if ollama.get('build'):
+                    try:
+                        run(['docker', 'image', 'inspect', '--format', '{{.Id}}', ollama['image']], capture=True)
+                    except subprocess.CalledProcessError:
+                        compose('build', 'ollama')
                 services = [s for s in config['services'] if s not in {'app', 'proxy', 'migrate'}]
                 compose('up', '-d', '--no-build', '--wait', '--wait-timeout', '180', *services)
             elif actions['restart']:
@@ -212,6 +219,8 @@ def deploy(sha, dry_run=False):
             sync(backup / 'source', PROJECT)
             run(['docker', 'tag', old_image, 'magnat-password-app:latest'])
             compose('up', '-d', '--no-deps', '--no-build', '--wait', '--wait-timeout', '120', 'app')
+            if actions['stack']:
+                compose('up', '-d', '--no-deps', '--no-build', '--wait', '--wait-timeout', '120', 'ollama')
             if actions['proxy'] or actions['stack']:
                 run(['docker', 'exec', 'magnat-password-proxy-1', 'caddy', 'reload',
                      '--config', '/etc/caddy/Caddyfile'])

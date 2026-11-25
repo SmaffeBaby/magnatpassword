@@ -25,7 +25,7 @@ Only trusted code merged into main is used for Docker builds and deployment.
 | --- | --- |
 | Nuxt app, server, shared code, dependencies, Dockerfile, report scripts/templates | Build and replace the web container |
 | New SQL migrations | Back up the database and apply unapplied files before starting the new app |
-| Compose files | Reconcile Supabase service configuration, then app and proxy |
+| Compose files or Ollama CPU Dockerfile | Prepare the configured Ollama image if missing, then reconcile the stack |
 | Caddyfile | Reload the proxy |
 | Kong, Edge Functions or pooler configuration | Recreate the affected service |
 | Native shells or documentation only | Sync source; no web image rebuild |

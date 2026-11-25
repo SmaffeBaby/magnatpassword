@@ -37,6 +37,7 @@ class DeploymentPlanTests(unittest.TestCase):
 
     def test_configuration_and_gateway_changes_select_required_services(self):
         self.assertTrue(deploy.plan(['docker-compose.server.yml'])['stack'])
+        self.assertTrue(deploy.plan(['deploy/windows-server/ollama-cpu.Dockerfile'])['stack'])
         self.assertEqual(deploy.plan(['supabase/volumes/api/kong.yml'])['restart'], ['api-gw'])
         self.assertTrue(deploy.plan(['deploy/windows-server/Caddyfile'])['proxy'])
         self.assertTrue(deploy.plan(['scripts/finance-report.py'])['web'])

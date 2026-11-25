@@ -1,6 +1,15 @@
 # Windows Server hosts a Linux Hyper-V VM. Keep application data inside its VHDX on E:.
 # Use: docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
 services:
+  ollama:
+    image: magnat-ollama-cpu:0.40.16
+    build:
+      context: ./deploy/windows-server
+      dockerfile: ollama-cpu.Dockerfile
+    pull_policy: never
+  ollama-init:
+    image: magnat-ollama-cpu:0.40.16
+    pull_policy: never
   app:
     ports: !override
       - '127.0.0.1:3003:3000'
