@@ -11,6 +11,18 @@ export function projectTaskView(value: unknown) {
   return value === 'calendar' || value === 'gantt' ? value : 'board'
 }
 
+export const projectTaskLists = [
+  { value: 'mine', label: 'Мои задачи', icon: 'i-lucide-user-round-check' },
+  { value: 'all', label: 'Все задачи', icon: 'i-lucide-list-checks' }
+] as const
+
+export type ProjectTaskListMode = typeof projectTaskLists[number]['value']
+export const projectTaskNavigation = [...projectTaskLists, ...projectTaskViews]
+
+export function projectTaskSection(value: unknown) {
+  return projectTaskLists.find(list => list.value === value) ?? projectTaskViews.find(view => view.value === projectTaskView(value))!
+}
+
 export type TaskPeriod = 'day' | 'month' | '1' | '2' | '3' | '4' | '8'
 export interface TaskDateRange { start: string; end: string }
 export type TaskDateEdge = 'start' | 'end'

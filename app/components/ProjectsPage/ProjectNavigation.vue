@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { canEditProjectSection, canViewProjectSection } from '~~/shared/utils/project-permissions'
-import { projectTaskView, projectTaskViews } from '~~/shared/utils/project-task-planning'
+import { projectTaskSection, projectTaskNavigation } from '~~/shared/utils/project-task-planning'
 import ProjectBoardNavigation from '../Kaban/ProjectBoardNavigation.vue'
 import BrandLogo from '~/components/Brand/BrandLogo.vue'
 import { projectStages } from '~~/shared/utils/project-dashboard'
@@ -11,11 +11,11 @@ const route = useRoute(), access = useProjectAccess(), projects = useProjectsDat
 const project = computed(() => projects.data.value?.find(item => item.id === route.params.id))
 const tasksPath = computed(() => `/projects/${route.params.id}/tasks`)
 const inTasks = computed(() => route.path.replace(/\/$/, '') === tasksPath.value)
-const taskView = computed(() => projectTaskView(route.query.view))
+const taskView = computed(() => projectTaskSection(route.query.view).value)
 const tasksOpen = ref(inTasks.value)
 const taskLinksId = useId()
 watch([inTasks, tasksPath], ([active]) => { tasksOpen.value = active })
-function taskLink(view: ReturnType<typeof projectTaskView>, create = false) {
+function taskLink(view: typeof taskView.value, create = false) {
   return { path: tasksPath.value, query: { ...(view === 'board' ? {} : { view }), ...(create ? { create: '1' } : {}) } }
 }
 const directoryLinks = computed(() => props.registry ? [
@@ -59,8 +59,8 @@ const projectLinks = computed(() => project.value ? [
           <template v-if="link.to === tasksPath">
             <button type="button" class="project-tasks-toggle" :class="{ active: inTasks }" :aria-expanded="tasksOpen" :aria-controls="taskLinksId" @click="tasksOpen = !tasksOpen"><UIcon :name="link.icon" /><span>{{ link.label }}</span><UIcon name="i-lucide-chevron-down" class="task-chevron" /></button>
             <div v-show="tasksOpen" :id="taskLinksId" class="project-task-links">
-              <NuxtLink v-for="view in projectTaskViews" :key="view.value" :to="taskLink(view.value)" :aria-current="inTasks && taskView === view.value ? 'page' : undefined" @click="emit('navigate')"><UIcon :name="view.icon" /><span>{{ view.label }}</span></NuxtLink>
-              <NuxtLink v-if="canEditProjectSection(project, 'tasks')" :to="taskLink(inTasks ? taskView : 'board', true)" @click="emit('navigate')"><UIcon name="i-lucide-plus" /><span>Добавить задачу</span></NuxtLink>
+              <NuxtLink v-for="view in projectTaskNavigation" :key="view.value" :to="taskLink(view.value)" :aria-current-value="inTasks && taskView === view.value ? 'page' : 'false'" @click="emit('navigate')"><UIcon :name="view.icon" /><span>{{ view.label }}</span></NuxtLink>
+              <NuxtLink v-if="canEditProjectSection(project, 'tasks')" :to="taskLink(inTasks ? taskView : 'board', true)" aria-current-value="false" @click="emit('navigate')"><UIcon name="i-lucide-plus" /><span>Добавить задачу</span></NuxtLink>
             </div>
           </template>
           <NuxtLink v-else :to="link.to" :aria-current="route.path.replace(/\/$/, '') === link.to ? 'page' : undefined" @click="emit('navigate')"><UIcon :name="link.icon"/><span>{{ link.label }}</span><small v-if="link.number">{{ link.number }}</small></NuxtLink>

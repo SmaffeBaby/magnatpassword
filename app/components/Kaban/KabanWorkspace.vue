@@ -11,7 +11,8 @@ import BoarLogo from '~/components/Brand/BoarLogo.vue'
 import KabanTaskModal from './KabanTaskModal.vue'
 import KabanHistorySettings from './KabanHistorySettings.vue'
 import ProjectTasksPlanner from './ProjectTasksPlanner.vue'
-import { projectTaskView, projectTaskViews } from '~~/shared/utils/project-task-planning'
+import KabanTaskDirectory from './KabanTaskDirectory.vue'
+import { projectTaskSection, projectTaskView } from '~~/shared/utils/project-task-planning'
 import { groupKabanTasksByStage, type KabanBoardSort } from '~~/shared/utils/kaban-board-sort'
 const props=defineProps<{projectId?:string; editorTask?:{id:string; edit:boolean}}>()
 const emit=defineEmits<{ editorClosed:[] }>()
@@ -32,8 +33,19 @@ watch([()=>c.data,()=>c.error],([data,error])=>{
 },{immediate:true})
 watch(()=>c.editorOpen,open=>{if(props.editorTask&&editorStarted.value&&!open)emit('editorClosed')})
 const route=useRoute(),router=useRouter()
-const activeView=computed(()=>props.projectId?projectTaskView(route.query.view):'board')
-const planner=computed(()=>activeView.value==='board'?null:projectTaskViews.find(view=>view.value===activeView.value))
+const taskSection = computed(() => projectTaskSection(props.projectId ? route.query.view : undefined))
+const activeView = computed(() => projectTaskView(taskSection.value.value))
+const planner = computed(() => activeView.value === 'board' ? null : taskSection.value)
+const taskList = computed(() => {
+  const section = taskSection.value
+  return section.value === 'mine' || section.value === 'all' ? section : null
+})
+const taskListBoards = computed(() => {
+  const workspace = c.data
+  return props.projectId && workspace && workspace.board.projectId === props.projectId
+    ? [{ project: { id: props.projectId, name: c.workspaceName }, workspace }]
+    : []
+})
 const {sortOrder} = toRefs(useSavedFilters(() => props.editorTask ? undefined : `kaban-sort:${props.projectId ?? 'legacy'}`, {sortOrder:'default' as KabanBoardSort}))
 const sortOptions: { label: string; value: KabanBoardSort }[] = [
   { label: 'Порядок по умолчанию', value: 'default' },
@@ -50,7 +62,7 @@ const boardColumns = computed(() => {
   const byStage = groupKabanTasksByStage(c.tasks, sortOrder.value)
   return c.boardStages.map(stage => ({ stage, tasks: byStage.get(stage.id) ?? [] }))
 })
-watch(activeView,()=>{c.setView('board')})
+watch(taskSection,()=>{c.setView('board')})
 let consumingCreate=false
 watch([()=>route.query.create,()=>c.displayData?.canEdit,()=>c.busy],async ([create,canEdit,busy])=>{
  if(!props.projectId||create!=='1'||!canEdit||busy||consumingCreate)return
@@ -127,11 +139,15 @@ function notification(notification:{entryId:string|null;vaultId:string|null}){na
   <main class="vault-main"><header v-if="!projectId" class="vault-topbar password-topbar"><PasswordHeader :workspace-name="c.workspaceName" :title="c.view==='categories'?'Категории':'Кабан'" @toggle-menu="c.mobileOpen=!c.mobileOpen" @open-entry="notification"/></header>
    <div class="vault-content kaban-content"><UAlert v-if="!projectId" color="neutral" title="Старые доски хранилищ" description="Для новых задач откройте проект. В настройках существующей задачи можно выбрать «Перенести в проект»." :actions="[{label:'К доскам проектов',to:'/kaban'}]" class="mb-5"/>
 
-    <div class="page-heading kaban-heading"><div class="kaban-heading-title"><span class="kaban-logo"><UIcon v-if="planner" :name="planner.icon" class="size-8"/><BoarLogo v-else/></span><div><h1>{{planner?.label || (c.view==='closed'?'Закрытые задачи':c.view==='history'?'История изменений':c.view==='categories'?'Категории':'Кабан')}}<span class="title-dot">.</span></h1><p v-if="c.workspaceId==='all'||selected">{{c.workspaceId==='all'?(c.view==='categories'?'Категории всех доступных хранилищ':'Задачи из всех доступных хранилищ'):selected?`${selectedParent?.name?selectedParent.name+' / ':''}${selected.name}`:''}}</p></div></div><div class="heading-actions"><UButton v-if="planner" :to="{path:'/kaban',query:{view:activeView}}" :label="activeView==='calendar'?'Общий календарь':'Общая диаграмма Ганта'" icon="i-lucide-folder-kanban" color="neutral" variant="outline"/><UButton v-if="selected&&c.canCategorize" icon="i-lucide-pencil" color="neutral" variant="outline" label="Категория" @click="c.editCategory(selected)"/><UButton v-if="selected&&c.canCategorize" icon="i-lucide-archive" color="neutral" variant="outline" label="Закрыть категорию" :disabled="c.busy" @click="archiveTarget=selected"/><UButton v-if="!planner&&c.canEditStages&&(c.view==='board'||(projectId&&c.view==='categories'))" icon="i-lucide-settings-2" color="neutral" variant="outline" :label="projectId?'Стадии категорий':'Стадии'" :disabled="c.busy" @click="c.editStages"/><UButton v-if="projectId&&c.displayData?.canEdit&&c.view==='board'" icon="i-lucide-plus" label="Добавить задачу" :disabled="c.busy||c.loading" @click="c.openTask()"/></div></div>
+    <div class="page-heading kaban-heading"><div class="kaban-heading-title"><span class="kaban-logo"><UIcon v-if="taskSection.value !== 'board'" :name="taskSection.icon" class="size-8"/><BoarLogo v-else/></span><div><h1>{{taskList?.label || planner?.label || (c.view==='closed'?'Закрытые задачи':c.view==='history'?'История изменений':c.view==='categories'?'Категории':'Кабан')}}<span class="title-dot">.</span></h1><p v-if="taskList">{{ c.workspaceName }}</p><p v-else-if="c.workspaceId==='all'||selected">{{c.workspaceId==='all'?(c.view==='categories'?'Категории всех доступных хранилищ':'Задачи из всех доступных хранилищ'):selected?`${selectedParent?.name?selectedParent.name+' / ':''}${selected.name}`:''}}</p></div></div><div class="heading-actions"><UButton v-if="planner" :to="{path:'/kaban',query:{view:activeView}}" :label="activeView==='calendar'?'Общий календарь':'Общая диаграмма Ганта'" icon="i-lucide-folder-kanban" color="neutral" variant="outline"/><UButton v-if="!taskList&&selected&&c.canCategorize" icon="i-lucide-pencil" color="neutral" variant="outline" label="Категория" @click="c.editCategory(selected)"/><UButton v-if="!taskList&&selected&&c.canCategorize" icon="i-lucide-archive" color="neutral" variant="outline" label="Закрыть категорию" :disabled="c.busy" @click="archiveTarget=selected"/><UButton v-if="!taskList&&!planner&&c.canEditStages&&(c.view==='board'||(projectId&&c.view==='categories'))" icon="i-lucide-settings-2" color="neutral" variant="outline" :label="projectId?'Стадии категорий':'Стадии'" :disabled="c.busy" @click="c.editStages"/><UButton v-if="projectId&&c.displayData?.canEdit&&c.view==='board'" icon="i-lucide-plus" label="Добавить задачу" :disabled="c.busy||c.loading" @click="c.openTask()"/></div></div>
     <UAlert v-if="c.error" color="error" :description="c.error" :actions="[{label:'Обновить доску',onClick:()=>c.load()}]" class="mb-5"/>
     <UAlert v-if="c.shared.error" color="error" :description="c.shared.error" class="mb-5"/>
     <div v-if="c.workspaceId==='all'&&c.view!=='categories'" class="kaban-board-picker"><p>Показаны задачи всех хранилищ. Выберите хранилище, чтобы открыть его доску отдельно.</p><div><button v-for="source in c.visibleSources" :key="source.id" @click="c.workspaceId=source.id"><img v-if="source.data.svg" :src="svgImageUrl(source.data.svg)" class="vault-display-image" alt=""/><UIcon v-else :name="source.id==='personal'?'i-lucide-user-round':'i-lucide-vault'"/><span><strong>{{source.name}}</strong><small>{{source.id==='personal'?'Личная доска':'Общая доска хранилища'}}</small></span><UIcon name="i-lucide-arrow-up-right"/></button></div></div>
     <p v-if="c.loading&&!c.displayData" class="kaban-loading" role="status">Загружаем доску…</p>
+    <template v-else-if="taskList && c.displayData">
+      <UAlert v-if="!c.displayData.canEdit" title="Доступ только для просмотра" color="neutral" class="mb-4"/>
+      <KabanTaskDirectory :mode="taskList.value" :project-id="projectId" :boards="taskListBoards"/>
+    </template>
     <KabanCategoryBrowser v-else-if="c.displayData&&c.view==='categories'" :categories="c.categories" :count="c.categoryCount" :can-create="c.canCreateCategories" :can-add-child="c.canAddSubcategory" @select="c.chooseCategory" @create="c.createCategory()" @create-child="c.createCategory"/>
     <template v-else-if="c.displayData&&c.view==='history'">
      <div class="kaban-history-toolbar"><p class="kaban-help">Все изменения задач, категорий, стадий и вложений. Время указано по Москве.</p><div class="kaban-history-actions"><KabanHistorySettings :key="c.workspaceId" :boards="c.workspaces.filter(item=>item.canManage).map(item=>({id:item.board.id,label:c.sourceName(item.board.id)}))" @changed="c.loadHistory()"/><UButton label="Обновить историю" icon="i-lucide-refresh-cw" color="neutral" variant="outline" :loading="c.historyLoading" @click="c.loadHistory()"/></div></div>

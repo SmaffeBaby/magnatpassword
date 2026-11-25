@@ -4,7 +4,7 @@ import { applicationForPath } from '~~/shared/utils/branding'
 import { documentEditors } from '~~/shared/utils/project-documents'
 import { officeSourceSchema } from '~~/shared/utils/office'
 import { projectStages } from '~~/shared/utils/project-dashboard'
-import { projectTaskView, projectTaskViews } from '~~/shared/utils/project-task-planning'
+import { projectTaskSection, projectTaskView } from '~~/shared/utils/project-task-planning'
 
 const editorSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('office'), source: officeSourceSchema }),
@@ -87,11 +87,11 @@ export function servicePageTitle(fullPath: string): string {
   const path = pathname.replace(/\/$/, '') || '/'
   const [, root, id, section] = path.split('/')
   const params = new URLSearchParams(queryStart < 0 ? '' : url.slice(queryStart + 1))
-  const view = projectTaskView(params.get('view'))
   if ((root === 'projects' && section === 'tasks') || root === 'kaban' || root === 'kaban-legacy') {
-    if (view !== 'board' || root !== 'kaban') return projectTaskViews.find(item => item.value === view)!.label
-    const filter = params.get('view')
-    return filter === 'mine' ? 'Мои задачи' : filter === 'all' ? 'Все задачи' : 'Все проекты'
+    const view = params.get('view')
+    if (root === 'kaban-legacy') return projectTaskSection(projectTaskView(view)).label
+    const taskSection = projectTaskSection(view)
+    return root === 'kaban' && taskSection.value === 'board' ? 'Все проекты' : taskSection.label
   }
   if (root === 'projects' && id) {
     if (!section) return 'Обзор проекта'

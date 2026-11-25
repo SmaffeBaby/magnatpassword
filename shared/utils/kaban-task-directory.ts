@@ -1,7 +1,7 @@
 import type { KabanStage, KabanTask } from '../types/kaban'
 import type { Project } from '../types/projects'
 import { addPeriod } from './subscriptions'
-export interface KabanTaskRow { task: KabanTask; project: Project; stage?: KabanStage }
+export interface KabanTaskRow { task: KabanTask; project: Pick<Project, 'id' | 'name'>; stage?: KabanStage }
 export interface KabanTaskFilters { search: string; project: string; stage: string; deadline: string }
 export function filterKabanTaskRows(rows: KabanTaskRow[], filters: KabanTaskFilters, today: string) {
  const tokens=filters.search.trim().toLocaleLowerCase('ru').split(/\s+/).filter(Boolean)
