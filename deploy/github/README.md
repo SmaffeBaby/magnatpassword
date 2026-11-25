@@ -49,6 +49,27 @@ when less than 6 GiB is free.
 The receiver records success in `/var/lib/magnat-deploy/last-successful.json` and
 updates its protected installed copy from the successfully deployed main commit.
 
+## Docker storage maintenance
+
+The maintenance timer runs daily at 03:25 Moscow time. It shares the deploy lock
+and skips a run while deployment is in progress. It preserves the ten newest
+Magnat web images, the `latest` image and images referenced by any container.
+It prunes Docker build cache unused for at least 72 hours. Containers, volumes,
+published installers and backups are outside its cleanup scope.
+
+Install or update the units and script from a trusted checkout on the Ubuntu host:
+
+```sh
+cd /home/magnat/magnat/deploy/github
+sudo install -o root -g root -m 755 storage-maintenance.py /usr/local/sbin/magnat-storage-maintenance
+sudo install -o root -g root -m 644 magnat-storage-maintenance.service magnat-storage-maintenance.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo /usr/local/sbin/magnat-storage-maintenance --dry-run
+sudo systemctl enable --now magnat-storage-maintenance.timer
+sudo systemctl start magnat-storage-maintenance.service
+sudo journalctl -u magnat-storage-maintenance.service -n 25
+```
+
 ## Operations
 
 On Ubuntu, as an administrator:

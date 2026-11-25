@@ -75,6 +75,8 @@ const disk = computed(() => docker.value?.disk)
 const releasesDisk = computed(() => data.value?.releasesDisk)
 const memory = computed(() => docker.value?.memory)
 const services = computed(() => docker.value?.services)
+const dockerStorage = computed(() => docker.value?.storage)
+const releasePlatforms = { windows: 'Windows', macos: 'macOS', android: 'Android', ios: 'iOS' }
 const numberFormat = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 })
 const timeFormat = new Intl.DateTimeFormat('ru-RU', { timeStyle: 'medium' })
 const states: Record<string, string> = {
@@ -136,6 +138,39 @@ function usedPercent(capacity?: { totalBytes: number; availableBytes: number } |
         <UProgress v-if="disk" :model-value="usedPercent(disk)" aria-label="Использование диска Docker" size="sm" class="mt-3" />
         <p v-if="disk" class="mt-2 text-xs text-slate-500">Свободно из {{ formatBytes(disk.totalBytes) }}</p>
         <p v-if="releasesDisk" class="mt-2 text-xs text-slate-500">Диск релизов · {{ formatBytes(releasesDisk.availableBytes) }} из {{ formatBytes(releasesDisk.totalBytes) }}</p>
+      </UCard>
+    </div>
+
+    <div class="grid gap-4 xl:grid-cols-2">
+      <UCard>
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="font-semibold">Хранилище Docker</h2>
+            <p v-if="docker?.storageSampledAt" class="text-xs text-slate-500">
+              Замер в {{ timeFormat.format(new Date(docker.storageSampledAt)) }}
+            </p>
+          </div>
+        </template>
+        <dl class="space-y-2 text-sm">
+          <div class="flex justify-between gap-4 font-semibold"><dt>Всего по данным Docker</dt><dd class="tabular-nums">{{ formatBytes(dockerStorage?.totalBytes) }}</dd></div>
+          <div class="flex justify-between gap-4"><dt>Образы</dt><dd class="tabular-nums">{{ formatBytes(dockerStorage?.imageBytes) }}</dd></div>
+          <div class="flex justify-between gap-4"><dt>Изменения контейнеров</dt><dd class="tabular-nums">{{ formatBytes(dockerStorage?.writableBytes) }}</dd></div>
+          <div class="flex justify-between gap-4"><dt>Тома</dt><dd class="tabular-nums">{{ formatBytes(dockerStorage?.volumeBytes) }}</dd></div>
+          <div class="flex justify-between gap-4"><dt>Кэш сборок</dt><dd class="tabular-nums">{{ formatBytes(dockerStorage?.buildCacheBytes) }}</dd></div>
+        </dl>
+        <p v-if="dockerStorage" class="mt-3 text-xs leading-5 text-slate-500">
+          Слои образов учтены один раз. В итог вошло {{ formatBytes(dockerStorage.exclusiveCacheBytes) }} кэша, отдельного от образов. Журналы Docker в этот замер не входят.
+        </p>
+      </UCard>
+      <UCard>
+        <template #header><h2 class="font-semibold">Приложения и пакеты</h2></template>
+        <dl class="space-y-2 text-sm">
+          <div class="flex justify-between gap-4"><dt>Текущий образ веб-приложения</dt><dd class="tabular-nums">{{ formatBytes(dockerStorage?.appImageBytes) }}</dd></div>
+          <div class="flex justify-between gap-4 font-semibold"><dt>Пакеты всех версий Magnat</dt><dd class="tabular-nums">{{ formatBytes(moduleStorage?.releaseBytes) }}</dd></div>
+          <div v-for="(label, platform) in releasePlatforms" :key="platform" class="flex justify-between gap-4">
+            <dt>{{ label }}</dt><dd class="tabular-nums">{{ formatBytes(moduleStorage?.releasePlatformBytes?.[platform]) }}</dd>
+          </div>
+        </dl>
       </UCard>
     </div>
 

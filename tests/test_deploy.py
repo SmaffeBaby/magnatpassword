@@ -8,6 +8,22 @@ spec = importlib.util.spec_from_file_location('deploy', Path(__file__).parents[1
 deploy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deploy)
 
+storage_spec = importlib.util.spec_from_file_location(
+    'storage_maintenance', Path(__file__).parents[1] / 'deploy/github/storage-maintenance.py')
+storage_maintenance = importlib.util.module_from_spec(storage_spec)
+storage_spec.loader.exec_module(storage_maintenance)
+
+
+class StorageMaintenanceTests(unittest.TestCase):
+    def test_retains_ten_distinct_revisions_latest_and_all_container_images(self):
+        revisions = [(f'image-{i}', f'{i:040x}') for i in range(1, 15)]
+        aliases = [('image-1', 'a' * 40), ('image-13', 'latest'), ('image-14', 'manual')]
+        images = [aliases[0], *revisions, *aliases[1:]]
+        self.assertEqual(
+            storage_maintenance.old_web_tags(images, ['image-12']),
+            [f'{11:040x}', f'{14:040x}'],
+        )
+
 
 class DeploymentPlanTests(unittest.TestCase):
     def test_web_change_keeps_database_services_running(self):

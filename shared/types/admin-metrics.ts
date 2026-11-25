@@ -18,6 +18,16 @@ export const dockerMetricsSchema = z.object({
   disk: capacitySchema,
   services: z.array(serviceSchema).nullable(),
   servicesSampledAt: z.iso.datetime().nullable(),
+  storage: z.object({
+    imageBytes: bytes.nullable(),
+    writableBytes: bytes.nullable(),
+    volumeBytes: bytes.nullable(),
+    buildCacheBytes: bytes.nullable(),
+    exclusiveCacheBytes: bytes.nullable(),
+    appImageBytes: bytes.nullable(),
+    totalBytes: bytes.nullable(),
+  }).nullish(),
+  storageSampledAt: z.iso.datetime().nullish(),
 })
 
 export type AdminMetrics = {

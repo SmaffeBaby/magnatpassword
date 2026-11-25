@@ -7,6 +7,8 @@ const metricsFile = '/metrics/snapshot.json'
 const project = process.env.METRICS_COMPOSE_PROJECT || 'magnat-password'
 let services = null
 let servicesSampledAt = null
+let storage = null
+let storageSampledAt = null
 
 async function readCpu() {
   const stat = await readFile('/proc/stat', 'utf8')
@@ -32,19 +34,20 @@ async function collectHost(previousCpu) {
     disk: { totalBytes: disk.blocks * disk.bsize, availableBytes: disk.bavail * disk.bsize },
     services,
     servicesSampledAt,
+    storage,
+    storageSampledAt,
   }
   await writeFile(`${metricsFile}.tmp`, JSON.stringify(snapshot), { mode: 0o644 })
   await rename(`${metricsFile}.tmp`, metricsFile)
   return cpu
 }
 
-function readContainers() {
-  const filters = encodeURIComponent(JSON.stringify({ label: [`com.docker.compose.project=${project}`] }))
+function readDocker(path) {
   return new Promise((resolve, reject) => {
     const req = request({
       socketPath: '/var/run/docker.sock',
       method: 'GET',
-      path: `/containers/json?all=true&size=true&filters=${filters}`,
+      path,
       signal: AbortSignal.timeout(30_000),
     }, res => {
       if (res.statusCode !== 200) {
@@ -67,10 +70,43 @@ function readContainers() {
 
 const size = value => Number.isSafeInteger(value) && value >= 0 ? value : null
 
+function sumSizes(items, getSize) {
+  if (!Array.isArray(items)) return null
+  const sizes = items.map(getSize).map(size)
+  return sizes.every(value => value !== null) ? sizes.reduce((sum, value) => sum + value, 0) : null
+}
+
+function summarizeStorage(usage, containers) {
+  const imageBytes = size(usage.LayersSize)
+  const writableBytes = sumSizes(usage.Containers, container => container.SizeRw)
+  const volumeBytes = sumSizes(usage.Volumes, volume => volume.UsageData?.Size)
+  const buildCacheBytes = sumSizes(usage.BuildCache, record => record.Size)
+  const exclusiveCacheBytes = sumSizes(usage.BuildCache?.filter(record => record.Shared === false), record => record.Size)
+  const app = containers.find(container => container.State === 'running' && container.Labels?.['com.docker.compose.service'] === 'app')
+  const appImage = app && usage.Images?.find(image => image.Id === app.ImageID)
+  const appImageBytes = size(appImage?.Size)
+  const components = [imageBytes, writableBytes, volumeBytes, exclusiveCacheBytes]
+  return {
+    imageBytes,
+    writableBytes,
+    volumeBytes,
+    buildCacheBytes,
+    exclusiveCacheBytes,
+    appImageBytes,
+    totalBytes: components.includes(null) ? null : components.reduce((sum, value) => sum + value, 0),
+  }
+}
+
 async function collectServices() {
-  const containers = await readContainers()
+  const usage = await readDocker('/system/df').catch(error => {
+    console.error('Docker disk usage:', error.message)
+    return null
+  })
+  const filters = encodeURIComponent(JSON.stringify({ label: [`com.docker.compose.project=${project}`] }))
+  const containers = (usage?.Containers ?? await readDocker(`/containers/json?all=true&size=true&filters=${filters}`))
+    .filter(container => container.Labels?.['com.docker.compose.project'] === project)
   services = containers
-    .filter(container => container.Labels['com.docker.compose.oneoff'] !== 'True')
+    .filter(container => container.Labels['com.docker.compose.oneoff'] !== 'True' && container.Labels['com.docker.compose.service'])
     .map(container => ({
       service: container.Labels['com.docker.compose.service'],
       name: container.Names[0]?.replace(/^\//, '') || container.Id.slice(0, 12),
@@ -80,6 +116,10 @@ async function collectServices() {
     }))
     .sort((a, b) => a.service.localeCompare(b.service) || a.name.localeCompare(b.name))
   servicesSampledAt = new Date().toISOString()
+  if (usage) {
+    storage = summarizeStorage(usage, containers)
+    storageSampledAt = servicesSampledAt
+  }
 }
 
 async function collectServicesPeriodically() {

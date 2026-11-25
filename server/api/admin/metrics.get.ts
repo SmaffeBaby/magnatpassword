@@ -6,7 +6,12 @@ async function readDockerMetrics() {
     const snapshot = dockerMetricsSchema.parse(JSON.parse(await readFile('/metrics/snapshot.json', 'utf8')))
     if (Date.now() - Date.parse(snapshot.sampledAt) > 60_000) return null
     if (snapshot.servicesSampledAt && Date.now() - Date.parse(snapshot.servicesSampledAt) > 300_000) {
-      return { ...snapshot, services: null, servicesSampledAt: null }
+      snapshot.services = null
+      snapshot.servicesSampledAt = null
+    }
+    if (snapshot.storageSampledAt && Date.now() - Date.parse(snapshot.storageSampledAt) > 300_000) {
+      snapshot.storage = null
+      snapshot.storageSampledAt = null
     }
     return snapshot
   } catch {

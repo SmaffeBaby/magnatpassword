@@ -12,8 +12,10 @@ export async function getReleaseRoot() {
   if (!root) throw createError({ statusCode: 503, statusMessage: 'Release SSD is not configured' })
   try { return await realpath(root) } catch { throw createError({ statusCode: 503, statusMessage: 'Release SSD unavailable' }) }
 }
-export async function getReleaseAssetBytes() {
+export async function getReleaseAssetStorage() {
   const root = await getReleaseRoot()
+  const platformBytes = { windows: 0, macos: 0, android: 0, ios: 0 }
+  const platformByExtension = { exe: 'windows', dmg: 'macos', gz: 'macos', apk: 'android', ipa: 'ios' } as const
   let bytes = 0
   for (const version of await readdir(root, { withFileTypes: true })) {
     if (!version.isDirectory() || !/^\d+\.\d+\.\d+$/.test(version.name)) continue
@@ -23,10 +25,14 @@ export async function getReleaseAssetBytes() {
       if (!file.isFile() || !filename.safeParse(file.name).success) continue
 
       const info = await lstat(resolve(directory, file.name))
-      if (info.isFile()) bytes += info.size
+      if (!info.isFile()) continue
+
+      const extension = file.name.split('.').at(-1) as keyof typeof platformByExtension
+      platformBytes[platformByExtension[extension]] += info.size
+      bytes += info.size
     }
   }
-  return bytes
+  return { bytes, platformBytes }
 }
 export async function getAppRelease(version?: string) {
   const root = await getReleaseRoot()

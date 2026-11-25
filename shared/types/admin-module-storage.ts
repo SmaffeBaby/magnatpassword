@@ -13,4 +13,5 @@ export const moduleStorageSchema = z.record(z.enum(measuredModuleIds), z.object(
 export type AdminModuleStorage = {
   modules: z.infer<typeof moduleStorageSchema> | null
   releaseBytes: number | null
+  releasePlatformBytes?: Record<'windows' | 'macos' | 'android' | 'ios', number> | null
 }
