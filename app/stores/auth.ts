@@ -36,6 +36,9 @@ export const useAuthStore = defineStore('auth', () => {
     } catch { storageError.value = 'Не удалось сохранить настройки входа на этом устройстве.'; return false }
   }
   function hasQuickLogin(id: string): boolean { return Boolean(access.value[id]?.rememberPassword && access.value[id]?.session) }
+  function clearQuickLogin(id: string) {
+    if (access.value[id]?.session) updateAccess(id, { session: undefined })
+  }
   type AccessPolicy = { rememberPassword: boolean; logoutMinutes: number; configured?: boolean }
   async function fetchAccessPolicy(session: Session): Promise<AccessPolicy> {
     const headers = { Authorization: `Bearer ${session.access_token}` }
@@ -262,5 +265,5 @@ export const useAuthStore = defineStore('auth', () => {
     try { await client().auth.signOut({ scope: 'local' }) } catch { /* The server has already revoked this device. */ }
   }
   return { user, checking, pending, error, savedAccounts, profileAvatar, storageError, accessSettings, loadAccessSettings, saveAccessSettings,
-    hasQuickLogin, resumeAccount, touchActivity, idleExpired, handleSession, syncAccessPolicy, invalidateSession, loadSavedAccounts, forgetAccount, updateSavedProfile, restore, authenticate, authenticateQr, logout }
+    hasQuickLogin, clearQuickLogin, resumeAccount, touchActivity, idleExpired, handleSession, syncAccessPolicy, invalidateSession, loadSavedAccounts, forgetAccount, updateSavedProfile, restore, authenticate, authenticateQr, logout }
 })

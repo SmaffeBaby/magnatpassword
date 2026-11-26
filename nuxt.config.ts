@@ -100,6 +100,7 @@ export default defineNuxtConfig({
     '/api/auth/brand': { security: { rateLimiter: { tokensPerInterval: 60, interval: 60000 } } },
     '/auth/qr': { ssr: false, headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } },
     '/api/auth/qr/**': { security: { rateLimiter: false } },
+    '/api/auth/password-reset/complete': { security: { xssValidator: false } },
     '/api/**': { headers: { 'Cache-Control': 'no-store' }, security: { corsHandler: false } },
     '/supabase/**': { headers: { 'Cache-Control': 'no-store' }, security: { corsHandler: false } }
   },

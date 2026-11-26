@@ -2,6 +2,7 @@
 import { isNativeShell } from '~/utils/native-shell'
 import BrandLogo from '~/components/Brand/BrandLogo.vue'
 import PersonAvatar from '~/components/Shared/PersonAvatar.vue'
+import PasswordReset from '~/components/Auth/PasswordReset.vue'
 import QrLogin from '~/components/Auth/QrLogin.vue'
 import { useAuthGate } from '~/composables/auth/useAuthGate'
 
@@ -19,7 +20,23 @@ const { auth, vault, email, password, register, master, localError, authenticate
 const formId = useId()
 const passwordVisible = ref(false)
 const masterVisible = ref(false)
-const qrEnabled = computed(() => desktop.value && !auth.user && !register.value && !props.admin && route.path !== '/auth/qr')
+const resetting = ref(false)
+const resetCompleted = ref(false)
+const qrEnabled = computed(() => desktop.value && !auth.user && !register.value && !resetting.value && !props.admin && route.path !== '/auth/qr')
+function startReset() {
+  password.value = ''
+  auth.error = ''
+  resetCompleted.value = false
+  resetting.value = true
+}
+function finishReset(address: string) {
+  const saved = auth.savedAccounts.find(account => account.email.toLowerCase() === address.toLowerCase())
+  if (saved) auth.clearQuickLogin(saved.id)
+  otherAccount()
+  email.value = address
+  resetCompleted.value = true
+  resetting.value = false
+}
 watch([password, register], () => { if (!password.value) passwordVisible.value = false })
 watch(register, () => { passwordVisible.value = false })
 watch(master, () => { if (!master.value) masterVisible.value = false })
@@ -29,7 +46,8 @@ watch(master, () => { if (!master.value) masterVisible.value = false })
   <div v-else-if="!auth.user || (!admin && !vault.unlocked)" class="gate">
     <BrandLogo class="gate-brand" />
     <UCard class="w-full" :class="qrEnabled ? 'max-w-[860px]' : 'max-w-md'">
-      <template v-if="!auth.user">
+      <PasswordReset v-if="!auth.user && resetting" :initial-email="email" @back="resetting = false" @completed="finishReset" />
+      <template v-else-if="!auth.user">
         <div :class="{ 'gate-auth-layout': qrEnabled }"><div class="min-w-0">
         <span class="eyebrow">{{ admin ? 'ПАНЕЛЬ УПРАВЛЕНИЯ' : 'ВАШЕ ЛИЧНОЕ ПРОСТРАНСТВО' }}</span>
         <h1 class="mt-3 text-2xl font-semibold tracking-tight">{{ showAccounts ? 'Выберите аккаунт' : register ? 'Создать аккаунт' : admin ? 'Вход в панель управления' : 'Добро пожаловать' }}</h1>
@@ -45,6 +63,7 @@ watch(master, () => { if (!master.value) masterVisible.value = false })
             </li>
           </ul>
           <UButton class="mt-5" color="neutral" variant="outline" block icon="i-lucide-user-plus" :disabled="auth.pending" @click="otherAccount">Войти в другой аккаунт</UButton>
+          <UButton class="mt-3" color="neutral" variant="ghost" block :disabled="auth.pending" @click="startReset">Сбросить пароль</UButton>
           <p class="mt-4 text-xs text-slate-400">Удаление из списка не удаляет сам аккаунт.</p>
           <UAlert v-if="auth.error" class="mt-4" color="error" variant="soft" :description="auth.error" />
         </template>
@@ -53,6 +72,7 @@ watch(master, () => { if (!master.value) masterVisible.value = false })
           <PersonAvatar :name="selectedAccount.name || selectedAccount.email" :src="selectedAccount.avatar" />
           <span class="min-w-0"><span class="block truncate text-sm font-semibold">{{ selectedAccount.name || selectedAccount.email }}</span><span class="block text-xs text-slate-500">Введите пароль для входа</span></span>
         </div>
+        <UAlert v-if="resetCompleted && !register" class="mb-5" role="status" color="success" variant="soft" description="Пароль обновлён. Войдите с новым паролем." />
         <form :id="`${formId}-login`" class="space-y-5" autocomplete="on" @submit.prevent="authenticate">
           <UFormField v-if="register" label="Бренд аккаунта" required><USelect v-model="previewBrand" :items="brandOptions" class="w-full" size="lg" aria-label="Бренд аккаунта" /><p class="mt-2 text-xs text-slate-500">Оформление и логотип будут сохранены для вашего аккаунта.</p></UFormField>
           <UFormField label="Email" :for="`${formId}-email`" required><UInput :id="`${formId}-email`" v-model="email" name="username" type="email" inputmode="email" autocomplete="username" autocapitalize="none" :spellcheck="false" :disabled="auth.pending" class="w-full" size="lg" required placeholder="you@example.com" /></UFormField>
@@ -61,6 +81,7 @@ watch(master, () => { if (!master.value) masterVisible.value = false })
           <UAlert v-if="auth.error" color="error" variant="soft" :description="auth.error" />
           <UButton type="submit" block size="lg" :loading="auth.pending">{{ register ? 'Создать аккаунт' : 'Войти' }}<UIcon name="i-lucide-arrow-right" /></UButton>
         </form>
+        <UButton v-if="!register" class="mt-3" color="neutral" variant="ghost" block :disabled="auth.pending" @click="startReset">Сбросить пароль</UButton>
         <UButton v-if="auth.savedAccounts.length" class="mt-4" color="neutral" variant="ghost" block icon="i-lucide-arrow-left" :disabled="auth.pending" @click="backToAccounts">К выбору аккаунта</UButton>
         <button v-if="!admin" type="button" :disabled="auth.pending" class="mt-6 w-full text-center text-sm text-slate-500 hover:text-primary-600" @click="toggleRegistration">{{ register ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться' }}</button>
         </template>

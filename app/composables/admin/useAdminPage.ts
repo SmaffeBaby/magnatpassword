@@ -5,12 +5,13 @@ export function useAdminPage() {
   const identity = ref<{ id: string; email?: string } | null>(null), checking = ref(true), accessError = ref('')
   type AdminOverview = { vaults: number; totalUsers: number; users: { isHidden?:boolean; id: string; email?: string; createdAt: string; lastSignIn?: string }[] }
   const overview = ref<AdminOverview | null>(null), switchingAccount = ref(false)
-  const section = computed(() => ['users', 'security', 'team', 'releases', 'assistant'].includes(String(route.query.section)) ? String(route.query.section) : 'overview')
-  const titles: Record<string, string> = { assistant: 'История обновлений помощника', releases: 'Версии приложения', overview: 'Обзор', team: 'Команда и роли', users: 'Пользователи', security: 'Безопасность' }
+  const section = computed(() => ['users', 'password-resets', 'security', 'team', 'releases', 'assistant'].includes(String(route.query.section)) ? String(route.query.section) : 'overview')
+  const titles: Record<string, string> = { assistant: 'История обновлений помощника', releases: 'Версии приложения', overview: 'Обзор', team: 'Команда и роли', users: 'Пользователи', 'password-resets': 'Сброс паролей', security: 'Безопасность' }
   const navigation = computed(() => [
     { label: 'Обзор', icon: 'i-lucide-chart-no-axes-combined', to: '/admin/password', active: section.value === 'overview' },
     { label: 'Команда и роли', icon:'i-lucide-network',to:'/admin/password?section=team',active:section.value==='team' },
     { label: 'Пользователи', icon: 'i-lucide-users', to: '/admin/password?section=users', active: section.value === 'users' },
+    { label: 'Сброс паролей', icon: 'i-lucide-key-round', to: '/admin/password?section=password-resets', active: section.value === 'password-resets' },
     { label: 'Обновления помощника', icon: 'i-lucide-sparkles', to: '/admin/password?section=assistant', active: section.value === 'assistant' },
     { label: 'Версии приложения', icon: 'i-lucide-package-check', to: '/admin/password?section=releases', active: section.value === 'releases' },
     { label: 'Безопасность', icon: 'i-lucide-shield-check', to: '/admin/password?section=security', active: section.value === 'security' }
