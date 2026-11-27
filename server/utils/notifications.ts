@@ -1,7 +1,7 @@
 import {loadCategoryAccess,categoryScopedData} from './category-access'
 import {projectSharedCards} from '../../shared/utils/shared-card-sources'
 import type { NotificationSettings } from '../../shared/types/subscriptions'
-import { DEFAULT_NOTIFICATION_SETTINGS, todayDate, subscriptionRows, dueReminder, dateLabel } from '../../shared/utils/subscriptions'
+import { DEFAULT_NOTIFICATION_SETTINGS, todayDate, subscriptionRows, dueReminder, dateLabel, canRenewSubscription } from '../../shared/utils/subscriptions'
 export async function loadNotificationSettings(context: Awaited<ReturnType<typeof requireSharedUser>>): Promise<NotificationSettings> {
   const { data, error } = await context.client.from('notification_preferences').select('settings').eq('user_id',context.user.id).maybeSingle()
   if (error) throw createError({ statusCode: 503, statusMessage: 'Notifications unavailable' })
@@ -31,5 +31,5 @@ export async function generateSubscriptionReminders(context: Awaited<ReturnType<
     const { error } = await context.client.from('app_notifications').upsert(inserts.slice(i,i+100),{onConflict:'user_id,dedupe_key',ignoreDuplicates:true})
     if (error) throw createError({ statusCode:503,statusMessage:'Notifications unavailable' })
   }
-  return new Set(rows.map(r=>`${r.key}/${r.subscription.paidUntil}`))
+  return new Set(rows.filter(row=>canRenewSubscription(row.subscription,today)).map(r=>`${r.key}/${r.subscription.paidUntil}`))
 }

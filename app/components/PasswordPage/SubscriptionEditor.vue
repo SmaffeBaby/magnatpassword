@@ -3,12 +3,26 @@ import { useSubscriptionEditor } from '~/composables/finances/useSubscriptionEdi
 
 import type {ScopedCredential} from '~~/shared/utils/vault-sources'
 import type {CustomField} from '~~/shared/types/vault'
+import { subscriptionEndLabel, todayDate } from '~~/shared/utils/subscriptions'
 const props=defineProps<{field:CustomField;cards?:ScopedCredential[];ownerTitle?:string}>()
 const {sub,primaryCard,primaryOptions,linkedCards,linkedCardOptions,currencies,units,toggleReminders,addLead,addDate}=useSubscriptionEditor(props)
+
+function scheduleEnd() {
+  const today = todayDate()
+  sub.value.endsOn = sub.value.startsOn > today ? sub.value.startsOn : today
+}
 </script>
 <template><div class="subscription-editor">
  <div class="subscription-form-grid"><UFormField label="Стоимость за период" required><UInput v-model.number="sub.price" type="number" :min="0" :max="1000000000" step="0.01" required class="w-full"/></UFormField><UFormField label="Валюта"><USelect v-model="sub.currency" :items="currencies" class="w-full"/></UFormField><UFormField label="Период" required><UInput v-model.number="sub.periodCount" type="number" :min="1" :max="1000" step="1" required class="w-full"/></UFormField><UFormField label="Единица периода"><USelect v-model="sub.periodUnit" :items="units" class="w-full"/></UFormField><UFormField label="Начало подписки" required><SharedDatePicker v-model="sub.startsOn" required class="w-full"/></UFormField><UFormField label="Оплачено до" required><SharedDatePicker v-model="sub.paidUntil" :min="sub.startsOn" required class="w-full"/></UFormField></div>
- <UCheckbox v-model="sub.autoRenew" class="mt-4" label="Ожидается автоматическое продление"/><p class="mt-2 text-xs leading-5 text-slate-500">{{sub.autoRenew?'Следующее плановое списание: '+sub.paidUntil:'Подписка заканчивается в указанную дату.'}} Сайт учитывает сроки и не выполняет оплату.</p>
+ <UCheckbox v-model="sub.autoRenew" class="mt-4" label="Ожидается автоматическое продление"/>
+ <div class="mt-4 space-y-3 border-t border-default pt-4">
+  <template v-if="sub.endsOn !== undefined">
+   <UFormField label="Дата завершения подписки" required><SharedDatePicker v-model="sub.endsOn" :min="sub.startsOn" required class="w-full"/></UFormField>
+   <p class="text-sm text-muted"><template v-if="sub.endsOn">{{ subscriptionEndLabel(sub) }}. </template>С даты завершения плановые списания прекращаются.</p>
+   <UButton type="button" color="neutral" variant="outline" icon="i-lucide-rotate-ccw" label="Восстановить подписку" @click="delete sub.endsOn"/>
+  </template>
+  <UButton v-else type="button" color="neutral" variant="outline" icon="i-lucide-calendar-x" label="Завершить подписку" @click="scheduleEnd"/>
+ </div>
  <UCheckbox :model-value="!!sub.reminders" class="mt-4" label="Свои напоминания для этой подписки" @update:model-value="value=>toggleReminders(!!value)"/>
  <div v-if="sub.reminders" class="space-y-3 mt-3"><label class="text-xs text-slate-500">За сколько дней напоминать</label><div v-for="(_,i) in sub.reminders.leadDays" :key="i" class="flex gap-2"><UInput v-model.number="sub.reminders.leadDays[i]" type="number" :min="0" :max="3650" step="1" required aria-label="Дней до окончания"/><UButton type="button" color="neutral" variant="ghost" icon="i-lucide-x" aria-label="Удалить срок" @click="sub.reminders.leadDays.splice(i,1)"/></div><UButton type="button" size="xs" variant="soft" label="Добавить срок" @click="addLead"/><UFormField label="Повтор каждые N дней (0 — без повтора)"><UInput v-model.number="sub.reminders.repeatEveryDays" type="number" :min="0" :max="365" step="1" required/></UFormField><div v-for="(_,i) in sub.reminders.customDates" :key="`date-${i}`" class="flex gap-2"><SharedDatePicker v-model="sub.reminders.customDates[i]" required aria-label="Своя дата напоминания"/><UButton type="button" color="neutral" variant="ghost" icon="i-lucide-x" aria-label="Удалить дату" @click="sub.reminders.customDates.splice(i,1)"/></div><UButton type="button" size="xs" variant="soft" label="Добавить свою дату" @click="addDate"/></div>
  <p v-else class="mt-3 text-xs text-slate-500">Используются ваши общие настройки напоминаний в колокольчике.</p>

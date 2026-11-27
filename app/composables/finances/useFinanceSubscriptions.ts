@@ -2,7 +2,7 @@ import type { Ref, ComputedRef } from 'vue'
 import type { Credential, CustomField } from '~~/shared/types/vault'
 import type { VaultSource } from '~~/shared/types/sharing'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
-import { addPeriod, todayDate, validDate } from '~~/shared/utils/subscriptions'
+import { addPeriod, todayDate, validDate, validSubscriptionEnd } from '~~/shared/utils/subscriptions'
 import { createId } from '~/utils/browser'
 
 export function useFinanceSubscriptions(context: {
@@ -45,6 +45,7 @@ export function useFinanceSubscriptions(context: {
     error.value = ''
     if (!entry || !sub || !entry.title.trim() || !entry.financeSubscription?.label.trim()) { error.value = 'Укажите название подписки.'; return }
     if (!Number.isFinite(sub.price) || sub.price < 0 || sub.price > 1e9 || !Number.isInteger(sub.periodCount) || sub.periodCount < 1 || sub.periodCount > 1000 || !validDate(sub.startsOn) || !validDate(sub.paidUntil) || sub.paidUntil < sub.startsOn || (sub.paidFrom && (!validDate(sub.paidFrom) || sub.paidFrom > sub.paidUntil))) { error.value = 'Проверьте стоимость, период и даты подписки.'; return }
+    if (!validSubscriptionEnd(sub)) { error.value = 'Укажите дату завершения подписки, начиная с даты её начала.'; return }
     if (categoryRequired.value && !categories.value.length) { error.value = 'Выберите категорию для выбранного хранилища.'; return }
     entry.title = entry.title.trim(); entry.financeSubscription!.label = entry.financeSubscription!.label.trim(); entry.updatedAt = new Date().toISOString()
     if (await shared.saveCard(JSON.parse(JSON.stringify(entry)), canShare.value ? targets.value.filter(id => id !== 'personal') : undefined, recordId.value || undefined, undefined, revision.value || undefined)) {

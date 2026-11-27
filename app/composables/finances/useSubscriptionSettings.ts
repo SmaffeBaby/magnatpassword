@@ -1,5 +1,5 @@
 import type { CustomField } from '~~/shared/types/vault'
-import { validDate } from '~~/shared/utils/subscriptions'
+import { validDate, validSubscriptionEnd } from '~~/shared/utils/subscriptions'
 
 export function useSubscriptionSettings(fields: () => CustomField[]) {
   const subscriptionOpen = ref(false)
@@ -22,6 +22,7 @@ export function useSubscriptionSettings(fields: () => CustomField[]) {
       subscriptionError.value = 'Проверьте стоимость, период и даты подписки.'
       return
     }
+    if (!validSubscriptionEnd(sub)) { subscriptionError.value = 'Укажите дату завершения подписки, начиная с даты её начала.'; return }
     if ((sub.linkedCards?.length ?? 0) > 50) {
       subscriptionError.value = 'К подписке можно привязать до 50 дополнительных карточек.'
       return

@@ -1,7 +1,7 @@
 import { isSubscriptionHistoryQuestion } from './assistant-payment-history.ts'
 import type { AssistantReply } from '../types/assistant'
 import type { ScopedCredential } from './vault-sources'
-import { subscriptionRows, todayDate, validDate, dateLabel, moneyLabel, periodLabel, subscriptionCardReferences, matchesSubscriptionCard, addPeriod } from './subscriptions.ts'
+import { subscriptionRows, todayDate, validDate, dateLabel, moneyLabel, periodLabel, subscriptionCardReferences, matchesSubscriptionCard, addPeriod, subscriptionDeadline, subscriptionEnded, subscriptionEndLabel, canRenewSubscription } from './subscriptions.ts'
 export function isSubscriptionRead(question: string) {
   if (/проект|договор|связан|связь|связи|парол/iu.test(question)) return false
   if (/(?:^|\s)как\s+.*(?:добав|созда|измен|настро|отмет|оплатить)|где.*(?:посмотр|найти|открыть)/iu.test(question)) return false
@@ -30,18 +30,24 @@ export function subscriptionReadReply(question: string, entries: ScopedCredentia
     if (category && !category.test(labels) && !(/домен/iu.test(question) && titleIsDomain)) return false
     return !domains.length || domains.some(domain => `${labels} ${row.entry.url} ${linked.map(entry => entry.url).join(' ')}`.toLowerCase().includes(domain))
   })
-  const overdue = current.filter(row => row.daysLeft < 0), future = current.filter(row => row.daysLeft >= 0)
+  const active = current.filter(row => !subscriptionEnded(row.subscription, today))
+  const overdue = active.filter(row => row.daysLeft < 0), future = active.filter(row => row.daysLeft >= 0)
   const onlyOverdue = /просроч/iu.test(question), nearest = /ближайш|следующ/iu.test(question) && !/список|какие|подписки|платежи|платёж[и]/iu.test(question)
   const days = /недел|7\s*дн/iu.test(question) ? 7 : /ближайш[а-яё]* месяц|30\s*дн/iu.test(question) ? 30 : undefined
   let matching = onlyOverdue ? overdue : /ближайш|следующ|скоро|истека|заканч/iu.test(question) || days ? future : current
   if (/(?:в этом|текущ[а-яё]*) месяц/iu.test(question)) {
     const from = today.slice(0, 7) + '-01', to = addPeriod(addPeriod(from, 1, 'month'), -1, 'day')
-    matching = matching.filter(row => row.subscription.paidUntil >= from && row.subscription.paidUntil <= to)
+    matching = matching.filter(row => subscriptionDeadline(row.subscription) >= from && subscriptionDeadline(row.subscription) <= to)
   }
   if (days !== undefined) matching = matching.filter(row => row.daysLeft >= 0 && row.daysLeft <= days)
-  if (nearest && matching.length) matching = matching.filter(row => row.subscription.paidUntil === matching[0]!.subscription.paidUntil)
+  if (nearest && matching.length) matching = matching.filter(row => subscriptionDeadline(row.subscription) === subscriptionDeadline(matching[0]!.subscription))
   const lines = [onlyOverdue ? `Просроченных подписок: ${matching.length}.` : nearest ? 'Ближайшее окончание оплаченного срока:' : `Подписок по запросу: ${matching.length}.`]
-  for (const row of matching.slice(0, 20)) lines.push(`• ${row.entry.title} · ${row.field.label} · ${row.entry.vaultName}. Оплачено до: ${dateLabel(row.subscription.paidUntil)} (${row.daysLeft < 0 ? `просрочено на ${-row.daysLeft} дн.` : row.daysLeft === 0 ? 'сегодня' : `через ${row.daysLeft} дн.`}). Стоимость: ${moneyLabel(row.subscription)} / ${periodLabel(row.subscription)}. Автопродление: ${row.subscription.autoRenew ? 'включено' : 'выключено'}.`)
+  for (const row of matching.slice(0, 20)) {
+    const sub = row.subscription
+    const end = subscriptionEndLabel(sub, today)
+    const timing = canRenewSubscription(sub, today) ? ` (${row.daysLeft < 0 ? `просрочено на ${-row.daysLeft} дн.` : row.daysLeft === 0 ? 'сегодня' : `через ${row.daysLeft} дн.`})` : ''
+    lines.push(`• ${row.entry.title} · ${row.field.label} · ${row.entry.vaultName}. Оплачено до: ${dateLabel(sub.paidUntil)}${timing}. ${end ? end + '. ' : ''}Стоимость: ${moneyLabel(sub)} / ${periodLabel(sub)}. Автопродление: ${sub.autoRenew ? 'включено' : 'выключено'}.`)
+  }
   if (!matching.length) lines.push(!rows.length ? 'В доступных вам карточках подписки не найдены.' : onlyOverdue ? 'Среди доступных подписок с корректной датой просроченных нет.' : 'Подходящих подписок с корректной датой в доступных карточках нет.')
   if (!onlyOverdue && overdue.length) lines.push(`Отдельно есть просроченные подписки: ${overdue.length}. Самый ранний срок: ${dateLabel(overdue[0]!.subscription.paidUntil)}. Напишите «Какие подписки просрочены?», чтобы увидеть их.`)
   if (matching.length > 20) lines.push(`Показаны первые 20 из ${matching.length}; полный список — в разделе «Ближайшие подписки».`)

@@ -16,6 +16,13 @@ export const dayDifference = (from: string, to: string) => Math.round((new Date(
 export const dateLabel = (value: string) => validDate(value) ? new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${value}T12:00:00Z`)) : '—'
 export const moneyLabel = (value: Subscription) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: value.currency, maximumFractionDigits: 2 }).format(value.price)
 export function periodLabel(value: Subscription) { return `${value.periodCount} ${value.periodUnit === 'day' ? 'дн.' : value.periodUnit === 'month' ? 'мес.' : 'г.'}` }
+export const subscriptionDeadline = (sub: Subscription) => sub.endsOn && sub.endsOn < sub.paidUntil ? sub.endsOn : sub.paidUntil
+export const subscriptionEnded = (sub: Subscription, today = todayDate()) => !!sub.endsOn && sub.endsOn <= today
+export const canRenewSubscription = (sub: Subscription, today = todayDate()) => !sub.endsOn || (today < sub.endsOn && sub.paidUntil < sub.endsOn)
+export const validSubscriptionEnd = (sub: Subscription) => sub.endsOn === undefined || (validDate(sub.endsOn) && sub.endsOn >= sub.startsOn)
+export function subscriptionEndLabel(sub: Subscription, today = todayDate()) {
+  return sub.endsOn ? `${subscriptionEnded(sub, today) ? 'Завершена' : 'Завершится'} ${dateLabel(sub.endsOn)}` : ''
+}
 export function nextPaidUntil(value: Subscription) {
   const monthDistance = (Number(value.paidUntil.slice(0,4)) - Number(value.startsOn.slice(0,4))) * 12 + Number(value.paidUntil.slice(5,7)) - Number(value.startsOn.slice(5,7))
   const elapsed = value.periodUnit === 'day' ? dayDifference(value.startsOn, value.paidUntil) : value.periodUnit === 'year' ? monthDistance / 12 : monthDistance
@@ -25,11 +32,12 @@ export function nextPaidUntil(value: Subscription) {
 }
 export function subscriptionRows(entries: ScopedCredential[], today = todayDate()) {
   return entries.flatMap(entry => (entry.kind === 'subscription' ? (entry.financeSubscription ? [entry.financeSubscription] : []) : entry.customFields ?? []).filter(field => field.type === 'subscription' && field.subscription).map(field => {
-    const subscription = field.subscription!, daysLeft = dayDifference(today, subscription.paidUntil), from = subscription.paidFrom || subscription.startsOn
-    return { key: `${entry.vaultId}/${entry.id}/${field.id}`, entry, field, subscription, daysLeft, progress: Math.max(0, Math.min(100, dayDifference(from, today) / Math.max(1,dayDifference(from, subscription.paidUntil)) * 100)) }
-  })).sort((a,b) => a.subscription.paidUntil.localeCompare(b.subscription.paidUntil) || a.entry.title.localeCompare(b.entry.title, 'ru'))
+    const subscription = field.subscription!, deadline = subscriptionDeadline(subscription), daysLeft = dayDifference(today, deadline), from = subscription.paidFrom || subscription.startsOn
+    return { key: `${entry.vaultId}/${entry.id}/${field.id}`, entry, field, subscription, daysLeft, progress: Math.max(0, Math.min(100, dayDifference(from, today) / Math.max(1,dayDifference(from, deadline)) * 100)) }
+  })).sort((a,b) => subscriptionDeadline(a.subscription).localeCompare(subscriptionDeadline(b.subscription)) || a.entry.title.localeCompare(b.entry.title, 'ru'))
 }
 export function dueReminder(subscription: Subscription, rules: ReminderRules, today: string): string | null {
+  if (!canRenewSubscription(subscription, today)) return null
   const dates = [...new Set([...rules.leadDays.map(days => addPeriod(subscription.paidUntil, -days, 'day')), ...rules.customDates])].filter(validDate).sort()
   const first = dates[0]
   if (!first || today < first) return null

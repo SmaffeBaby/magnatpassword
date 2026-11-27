@@ -2,7 +2,7 @@ import { storeToRefs } from 'pinia'
 import {projectSharedCards,storedVaultData} from '~~/shared/utils/shared-card-sources'
 import {credentialAccounts,entryCategoryIds} from '~~/shared/utils/credentials'
 import { paymentForRenewal } from '~~/shared/utils/subscription-finances'
-import { addPeriod, todayDate, validDate, nextPaidUntil, subscriptionRows } from '~~/shared/utils/subscriptions'
+import { addPeriod, todayDate, validDate, nextPaidUntil, subscriptionRows, canRenewSubscription, validSubscriptionEnd } from '~~/shared/utils/subscriptions'
 import type { AppNotification, SubscriptionPayment } from '~~/shared/types/subscriptions'
 import type { CustomField } from '~~/shared/types/vault'
 import { cardKey } from '~~/shared/utils/relationships'
@@ -196,6 +196,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string; fi
     const current = allEntries.value.find(item => entry.sharedCardId ? item.sharedCardId === entry.sharedCardId : item.id === entry.id && item.vaultId === entry.vaultId)
     const row = current && subscriptionRows([current]).find(row => row.field.id === fieldId)
     if (!row) return
+    if (!canRenewSubscription(row.subscription)) { toast.add({title:'Восстановите подписку, чтобы продлить её',color:'neutral'}); return }
     const until = nextPaidUntil(row.subscription)
     if (!until) { toast.add({title:'Не удалось рассчитать срок подписки',color:'error'}); return }
     renewalEntry = current!
@@ -218,6 +219,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string; fi
       const next = copyData(entry.vaultId), value = next?.entries.find(item => item.id === entry.id)
       const sub = (value?.financeSubscription?.id === payment.fieldId ? value.financeSubscription : value?.customFields?.find(field => field.id === payment.fieldId))?.subscription
       if (!next || !value || !sub || sub.paidUntil !== payment.periodFrom) { renewalError.value = 'Срок подписки изменился. Закройте окно и повторите оплату.'; return }
+      if (!canRenewSubscription(sub)) { renewalError.value = 'Восстановите подписку, чтобы продлить её.'; return }
       if ((next.subscriptionPayments?.length ?? 0) >= 20000) { renewalError.value = 'Достигнут предел записей истории'; return }
       ;(next.subscriptionPayments ??= []).push(payment)
       sub.paidFrom = payment.periodFrom; sub.paidUntil = payment.periodUntil; value.updatedAt = new Date().toISOString()
@@ -245,7 +247,7 @@ export function useVaultWorkspace(props: { embedded?: boolean; mode?: string; fi
     if(form.accounts?.some(account=>!account.label.trim())){formError.value='Укажите название каждого блока доступа';return}
     if (form.url && !safeUrl(form.url)) { formError.value = 'Укажите корректный HTTP или HTTPS адрес'; return }
     if ((form.customFields ?? []).some(f => !f.label.trim())) { formError.value = 'Укажите названия дополнительных полей'; return }
-    if ((form.customFields ?? []).some(f => f.type === 'subscription' && (!f.subscription || !validDate(f.subscription.startsOn) || !validDate(f.subscription.paidUntil) || f.subscription.paidUntil < f.subscription.startsOn || !Number.isFinite(f.subscription.price) || f.subscription.price < 0 || !Number.isInteger(f.subscription.periodCount) || f.subscription.periodCount < 1))) { formError.value = 'Проверьте цену, период и даты подписки'; return }
+    if ((form.customFields ?? []).some(f => f.type === 'subscription' && (!f.subscription || !validSubscriptionEnd(f.subscription) || !validDate(f.subscription.startsOn) || !validDate(f.subscription.paidUntil) || f.subscription.paidUntil < f.subscription.startsOn || !Number.isFinite(f.subscription.price) || f.subscription.price < 0 || !Number.isInteger(f.subscription.periodCount) || f.subscription.periodCount < 1))) { formError.value = 'Проверьте цену, период и даты подписки'; return }
     if ((form.links ?? []).some(l => !l.targetEntryId || !l.targetVaultId || l.targetEntryId === form.id && l.targetVaultId === editingVaultId.value)) { formError.value = 'Выберите другую карточку для каждой связи'; return }
     const next = copyData(editingVaultId.value), now = new Date().toISOString()
     if (!next) return

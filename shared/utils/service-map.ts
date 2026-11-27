@@ -55,13 +55,28 @@ export function buildServiceMap(entries: ScopedCredential[]) {
   return { cards, usage, unlinked }
 }
 
+const normalizeSearch = (value: string) => value.toLocaleLowerCase('ru-RU').replace(/ё/g, 'е').trim().replace(/\s+/g, ' ')
+
+function entrySearchRank(entry: ScopedCredential, query: string, terms: string[]) {
+  const title = normalizeSearch(entry.title)
+  if (title === query) return 0
+  if (title.startsWith(query)) return 1
+  if (terms.every(term => title.includes(term))) return 2
+  const text = normalizeSearch([entry.title, entry.url, ...(entry.vaultNames ?? [entry.vaultName]), entry.financeSubscription?.label ?? ''].join(' '))
+  return terms.every(term => text.includes(term)) ? 3 : Infinity
+}
+
 export function searchServiceCards(cards: ServiceMapCard[], query: string) {
-  const terms = query.toLocaleLowerCase('ru-RU').trim().split(/\s+/).filter(Boolean)
-  return cards.filter(card => {
-    const values = [card.entry, ...card.passwords.map(row=>row.entry), ...card.subscriptions.map(row=>row.entry), ...card.services.map(row=>row.entry)]
-    const text = values.map(entry => [entry.title, entry.url, ...(entry.vaultNames ?? [entry.vaultName]), entry.financeSubscription?.label ?? ''].join(' ')).join(' ').toLocaleLowerCase('ru-RU')
-    return terms.every(term => text.includes(term))
-  })
+  const search = normalizeSearch(query)
+  if (!search) return cards
+  const terms = search.split(' ')
+  return cards.flatMap(card => {
+    const direct = entrySearchRank(card.entry, search, terms)
+    if (Number.isFinite(direct)) return [{ card, rank: direct }]
+    const linked = [...card.passwords, ...card.subscriptions, ...card.services]
+    const rank = Math.min(...linked.map(row => entrySearchRank(row.entry, search, terms)))
+    return Number.isFinite(rank) ? [{ card, rank: rank + 4 }] : []
+  }).sort((a, b) => a.rank - b.rank || compare(a.card, b.card)).map(({ card }) => card)
 }
 
 export function serviceSuggestions(entries: ScopedCredential[], id: string) {

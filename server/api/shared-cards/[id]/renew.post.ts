@@ -1,11 +1,12 @@
 import {z} from 'zod'
 import {randomUUID} from 'node:crypto'
-import {nextPaidUntil,subscriptionRows} from '../../../../shared/utils/subscriptions'
+import {nextPaidUntil,subscriptionRows,canRenewSubscription} from '../../../../shared/utils/subscriptions'
 import {paymentForRenewal} from '../../../../shared/utils/subscription-finances'
 export default defineEventHandler(async event=>{
  const context=await requireCard(event),body=await sharedBody(event,z.object({revision:revisionSchema,fieldId:z.uuid(),payment:paymentSchema.optional()}).strict())
  const entry=structuredClone(context.card.entry),sub=(entry.financeSubscription?.id===body.fieldId?entry.financeSubscription:entry.customFields?.find(field=>field.id===body.fieldId))?.subscription
  if(!sub)throw createError({statusCode:404,message:'Подписка не найдена'})
+ if(!canRenewSubscription(sub))throw createError({statusCode:409,message:'Восстановите подписку, чтобы продлить её.'})
  const until=body.payment?.periodUntil??nextPaidUntil(sub)
  if(!until)throw createError({statusCode:400,message:'Не удалось рассчитать срок подписки'})
  const row=subscriptionRows([{...entry,vaultId:context.card.vaultIds[0]??'personal',vaultName:''}]).find(row=>row.field.id===body.fieldId)!

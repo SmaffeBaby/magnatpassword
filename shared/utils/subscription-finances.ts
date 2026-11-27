@@ -1,6 +1,6 @@
 import type { Currency, Subscription, SubscriptionPayment } from '../types/subscriptions'
 import type { VaultSource } from '../types/sharing'
-import { addPeriod, dayDifference, subscriptionRows, todayDate } from './subscriptions.ts'
+import { addPeriod, canRenewSubscription, dayDifference, subscriptionRows, todayDate } from './subscriptions.ts'
 export const currencies: Currency[] = ['RUB','USD','EUR','CNY']
 export const amountLabel = (amount: number, currency: Currency) => new Intl.NumberFormat('ru-RU',{style:'currency',currency,maximumFractionDigits:2}).format(amount)
 export function currencyTotals(items: {amount:number;currency:Currency}[]) {
@@ -9,6 +9,7 @@ export function currencyTotals(items: {amount:number;currency:Currency}[]) {
 export type SubscriptionRow = ReturnType<typeof subscriptionRows>[number]
 // Project calendar renewals from the original anchor, including short months and leap years.
 export function scheduledDates(sub: Subscription, from: string, to: string) {
+ if (sub.endsOn && sub.endsOn <= to) to = addPeriod(sub.endsOn, -1, 'day')
  if (from>to) return []
  if (!sub.autoRenew) return sub.paidUntil>=from&&sub.paidUntil<=to?[sub.paidUntil]:[]
  const distance=(a:string,b:string)=>sub.periodUnit==='day'?dayDifference(a,b):(Number(b.slice(0,4))-Number(a.slice(0,4)))*12+Number(b.slice(5,7))-Number(a.slice(5,7))
@@ -22,6 +23,7 @@ export function scheduledDates(sub: Subscription, from: string, to: string) {
 }
 export function projectedCharges(rows:SubscriptionRow[],from:string,to:string,today=todayDate()) {
  return rows.flatMap(row=>{
+  if (!canRenewSubscription(row.subscription, today)) return []
   const dates=scheduledDates(row.subscription,from>today?from:today,to)
   if(row.subscription.paidUntil<today&&row.subscription.paidUntil>=from&&row.subscription.paidUntil<=to)dates.unshift(row.subscription.paidUntil)
   return dates.map(date=>({key:`${row.key}/${date}`,row,date,amount:row.subscription.price,currency:row.subscription.currency,charge:row.subscription.autoRenew,forecast:date!==row.subscription.paidUntil}))

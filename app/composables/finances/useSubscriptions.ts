@@ -1,7 +1,7 @@
 import { useMonthCalendar } from '~/composables/shared/useMonthCalendar'
 import type { VaultSource } from '~~/shared/types/sharing'
 import { unpaidProjectedCharges, sourcePayments, recordedCharges, currencyTotals, amountLabel } from '~~/shared/utils/subscription-finances'
-import { addPeriod, todayDate, subscriptionRows, subscriptionCardReferences, subscriptionCardKey, matchesSubscriptionCard, dateLabel, moneyLabel, periodLabel } from '~~/shared/utils/subscriptions'
+import { addPeriod, todayDate, subscriptionRows, subscriptionCardReferences, subscriptionCardKey, matchesSubscriptionCard, dateLabel, moneyLabel, periodLabel, subscriptionEnded } from '~~/shared/utils/subscriptions'
 import type { ScopedCredential } from '~~/shared/utils/vault-sources'
 export function useSubscriptions(props:{entries:ScopedCredential[]}) {
  const today=useState('subscription-today',()=>todayDate())
@@ -21,7 +21,7 @@ export function useSubscriptionSummary(props:{entry:ScopedCredential;entries?:Sc
 }
 export function useSubscriptionSidebar(props:{entries:ScopedCredential[]}) {
  const common=useSubscriptions(props)
- const upcoming=computed(()=>common.rows.value.slice(0,5))
+ const upcoming=computed(()=>common.rows.value.filter(row=>!subscriptionEnded(row.subscription,common.today.value)).slice(0,5))
  return {...common,upcoming}
 }
 export function useSubscriptionCalendar(props:{entries:ScopedCredential[];sources?:VaultSource[]}) {
@@ -32,17 +32,21 @@ export function useSubscriptionCalendar(props:{entries:ScopedCredential[];source
  const payments=computed(()=>sourcePayments(props.sources??[]))
  const charges=computed(()=>{
   const from=addPeriod(month.value,-6,'day'),to=addPeriod(month.value,42,'day')
-  const planned=unpaidProjectedCharges(common.matchingRows.value,payments.value,from,to,common.today.value).map(event=>({...event,paid:false,available:true,payment:undefined}))
-  const paid=recordedCharges(payments.value,props.entries).filter(event=>event.date>=from&&event.date<=to&&(common.group.value==='all'||event.payment.vaultIds.includes(common.group.value))&&(common.currency.value==='all'||event.currency===common.currency.value)&&`${event.payment.service} ${event.payment.label} ${event.payment.vaultNames.join(' ')}`.toLowerCase().includes(common.search.value.trim().toLowerCase()))
-  return [...planned,...paid].sort((a,b)=>a.date.localeCompare(b.date))
+  const planned=unpaidProjectedCharges(common.matchingRows.value,payments.value,from,to,common.today.value).map(event=>({...event,ending:false,paid:false,available:true,payment:undefined}))
+  const paid=recordedCharges(payments.value,props.entries).filter(event=>event.date>=from&&event.date<=to&&(common.group.value==='all'||event.payment.vaultIds.includes(common.group.value))&&(common.currency.value==='all'||event.currency===common.currency.value)&&`${event.payment.service} ${event.payment.label} ${event.payment.vaultNames.join(' ')}`.toLowerCase().includes(common.search.value.trim().toLowerCase())).map(event=>({...event,ending:false}))
+  const endings=common.matchingRows.value.flatMap(row=>{
+   const date=row.subscription.endsOn
+   return date && date>=from && date<=to ? [{key:`ending/${row.key}/${date}`,row,date,amount:0,currency:row.subscription.currency,ending:true,charge:false,forecast:false,paid:false,available:true,payment:undefined}] : []
+  })
+  return [...planned,...paid,...endings].sort((a,b)=>a.date.localeCompare(b.date))
  })
- const cells=computed(()=>calendar.dates.value.map(cell=>{const events=charges.value.filter(event=>event.date===cell.date);return {...cell,events,totals:currencyTotals(events.filter(event=>!event.paid).map(event=>({amount:event.amount,currency:event.currency})))}}))
+ const cells=computed(()=>calendar.dates.value.map(cell=>{const events=charges.value.filter(event=>event.date===cell.date);return {...cell,events,totals:currencyTotals(events.filter(event=>!event.paid&&!event.ending).map(event=>({amount:event.amount,currency:event.currency})))}}))
  const selectedRows=computed(()=>charges.value.filter(event=>event.date===selected.value))
  const monthTotals=computed(()=>currencyTotals(charges.value.filter(event=>event.charge&&!event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
- const monthRenewalTotals=computed(()=>currencyTotals(charges.value.filter(event=>!event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
+ const monthRenewalTotals=computed(()=>currencyTotals(charges.value.filter(event=>!event.paid&&!event.ending&&event.date.slice(0,7)===month.value.slice(0,7))))
  const selectedTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>event.charge&&!event.paid)))
  const monthPaidTotals=computed(()=>currencyTotals(charges.value.filter(event=>event.paid&&event.date.slice(0,7)===month.value.slice(0,7))))
- const selectedEndingTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>!event.charge&&!event.paid)))
+ const selectedEndingTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>!event.charge&&!event.paid&&!event.ending)))
  const selectedPaidTotals=computed(()=>currencyTotals(selectedRows.value.filter(event=>event.paid)))
  return {...common,month,selected,monthTitle,cells,selectedRows,move,goToday,monthTotals,monthRenewalTotals,selectedTotals,monthPaidTotals,selectedPaidTotals,selectedEndingTotals,amountLabel}
 }
