@@ -45,6 +45,7 @@
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-deep-link": "^2.6.3",
     "d3": "7.9.0",
+    "emojibase-data": "18.0.0",
     "fast-xml-parser": "5.11.2",
     "nodemailer": "10.1.1",
     "nuxt": "4.6.1",

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { TeamProfile,TeamDirectory } from '~~/shared/types/team'
+import type { ProfileWorkState,TeamProfile,TeamDirectory } from '~~/shared/types/team'
 export const useTeamStore=defineStore('team',()=>{
  const queries=useAccountQueries(),auth=useAuthStore(),me=ref<TeamProfile|null>(null),busy=ref(false),error=ref('')
  let generation=0
@@ -9,8 +9,9 @@ export const useTeamStore=defineStore('team',()=>{
  async function directory(query:string,page:number,company='',force=false){const params=new URLSearchParams({q:query,page:String(page)});if(company)params.set('company',company);return queries.read<TeamDirectory>('team',`/api/team?${params}`,{force})}
  async function change(action:()=>Promise<TeamProfile>){if(busy.value)return false;const attempt=generation;busy.value=true;error.value='';try{const result=await action();if(attempt!==generation)return false;await queries.invalidate('profile','team','team-profile','team-search','admin-team-search','workspace');if(attempt!==generation)return false;me.value=result;queries.set('profile','/api/profile',result);return true}catch(failure){if(attempt===generation)error.value=message(failure);return false}finally{if(attempt===generation)busy.value=false}}
  const save=(body:{fullName:string;workEmail:string;telegram:string})=>change(()=>sharedRequest<TeamProfile>('/api/profile',{method:'PUT',body}))
+ const saveWorkState=(body:Partial<ProfileWorkState>)=>change(()=>sharedRequest<TeamProfile>('/api/profile/work-state',{method:'PUT',body}))
  const avatar=(file:File)=>{const body=new FormData();body.append('avatar',file);return change(()=>sharedRequest<TeamProfile>('/api/profile/avatar',{method:'POST',body}))}
  const removeAvatar=()=>change(()=>sharedRequest<TeamProfile>('/api/profile/avatar',{method:'DELETE'}))
  function lock(){generation++;me.value=null;busy.value=false;error.value=''}
- return {me,busy,error,refreshMe,profile,directory,save,avatar,removeAvatar,lock}
+ return {me,busy,error,refreshMe,profile,directory,save,saveWorkState,avatar,removeAvatar,lock}
 })

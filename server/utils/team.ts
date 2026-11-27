@@ -1,11 +1,21 @@
 import { z } from 'zod'
 import type { H3Event } from 'h3'
-import type { TeamUnit, TeamPerson, TeamProfile } from '../../shared/types/team'
+import type { TeamUnit, TeamPerson, TeamProfile, ProfileWorkState } from '../../shared/types/team'
 import { normalizeTelegram, normalizePeopleQuery } from '../../shared/utils/team'
 import { createAvatarUrlCache } from './avatar-cache'
 
 const signedAvatars = createAvatarUrlCache()
 export const profileSchema = z.object({ fullName: z.string().trim().min(2).max(120), workEmail: z.union([z.email().max(254),z.literal('')]), telegram: z.string().max(120).transform((value,context) => { try { return normalizeTelegram(value) } catch { context.addIssue({code:'custom',message:'Некорректный Telegram'}); return z.NEVER } }) }).strict()
+const profileScore = z.number().int().min(1).max(10).nullable().optional()
+export const profileWorkStateSchema = z.object({
+ status: z.string().trim().min(1).max(60).regex(/^[^\p{Cc}]+$/u).nullable().optional(),
+ workload: profileScore,
+ mood: profileScore
+}).strict().refine(state => Object.values(state).some(value => value !== undefined))
+
+function profileWorkState(row: { work_status?: string | null; workload?: number | null; mood?: number | null }): ProfileWorkState {
+ return { status: row.work_status ?? null, workload: row.workload ?? null, mood: row.mood ?? null }
+}
 export const unitSchema = z.object({ id:z.uuid().optional(), name:z.string().trim().min(1).max(80), kind:z.enum(['company','department','role']), parentId:z.uuid().nullable(), brand:z.enum(['magnat','light']).nullable().optional() }).strict()
 type Context = Awaited<ReturnType<typeof requireSharedUser>>
 export async function teamUnits(context:Context):Promise<TeamUnit[]> {
@@ -47,7 +57,7 @@ export async function teamProfile(_event:H3Event,context:Context,id:string):Prom
  const images = vaults?.length ? await context.client.from('shared_vaults').select('id,encrypted_data,key_epoch').in('id',vaults.map((row:any)=>row.id)) : {data:[],error:null}
  if(images.error)throw createError({statusCode:503,message:'Не удалось загрузить изображения хранилищ'})
  const vaultImages=new Map((images.data??[]).map(row=>[row.id,decodeShared(_event,row).svg]))
- return {person:person!,units,commonUnits:[...mine].filter(id=>theirs.has(id)),commonVaults:(vaults??[]).map((row:any)=>({id:row.id,name:row.name,role:row.member_role,owner:row.owner,svg:vaultImages.get(row.id)}))}
+ return {person:person!,workState:profileWorkState(profile),units,commonUnits:[...mine].filter(id=>theirs.has(id)),commonVaults:(vaults??[]).map((row:any)=>({id:row.id,name:row.name,role:row.member_role,owner:row.owner,svg:vaultImages.get(row.id)}))}
 }
 export async function requireVaultManager(context:Awaited<ReturnType<typeof requireSharedMember>>,targetId?:string,nextRole?:string){
  if(context.row.owner_id===context.user.id)return

@@ -19,6 +19,7 @@ import type { MeetingRoomReference } from '~~/shared/types/meeting-room'
 import { meetingRoomCompleted } from '~~/shared/utils/meeting-room'
 import { dateLabel } from '~~/shared/utils/subscriptions'
 import ChatTaskPicker from '~/components/Chats/ChatTaskPicker.vue'
+import ChatEmojiPicker from '~/components/Chats/ChatEmojiPicker.vue'
 import ProjectChatActivities from './ProjectChatActivities.vue'
 import ProjectChatAttachment from './ProjectChatAttachment.vue'
 import ProjectChatInfo from './ProjectChatInfo.vue'
@@ -427,6 +428,30 @@ const activityDialog = ref<'poll' | 'todo' | null>(null), activityTitle = ref(''
 function createActivity(kind: 'poll' | 'todo') { activityDialog.value = kind; activityTitle.value = ''; activityItems.value = kind === 'poll' ? ['', ''] : ['']; error.value = '' }
 function addActivity() { const labels = activityItems.value.map(label => label.trim()).filter(Boolean); const title = activityTitle.value.trim(); if (!title || labels.length < (activityDialog.value === 'poll' ? 2 : 1)) { error.value = 'Укажите заголовок и заполните пункты'; return }; const items = labels.map(label => ({ id: crypto.randomUUID(), label })); if (activityDialog.value === 'poll') draft.value.poll = { question: title, options: items }; else draft.value.todo = { title, items }; activityDialog.value = null }
 const chatInput = ref<{ textareaRef?: HTMLTextAreaElement } | null>(null), mentionCaret = ref(0), mentionDismissed = ref(false)
+const messageLengthLimit = 10000
+
+async function insertEmoji(emoji: string) {
+  const target = draft.value
+  const input = chatInput.value?.textareaRef
+  if (!input || sending.value || target.retry) return
+
+  const { selectionStart, selectionEnd } = input
+  const text = target.text.slice(0, selectionStart) + emoji + target.text.slice(selectionEnd)
+  if (text.length > messageLengthLimit) {
+    toast.add({ title: 'В сообщении достигнут предел символов', color: 'neutral' })
+    input.focus()
+    return
+  }
+
+  target.text = text
+  mentionDismissed.value = true
+  mentionCaret.value = selectionStart + emoji.length
+  typing.input(true)
+  await nextTick()
+  if (draft.value !== target || chatInput.value?.textareaRef !== input) return
+  input.focus()
+  input.setSelectionRange(mentionCaret.value, mentionCaret.value)
+}
 const mentionOptions = computed(() => chatMentionOptions((current.value?.members ?? []).map(member => ({ id: member.userId, name: memberName(member.userId) }))))
 const mentionMatch = computed(() => draft.value.text.slice(0, mentionCaret.value).match(/(?:^|[^\p{L}\p{N}_])@([\p{L}\p{N}_]*)$/u))
 const suggestedMentions = computed(() => !mentionDismissed.value && mentionMatch.value ? mentionOptions.value.filter(member => member.handle.toLocaleLowerCase('ru').includes(mentionMatch.value![1]!.toLocaleLowerCase('ru'))).slice(0, 8) : [])
@@ -654,7 +679,7 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
               aria-label="Сообщение"
               aria-description="Enter — отправить. Shift+Enter — новая строка."
               placeholder="Сообщение…"
-              :maxlength="10000"
+              :maxlength="messageLengthLimit"
               :rows="1"
               autoresize
               class="chat-input"
@@ -665,7 +690,11 @@ onBeforeUnmount(() => { stopped = true; openingEpoch++; observer?.disconnect(); 
               @keyup="trackCaret"
               @click="trackCaret"
               @blur="typing.stop"
-            />
+            >
+              <template #trailing>
+                <ChatEmojiPicker :key="forwardKey" :account-id="auth.user?.id" :disabled="sending || draft.retry" @select="insertEmoji"/>
+              </template>
+            </UTextarea>
             <UButton
               v-if="hasMessageContent || sending"
               type="submit"
@@ -929,13 +958,18 @@ button.chat-service-note:focus-visible { outline:2px solid #356c9e; outline-offs
 .chat-input :deep(textarea) {
   min-height: 42px;
   max-height: 126px;
-  padding: 10px 15px;
+  padding: 10px 50px 10px 15px;
   border-radius: 22px;
   background: #fff;
   font-size: 14px;
   line-height: 22px;
   overflow-y: auto;
   resize: none;
+}
+.chat-input :deep([data-slot="trailing"]) {
+  inset: auto 5px 1px auto;
+  padding: 0;
+  pointer-events: auto;
 }
 
 .chat-compose-attach,
